@@ -25,3 +25,5 @@ if(MSVC)
 else()
     install(TARGETS i2s_analyzer LIBRARY DESTINATION ".")
 endif()
+
+set_post_build_destination(i2s_analyzer)
