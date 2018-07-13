@@ -6,7 +6,7 @@
 #include "I2sSimulationDataGenerator.h"
 
 class I2sAnalyzerSettings;
-class ANALYZER_EXPORT I2sAnalyzer : public Analyzer2
+class I2sAnalyzer : public Analyzer2
 {
 public:
 	I2sAnalyzer();

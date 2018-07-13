@@ -17,13 +17,4 @@ src/I2sSimulationDataGenerator.cpp
 src/I2sSimulationDataGenerator.h
 )
 
-add_library(i2s_analyzer SHARED ${SOURCES})
-target_link_libraries(i2s_analyzer PRIVATE Saleae::AnalyzerSDK)
-
-if(MSVC)
-    install(TARGETS i2s_analyzer RUNTIME DESTINATION "Analyzers")
-else()
-    install(TARGETS i2s_analyzer LIBRARY DESTINATION "Analyzers")
-endif()
-
-set_post_build_destination(i2s_analyzer)
+add_analyzer_plugin(i2s_analyzer SOURCES ${SOURCES})
