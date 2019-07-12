@@ -23,7 +23,7 @@ I2sAnalyzerSettings::I2sAnalyzerSettings()
 	mWordSelectInverted( WS_NOT_INVERTED )
 {
 	mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
-	mClockChannelInterface->SetTitleAndTooltip( "CLOCK", "Clock, aka I2S SCK - Continuous Serial Clock, aka Bit Clock" );
+	mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka I2S SCK - Continuous Serial Clock, aka Bit Clock" );
 	mClockChannelInterface->SetChannel( mClockChannel );
 
 	mFrameChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
@@ -38,24 +38,24 @@ I2sAnalyzerSettings::I2sAnalyzerSettings()
 
 
 	mShiftOrderInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mShiftOrderInterface->SetTitleAndTooltip( "", "Specify if data comes in MSB first, or LSB first." );
-	mShiftOrderInterface->AddNumber( AnalyzerEnums::MsbFirst, "DATA arrives MSB first", "Data arrives most significant bit (MSB) first" );
-	mShiftOrderInterface->AddNumber( AnalyzerEnums::LsbFirst, "DATA arrives LSB first", "Data arrives least significant bit (LSB) first" );
+	mShiftOrderInterface->SetTitleAndTooltip( "DATA Significant Bit", "Select if the most significant bit or least significant bit is transmitted first" );
+	mShiftOrderInterface->AddNumber( AnalyzerEnums::MsbFirst, "Most Significant Bit Sent First", "" );
+	mShiftOrderInterface->AddNumber( AnalyzerEnums::LsbFirst, "Least Significant Bit Sent First", "" );
 	mShiftOrderInterface->SetNumber( mShiftOrder );
 
 	mDataValidEdgeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mDataValidEdgeInterface->SetTitleAndTooltip( "", "Specify if data is valid (should be read) on the rising, or falling clock edge." );
-	mDataValidEdgeInterface->AddNumber( AnalyzerEnums::NegEdge, "DATA is valid (should be read) on the CLOCK falling edge", "" );
-	mDataValidEdgeInterface->AddNumber( AnalyzerEnums::PosEdge, "DATA is valid (should be read) on the CLOCK rising edge", "" );
+	mDataValidEdgeInterface->SetTitleAndTooltip( "CLOCK State", "Specify if data is valid (should be read) on the rising, or falling clock edge." );
+	mDataValidEdgeInterface->AddNumber( AnalyzerEnums::NegEdge, "Falling edge", "" );
+	mDataValidEdgeInterface->AddNumber( AnalyzerEnums::PosEdge, "Rising edge", "" );
 	mDataValidEdgeInterface->SetNumber( mDataValidEdge );
 
 	mBitsPerWordInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mBitsPerWordInterface->SetTitleAndTooltip( "", "Specify the number of audio bits/word.  Any additional bits will be ignored" );
+	mBitsPerWordInterface->SetTitleAndTooltip( "Audio Bit Depth (bits/sample)", "Specify the number of audio bits/word.  Any additional bits will be ignored" );
 	char str[256];
 	for( U32 i=2; i <= 64; i++ )
 	{
-		sprintf( str, "%d Bits/Word (Audio bit depth, bits/sample)", i );
-		mBitsPerWordInterface->AddNumber( i, str, "Specify the number of audio bits/word.  Any additional bits will be ignored" );
+		sprintf( str, "%d Bits/Word", i );
+		mBitsPerWordInterface->AddNumber( i, str, "" );
 	}
 	mBitsPerWordInterface->SetNumber( mBitsPerWord );
 
@@ -63,36 +63,36 @@ I2sAnalyzerSettings::I2sAnalyzerSettings()
 
 	//enum PcmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
 	mFrameTypeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mFrameTypeInterface->SetTitleAndTooltip( "", "Specify the type of frame signal used." );
-	mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_WORD, "FRAME signal transitions (changes state) twice each word.", "" );
-	mFrameTypeInterface->AddNumber( FRAME_TRANSITION_ONCE_EVERY_WORD, "FRAME signal transitions (changes state) once each word. (I2S, PCM standard)", "" );
-	mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS, "FRAME signal transitions(changes state) twice every four (4) words.", "" );
+	mFrameTypeInterface->SetTitleAndTooltip( "FRAME Signal Transitions", "Specify the type of frame signal used." );
+	mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_WORD, "Twice each word", "" );
+	mFrameTypeInterface->AddNumber( FRAME_TRANSITION_ONCE_EVERY_WORD, "Once each word (I2S, PCM standard)", "" );
+	mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS, "Twice every 4 words", "" );
 	mFrameTypeInterface->SetNumber( mFrameType );
 
 	mWordAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mWordAlignmentInterface->SetTitleAndTooltip( "", "Specify whether data bits are left or right aligned wrt FRAME edges. Only needed if more bits are sent than needed each frame, and additional bits are ignored." );
-	mWordAlignmentInterface->AddNumber( LEFT_ALIGNED, "DATA bits are left-aligned with respect to FRAME edges", "Specify whether data bits are left or right aligned wrt FRAME edges. Only needed if more bits are sent than needed each frame, and additional bits are ignored." );
-	mWordAlignmentInterface->AddNumber( RIGHT_ALIGNED, "DATA bits are right-aligned with respect to FRAME edges", "Specify whether data bits are left or right aligned wrt FRAME edges. Only needed if more bits are sent than needed each frame, and additional bits are ignored." );
+	mWordAlignmentInterface->SetTitleAndTooltip( "DATA Bits Alignment", "Specify whether data bits are left or right aligned with respect to FRAME edges. Only needed if more bits are sent than needed each frame, and additional bits are ignored." );
+	mWordAlignmentInterface->AddNumber( LEFT_ALIGNED, "Left aligned", "" );
+	mWordAlignmentInterface->AddNumber( RIGHT_ALIGNED, "Right aligned", "" );
 	mWordAlignmentInterface->SetNumber( mWordAlignment );
 
 	//enum PcmBitAlignment { FIRST_FRAME_BIT_BELONGS_TO_PREVIOUS_WORD, FIRST_FRAME_BIT_BELONGS_TO_CURRENT_WORD };
 	mBitAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mBitAlignmentInterface->SetTitleAndTooltip( "", "Specify the bit alignment type to use." );
-	mBitAlignmentInterface->AddNumber( BITS_SHIFTED_RIGHT_1, "Bits are right-shifted by one with respect to FRAME edges (I2S typical)", "In I2S, bits are typically right shifted by one" );
-	mBitAlignmentInterface->AddNumber( NO_SHIFT, "Bits are not shifted with respect to FRAME edges (PCM typical)", "In PCM, bits are typically not shifted" );
+	mBitAlignmentInterface->SetTitleAndTooltip( "DATA Bits Shift", "Specify the bit shift with respect to the FRAME edges" );
+	mBitAlignmentInterface->AddNumber( BITS_SHIFTED_RIGHT_1, "Right-shifted by one (I2S typical)", "" );
+	mBitAlignmentInterface->AddNumber( NO_SHIFT, "No shift (PCM standard)", "" );
 	mBitAlignmentInterface->SetNumber( mBitAlignment );
 
 	mSignedInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mSignedInterface->SetTitleAndTooltip( "", "Select whether samples are unsigned or signed values (only shows up if the display type is decimal)" );
-	mSignedInterface->AddNumber( AnalyzerEnums::UnsignedInteger, "Samples are unsigned numbers", "Interpret samples as unsigned integers" );
-	mSignedInterface->AddNumber( AnalyzerEnums::SignedInteger, "Samples are signed (two's complement)", "Interpret samples as signed integers -- only when display type is set to decimal" );
+	mSignedInterface->SetTitleAndTooltip( "Signed/Unsigned", "Select whether samples are unsigned or signed values (only shows up if the display type is decimal)" );
+	mSignedInterface->AddNumber( AnalyzerEnums::UnsignedInteger, "Unsigned", "Interpret samples as unsigned integers" );
+	mSignedInterface->AddNumber( AnalyzerEnums::SignedInteger, "Signed (two's complement)", "Interpret samples as signed integers -- only when display type is set to decimal" );
 	mSignedInterface->SetNumber( mSigned );
 
 
 	mWordSelectInvertedInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-	mWordSelectInvertedInterface->SetTitleAndTooltip("", "Select weather WS high is channel 1 or channel 2");
-	mWordSelectInvertedInterface->AddNumber( WS_NOT_INVERTED, "Word select high is channel 2 (right) (I2S typical)", "when word select (FRAME) is logic 1, data is channel 2.");
-	mWordSelectInvertedInterface->AddNumber( WS_INVERTED, "Word select high is channel 1 (left) (inverted)", "when word select (FRAME) is logic 1, data is channel 1.");
+	mWordSelectInvertedInterface->SetTitleAndTooltip("Word Select High", "Select whether Word Select high is channel 1 or channel 2");
+	mWordSelectInvertedInterface->AddNumber( WS_NOT_INVERTED, "Channel 2 (right - I2S typical)", "when word select (FRAME) is logic 1, data is channel 2.");
+	mWordSelectInvertedInterface->AddNumber( WS_INVERTED, "Channel 1 (left - inverted)", "when word select (FRAME) is logic 1, data is channel 1.");
 	mWordSelectInvertedInterface->SetNumber( mWordSelectInverted );
 
 	AddInterface( mClockChannelInterface.get() );
