@@ -75,6 +75,9 @@ void I2sAnalyzer::AnalyzeFrame()
         frame.mStartingSampleInclusive = mDataValidEdges.front();
         frame.mEndingSampleInclusive = mDataValidEdges.back();
         mResults->AddFrame( frame );
+        FrameV2 frame_v2;
+        frame_v2.AddString( "error", "invalid number of bits" );
+        mResults->AddFrameV2( frame_v2, "error", frame.mStartingSampleInclusive, frame.mEndingSampleInclusive );
         return;
     }
 
@@ -90,6 +93,9 @@ void I2sAnalyzer::AnalyzeFrame()
         frame.mStartingSampleInclusive = mDataValidEdges.front();
         frame.mEndingSampleInclusive = mDataValidEdges.back();
         mResults->AddFrame( frame );
+        FrameV2 frame_v2;
+        frame_v2.AddString( "error", "not enough bits" );
+        mResults->AddFrameV2( frame_v2, "error", frame.mStartingSampleInclusive, frame.mEndingSampleInclusive );
         return;
     }
 
@@ -154,6 +160,15 @@ void I2sAnalyzer::AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subfram
     frame.mStartingSampleInclusive = mDataValidEdges[ starting_index ];
     frame.mEndingSampleInclusive = mDataValidEdges[ starting_index + num_bits - 1 ];
     mResults->AddFrame( frame );
+    FrameV2 frame_v2;
+    frame_v2.AddInteger( "channel", frame.mType );
+    S64 adjusted_value = result;
+    if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
+    {
+        adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+    }
+    frame_v2.AddInteger( "data", adjusted_value );
+    mResults->AddFrameV2( frame_v2, "data", frame.mStartingSampleInclusive, frame.mEndingSampleInclusive );
 }
 
 void I2sAnalyzer::SetupForGettingFirstFrame()
