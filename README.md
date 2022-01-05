@@ -8,7 +8,7 @@ Saleae I2S Analyzer
 
 Dependencies:
 - XCode with command line tools
-- CMake 3.11+
+- CMake 3.13+
 
 Installing command line tools after XCode is installed:
 ```
@@ -38,7 +38,7 @@ cmake --build .
 ### Ubuntu 16.04
 
 Dependencies:
-- CMake 3.11+
+- CMake 3.13+
 - gcc 4.8+
 
 Misc dependencies:
@@ -59,7 +59,7 @@ cmake --build .
 
 Dependencies:
 - Visual Studio 2015 Update 3
-- CMake 3.11+
+- CMake 3.13+
 
 **Visual Studio 2015**
 
@@ -78,7 +78,7 @@ https://cmake.org/download/
 Building the analyzer:
 ```
 mkdir build
-cd build
+cd build -A x64
 cmake ..
 ```
 
@@ -103,3 +103,4 @@ I2S decode error
 | `data` | int | Audio value. signed or unsigned, based on I2S/PCM analyzer settings |
 
 A single sample from a single channel
+
