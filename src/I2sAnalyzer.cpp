@@ -5,6 +5,7 @@
 I2sAnalyzer::I2sAnalyzer() : Analyzer2(), mSettings( new I2sAnalyzerSettings() ), mSimulationInitilized( false )
 {
     SetAnalyzerSettings( mSettings.get() );
+    UseFrameV2();
 }
 
 I2sAnalyzer::~I2sAnalyzer()
