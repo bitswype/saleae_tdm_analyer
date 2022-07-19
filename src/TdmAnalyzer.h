@@ -33,8 +33,8 @@ class TdmAnalyzer : public Analyzer2
     void GetNextBit( BitState& data, BitState& frame, U64& sample_number );
 
   protected:
-    std::auto_ptr<TdmAnalyzerSettings> mSettings;
-    std::auto_ptr<TdmAnalyzerResults> mResults;
+    std::unique_ptr<TdmAnalyzerSettings> mSettings;
+    std::unique_ptr<TdmAnalyzerResults> mResults;
     bool mSimulationInitilized;
     I2sSimulationDataGenerator mSimulationDataGenerator;
 

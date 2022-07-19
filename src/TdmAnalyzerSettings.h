@@ -56,20 +56,20 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     PcmWordSelectInverted mWordSelectInverted;
 
   protected:
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mFrameChannelInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceChannel> mDataChannelInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceChannel> mFrameChannelInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceChannel> mDataChannelInterface;
 
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mShiftOrderInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mDataValidEdgeInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerWordInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mShiftOrderInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mDataValidEdgeInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerWordInterface;
 
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mFrameTypeInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mWordAlignmentInterface;
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mBitAlignmentInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameTypeInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mWordAlignmentInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mBitAlignmentInterface;
 
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mSignedInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mSignedInterface;
 
-    std::auto_ptr<AnalyzerSettingInterfaceNumberList> mWordSelectInvertedInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mWordSelectInvertedInterface;
 };
 #endif // TDM_ANALYZER_SETTINGS
