@@ -7,7 +7,7 @@
 
 #pragma warning( disable : 4996 ) // warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead.
 
-I2sAnalyzerSettings::I2sAnalyzerSettings()
+TdmAnalyzerSettings::TdmAnalyzerSettings()
     : mClockChannel( UNDEFINED_CHANNEL ),
       mFrameChannel( UNDEFINED_CHANNEL ),
       mDataChannel( UNDEFINED_CHANNEL ),
@@ -124,11 +124,11 @@ I2sAnalyzerSettings::I2sAnalyzerSettings()
     AddChannel( mDataChannel, "PCM DATA", false );
 }
 
-I2sAnalyzerSettings::~I2sAnalyzerSettings()
+TdmAnalyzerSettings::~TdmAnalyzerSettings()
 {
 }
 
-void I2sAnalyzerSettings::UpdateInterfacesFromSettings()
+void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
 {
     mClockChannelInterface->SetChannel( mClockChannel );
     mFrameChannelInterface->SetChannel( mFrameChannel );
@@ -147,7 +147,7 @@ void I2sAnalyzerSettings::UpdateInterfacesFromSettings()
     mWordSelectInvertedInterface->SetNumber( mWordSelectInverted );
 }
 
-bool I2sAnalyzerSettings::SetSettingsFromInterfaces()
+bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
 {
     Channel clock_channel = mClockChannelInterface->GetChannel();
     if( clock_channel == UNDEFINED_CHANNEL )
@@ -202,7 +202,7 @@ bool I2sAnalyzerSettings::SetSettingsFromInterfaces()
     return true;
 }
 
-void I2sAnalyzerSettings::LoadSettings( const char* settings )
+void TdmAnalyzerSettings::LoadSettings( const char* settings )
 {
     SimpleArchive text_archive;
     text_archive.SetString( settings );
@@ -242,7 +242,7 @@ void I2sAnalyzerSettings::LoadSettings( const char* settings )
     UpdateInterfacesFromSettings();
 }
 
-const char* I2sAnalyzerSettings::SaveSettings()
+const char* TdmAnalyzerSettings::SaveSettings()
 { // SaleaeI2sPcmAnalyzer
     SimpleArchive text_archive;
 

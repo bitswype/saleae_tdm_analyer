@@ -5,7 +5,7 @@
 #include "TdmAnalyzerResults.h"
 #include "TdmSimulationDataGenerator.h"
 
-class I2sAnalyzerSettings;
+class TdmAnalyzerSettings;
 class TdmAnalyzer : public Analyzer2
 {
   public:
@@ -33,7 +33,7 @@ class TdmAnalyzer : public Analyzer2
     void GetNextBit( BitState& data, BitState& frame, U64& sample_number );
 
   protected:
-    std::auto_ptr<I2sAnalyzerSettings> mSettings;
+    std::auto_ptr<TdmAnalyzerSettings> mSettings;
     std::auto_ptr<TdmAnalyzerResults> mResults;
     bool mSimulationInitilized;
     I2sSimulationDataGenerator mSimulationDataGenerator;

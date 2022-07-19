@@ -2,7 +2,7 @@
 #include "TdmAnalyzerSettings.h"
 #include <AnalyzerChannelData.h>
 
-TdmAnalyzer::TdmAnalyzer() : Analyzer2(), mSettings( new I2sAnalyzerSettings() ), mSimulationInitilized( false )
+TdmAnalyzer::TdmAnalyzer() : Analyzer2(), mSettings( new TdmAnalyzerSettings() ), mSimulationInitilized( false )
 {
     SetAnalyzerSettings( mSettings.get() );
     UseFrameV2();

@@ -4,7 +4,7 @@
 #include <AnalyzerResults.h>
 
 class TdmAnalyzer;
-class I2sAnalyzerSettings;
+class TdmAnalyzerSettings;
 
 enum TdmResultType
 {
@@ -18,7 +18,7 @@ enum TdmResultType
 class TdmAnalyzerResults : public AnalyzerResults
 {
   public:
-    TdmAnalyzerResults( TdmAnalyzer* analyzer, I2sAnalyzerSettings* settings );
+    TdmAnalyzerResults( TdmAnalyzer* analyzer, TdmAnalyzerSettings* settings );
     virtual ~TdmAnalyzerResults();
 
     virtual void GenerateBubbleText( U64 frame_index, Channel& channel, DisplayBase display_base );
@@ -30,7 +30,7 @@ class TdmAnalyzerResults : public AnalyzerResults
 
   protected: // functions
   protected: // vars
-    I2sAnalyzerSettings* mSettings;
+    TdmAnalyzerSettings* mSettings;
     TdmAnalyzer* mAnalyzer;
 };
 

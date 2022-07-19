@@ -10,7 +10,7 @@
 #pragma warning( disable : 4996 ) // warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead.
 
 
-TdmAnalyzerResults::TdmAnalyzerResults( TdmAnalyzer* analyzer, I2sAnalyzerSettings* settings )
+TdmAnalyzerResults::TdmAnalyzerResults( TdmAnalyzer* analyzer, TdmAnalyzerSettings* settings )
     : AnalyzerResults(), mSettings( settings ), mAnalyzer( analyzer )
 {
 }

@@ -23,11 +23,11 @@ class I2sSimulationDataGenerator
     I2sSimulationDataGenerator();
     ~I2sSimulationDataGenerator();
 
-    void Initialize( U32 simulation_sample_rate, I2sAnalyzerSettings* settings );
+    void Initialize( U32 simulation_sample_rate, TdmAnalyzerSettings* settings );
     U32 GenerateSimulationData( U64 newest_sample_requested, U32 sample_rate, SimulationChannelDescriptor** simulation_channels );
 
   protected:
-    I2sAnalyzerSettings* mSettings;
+    TdmAnalyzerSettings* mSettings;
     U32 mSimulationSampleRateHz;
 
     SimulationChannelDescriptorGroup mSimulationChannels;

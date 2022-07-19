@@ -18,7 +18,7 @@ I2sSimulationDataGenerator::~I2sSimulationDataGenerator()
 }
 
 
-void I2sSimulationDataGenerator::Initialize( U32 simulation_sample_rate, I2sAnalyzerSettings* settings )
+void I2sSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnalyzerSettings* settings )
 {
     mSimulationSampleRateHz = simulation_sample_rate;
     mSettings = settings;

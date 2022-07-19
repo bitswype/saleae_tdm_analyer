@@ -26,11 +26,11 @@ enum PcmWordSelectInverted
     WS_NOT_INVERTED
 };
 
-class I2sAnalyzerSettings : public AnalyzerSettings
+class TdmAnalyzerSettings : public AnalyzerSettings
 {
   public:
-    I2sAnalyzerSettings();
-    virtual ~I2sAnalyzerSettings();
+    TdmAnalyzerSettings();
+    virtual ~TdmAnalyzerSettings();
 
     virtual bool
     SetSettingsFromInterfaces(); // Get the settings out of the interfaces, validate them, and save them to your local settings vars.
