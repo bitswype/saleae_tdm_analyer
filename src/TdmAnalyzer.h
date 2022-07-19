@@ -34,7 +34,7 @@ class TdmAnalyzer : public Analyzer2
 
   protected:
     std::auto_ptr<I2sAnalyzerSettings> mSettings;
-    std::auto_ptr<I2sAnalyzerResults> mResults;
+    std::auto_ptr<TdmAnalyzerResults> mResults;
     bool mSimulationInitilized;
     I2sSimulationDataGenerator mSimulationDataGenerator;
 

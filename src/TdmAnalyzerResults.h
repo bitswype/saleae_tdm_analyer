@@ -15,11 +15,11 @@ enum I2sResultType
 };
 
 
-class I2sAnalyzerResults : public AnalyzerResults
+class TdmAnalyzerResults : public AnalyzerResults
 {
   public:
-    I2sAnalyzerResults( TdmAnalyzer* analyzer, I2sAnalyzerSettings* settings );
-    virtual ~I2sAnalyzerResults();
+    TdmAnalyzerResults( TdmAnalyzer* analyzer, I2sAnalyzerSettings* settings );
+    virtual ~TdmAnalyzerResults();
 
     virtual void GenerateBubbleText( U64 frame_index, Channel& channel, DisplayBase display_base );
     virtual void GenerateExportFile( const char* file, DisplayBase display_base, U32 export_type_user_id );

@@ -15,7 +15,7 @@ TdmAnalyzer::~TdmAnalyzer()
 
 void TdmAnalyzer::SetupResults()
 {
-    mResults.reset( new I2sAnalyzerResults( this, mSettings.get() ) );
+    mResults.reset( new TdmAnalyzerResults( this, mSettings.get() ) );
     SetAnalyzerResults( mResults.get() );
     mResults->AddChannelBubblesWillAppearOn( mSettings->mDataChannel );
 }
