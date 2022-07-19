@@ -6,11 +6,11 @@
 #include "TdmSimulationDataGenerator.h"
 
 class I2sAnalyzerSettings;
-class I2sAnalyzer : public Analyzer2
+class TdmAnalyzer : public Analyzer2
 {
   public:
-    I2sAnalyzer();
-    virtual ~I2sAnalyzer();
+    TdmAnalyzer();
+    virtual ~TdmAnalyzer();
     virtual void SetupResults();
     virtual void WorkerThread();
 

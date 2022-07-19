@@ -3,7 +3,7 @@
 
 #include <AnalyzerResults.h>
 
-class I2sAnalyzer;
+class TdmAnalyzer;
 class I2sAnalyzerSettings;
 
 enum I2sResultType
@@ -18,7 +18,7 @@ enum I2sResultType
 class I2sAnalyzerResults : public AnalyzerResults
 {
   public:
-    I2sAnalyzerResults( I2sAnalyzer* analyzer, I2sAnalyzerSettings* settings );
+    I2sAnalyzerResults( TdmAnalyzer* analyzer, I2sAnalyzerSettings* settings );
     virtual ~I2sAnalyzerResults();
 
     virtual void GenerateBubbleText( U64 frame_index, Channel& channel, DisplayBase display_base );
@@ -31,7 +31,7 @@ class I2sAnalyzerResults : public AnalyzerResults
   protected: // functions
   protected: // vars
     I2sAnalyzerSettings* mSettings;
-    I2sAnalyzer* mAnalyzer;
+    TdmAnalyzer* mAnalyzer;
 };
 
 #endif // I2S_ANALYZER_RESULTS
