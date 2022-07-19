@@ -1,5 +1,5 @@
-#ifndef I2S_SIMULATION_DATA_GENERATOR
-#define I2S_SIMULATION_DATA_GENERATOR
+#ifndef TDM_SIMULATION_DATA_GENERATOR
+#define TDM_SIMULATION_DATA_GENERATOR
 
 #include "TdmAnalyzerSettings.h"
 #include "AnalyzerHelpers.h"
@@ -64,4 +64,4 @@ class I2sSimulationDataGenerator
     bool mUseShortFrames;
     U32 mNumPaddingBits;
 };
-#endif // I2S_SIMULATION_DATA_GENERATOR
+#endif // TDM_SIMULATION_DATA_GENERATOR

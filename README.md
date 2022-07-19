@@ -1,6 +1,6 @@
-# Saleae I2S Analyzer
+# Saleae TDM Analyzer
 
-Saleae I2S Analyzer
+Saleae TDM Analyzer
 
 ## Getting Started
 
@@ -82,7 +82,7 @@ cd build -A x64
 cmake ..
 ```
 
-Then, open the newly created solution file located here: `build\i2s_analyzer.sln`
+Then, open the newly created solution file located here: `build\tdm_analyzer.sln`
 
 
 ## Output Frame Format
@@ -100,7 +100,7 @@ I2S decode error
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `channel` | int | channel index. 0 or 1 |
-| `data` | int | Audio value. signed or unsigned, based on I2S/PCM analyzer settings |
+| `data` | int | Audio value. signed or unsigned, based on I2S/PCM/TDM analyzer settings |
 
 A single sample from a single channel
 

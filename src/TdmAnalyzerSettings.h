@@ -1,5 +1,5 @@
-#ifndef I2S_ANALYZER_SETTINGS
-#define I2S_ANALYZER_SETTINGS
+#ifndef TDM_ANALYZER_SETTINGS
+#define TDM_ANALYZER_SETTINGS
 
 #include <AnalyzerSettings.h>
 #include <AnalyzerTypes.h>
@@ -72,4 +72,4 @@ class TdmAnalyzerSettings : public AnalyzerSettings
 
     std::auto_ptr<AnalyzerSettingInterfaceNumberList> mWordSelectInvertedInterface;
 };
-#endif // I2S_ANALYZER_SETTINGS
+#endif // TDM_ANALYZER_SETTINGS

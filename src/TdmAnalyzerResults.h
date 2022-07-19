@@ -1,5 +1,5 @@
-#ifndef I2S_ANALYZER_RESULTS
-#define I2S_ANALYZER_RESULTS
+#ifndef TDM_ANALYZER_RESULTS
+#define TDM_ANALYZER_RESULTS
 
 #include <AnalyzerResults.h>
 
@@ -34,4 +34,4 @@ class TdmAnalyzerResults : public AnalyzerResults
     TdmAnalyzer* mAnalyzer;
 };
 
-#endif // I2S_ANALYZER_RESULTS
+#endif // TDM_ANALYZER_RESULTS

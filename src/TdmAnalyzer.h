@@ -1,5 +1,5 @@
-#ifndef I2S_ANALYZER_H
-#define I2S_ANALYZER_H
+#ifndef TDM_ANALYZER_H
+#define TDM_ANALYZER_H
 
 #include <Analyzer.h>
 #include "TdmAnalyzerResults.h"
@@ -61,4 +61,4 @@ extern "C" ANALYZER_EXPORT const char* __cdecl GetAnalyzerName();
 extern "C" ANALYZER_EXPORT Analyzer* __cdecl CreateAnalyzer();
 extern "C" ANALYZER_EXPORT void __cdecl DestroyAnalyzer( Analyzer* analyzer );
 
-#endif // I2S_ANALYZER_H
+#endif // TDM_ANALYZER_H
