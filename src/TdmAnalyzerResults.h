@@ -6,7 +6,7 @@
 class TdmAnalyzer;
 class I2sAnalyzerSettings;
 
-enum I2sResultType
+enum TdmResultType
 {
     Channel1,
     Channel2,

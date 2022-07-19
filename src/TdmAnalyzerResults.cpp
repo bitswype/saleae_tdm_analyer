@@ -25,7 +25,7 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
     ClearResultStrings();
     Frame frame = GetFrame( frame_index );
 
-    switch( I2sResultType( frame.mType ) )
+    switch( TdmResultType( frame.mType ) )
     {
     case Channel1:
     {
@@ -102,7 +102,7 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
     {
         Frame frame = GetFrame( i );
 
-        if( I2sResultType( frame.mType ) == Channel1 )
+        if( TdmResultType( frame.mType ) == Channel1 )
         {
             char time_str[ 128 ];
             AnalyzerHelpers::GetTimeString( frame.mStartingSampleInclusive, trigger_sample, sample_rate, time_str, 128 );
@@ -123,7 +123,7 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
             ss << time_str << ",1," << number_str << std::endl;
         }
 
-        if( I2sResultType( frame.mType ) == Channel2 )
+        if( TdmResultType( frame.mType ) == Channel2 )
         {
             char time_str[ 128 ];
             AnalyzerHelpers::GetTimeString( frame.mStartingSampleInclusive, trigger_sample, sample_rate, time_str, 128 );
@@ -165,7 +165,7 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
 
     Frame frame = GetFrame( frame_index );
 
-    switch( I2sResultType( frame.mType ) )
+    switch( TdmResultType( frame.mType ) )
     {
     case Channel1:
     {
