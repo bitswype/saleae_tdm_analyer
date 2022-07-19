@@ -87,7 +87,7 @@ void TdmAnalyzer::AnalyzeFrame()
 
     if( bits_per_frame < num_audio_bits )
     {
-        // enum I2sResultType { Channel1, Cahannel2, ErrorTooFewBits, ErrorDoesntDivideEvenly };
+        // enum TdmResultType { Channel1, Cahannel2, ErrorTooFewBits, ErrorDoesntDivideEvenly };
         Frame frame;
         frame.mType = U8( ErrorTooFewBits );
         frame.mFlags = DISPLAY_AS_ERROR_FLAG;
@@ -142,7 +142,7 @@ void TdmAnalyzer::AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subfram
         }
     }
 
-    // enum I2sResultType { Channel1, Channel2, ErrorTooFewBits, ErrorDoesntDivideEvenly };
+    // enum TdmResultType { Channel1, Channel2, ErrorTooFewBits, ErrorDoesntDivideEvenly };
     // add result bubble
     Frame frame;
     frame.mData1 = result;

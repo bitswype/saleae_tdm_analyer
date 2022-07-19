@@ -35,7 +35,7 @@ class TdmSimulationDataGenerator
     SimulationChannelDescriptor* mFrame;
     SimulationChannelDescriptor* mData;
 
-  protected: // I2S specitic
+  protected: // TDM specific
     void InitSineWave();
     void WriteBit( BitState data, BitState frame );
     S64 GetNextAudioWord();

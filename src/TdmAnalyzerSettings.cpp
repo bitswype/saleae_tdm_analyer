@@ -23,15 +23,15 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mWordSelectInverted( WS_NOT_INVERTED )
 {
     mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
-    mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka I2S SCK - Continuous Serial Clock, aka Bit Clock" );
+    mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka I2S/TDM SCK - Continuous Serial Clock, aka Bit Clock" );
     mClockChannelInterface->SetChannel( mClockChannel );
 
     mFrameChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
-    mFrameChannelInterface->SetTitleAndTooltip( "FRAME", "Frame Delimiter / aka I2S WS - Word Select, aka Sampling Clock" );
+    mFrameChannelInterface->SetTitleAndTooltip( "FRAME", "Frame Delimiter / aka I2S WS / TDM FS - Word Select / Frame Sync aka Sampling Clock" );
     mFrameChannelInterface->SetChannel( mFrameChannel );
 
     mDataChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
-    mDataChannelInterface->SetTitleAndTooltip( "DATA", "Data, aka I2S SD - Serial Data" );
+    mDataChannelInterface->SetTitleAndTooltip( "DATA", "Data, aka I2S / TDM SD - Serial Data" );
     mDataChannelInterface->SetChannel( mDataChannel );
 
 
@@ -152,27 +152,27 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     Channel clock_channel = mClockChannelInterface->GetChannel();
     if( clock_channel == UNDEFINED_CHANNEL )
     {
-        SetErrorText( "Please select a channel for I2S/PCM CLOCK signal" );
+        SetErrorText( "Please select a channel for I2S/TDM CLOCK signal" );
         return false;
     }
 
     Channel frame_channel = mFrameChannelInterface->GetChannel();
     if( frame_channel == UNDEFINED_CHANNEL )
     {
-        SetErrorText( "Please select a channel for I2S/PCM FRAME signal" );
+        SetErrorText( "Please select a channel for I2S/TDM FRAME signal" );
         return false;
     }
 
     Channel data_channel = mDataChannelInterface->GetChannel();
     if( data_channel == UNDEFINED_CHANNEL )
     {
-        SetErrorText( "Please select a channel for I2S/PCM DATA signal" );
+        SetErrorText( "Please select a channel for I2S/TDM DATA signal" );
         return false;
     }
 
     if( ( clock_channel == frame_channel ) || ( clock_channel == data_channel ) || ( frame_channel == data_channel ) )
     {
-        SetErrorText( "Please select different channels for the I2S/PCM signals" );
+        SetErrorText( "Please select different channels for the I2S/TDM signals" );
         return false;
     }
 
@@ -209,8 +209,8 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
 
     const char* name_string; // the first thing in the archive is the name of the protocol analyzer that the data belongs to.
     text_archive >> &name_string;
-    if( strcmp( name_string, "SaleaeI2sPcmAnalyzer" ) != 0 )
-        AnalyzerHelpers::Assert( "SaleaeI2sPcmAnalyzer: Provided with a settings string that doesn't belong to us;" );
+    if( strcmp( name_string, "SaleaeTdmAnalyzer" ) != 0 )
+        AnalyzerHelpers::Assert( "SaleaeTdmAnalyzer: Provided with a settings string that doesn't belong to us;" );
 
     text_archive >> mClockChannel;
     text_archive >> mFrameChannel;
@@ -243,10 +243,10 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
 }
 
 const char* TdmAnalyzerSettings::SaveSettings()
-{ // SaleaeI2sPcmAnalyzer
+{ // SaleaeTdmmAnalyzer
     SimpleArchive text_archive;
 
-    text_archive << "SaleaeI2sPcmAnalyzer";
+    text_archive << "SaleaeTdmPcmAnalyzer";
 
     text_archive << mClockChannel;
     text_archive << mFrameChannel;
