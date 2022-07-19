@@ -17,11 +17,11 @@ enum BitGenerarionState
     RightPadding
 };
 
-class I2sSimulationDataGenerator
+class TdmSimulationDataGenerator
 {
   public:
-    I2sSimulationDataGenerator();
-    ~I2sSimulationDataGenerator();
+    TdmSimulationDataGenerator();
+    ~TdmSimulationDataGenerator();
 
     void Initialize( U32 simulation_sample_rate, TdmAnalyzerSettings* settings );
     U32 GenerateSimulationData( U64 newest_sample_requested, U32 sample_rate, SimulationChannelDescriptor** simulation_channels );

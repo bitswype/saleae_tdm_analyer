@@ -22,7 +22,7 @@ class TdmAnalyzer : public Analyzer2
 
 #pragma warning( push )
 #pragma warning(                                                                                                                           \
-    disable : 4251 ) // warning C4251: 'I2sAnalyzer::<...>' : class <...> needs to have dll-interface to be used by clients of class
+    disable : 4251 ) // warning C4251: 'TdmAnalyzer::<...>' : class <...> needs to have dll-interface to be used by clients of class
 
   protected: // functions
     void AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subframe_index );
@@ -36,7 +36,7 @@ class TdmAnalyzer : public Analyzer2
     std::unique_ptr<TdmAnalyzerSettings> mSettings;
     std::unique_ptr<TdmAnalyzerResults> mResults;
     bool mSimulationInitilized;
-    I2sSimulationDataGenerator mSimulationDataGenerator;
+    TdmSimulationDataGenerator mSimulationDataGenerator;
 
     AnalyzerChannelData* mClock;
     AnalyzerChannelData* mFrame;

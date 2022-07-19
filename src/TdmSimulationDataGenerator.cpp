@@ -5,7 +5,7 @@
 #include <fstream>
 #include <iostream>
 
-I2sSimulationDataGenerator::I2sSimulationDataGenerator()
+TdmSimulationDataGenerator::TdmSimulationDataGenerator()
     : mNumPaddingBits( 0 ),
       /*mAudioSampleRate( 44000*2 ),*/
       mAudioSampleRate( 220 * 16 ),
@@ -13,12 +13,12 @@ I2sSimulationDataGenerator::I2sSimulationDataGenerator()
 {
 }
 
-I2sSimulationDataGenerator::~I2sSimulationDataGenerator()
+TdmSimulationDataGenerator::~TdmSimulationDataGenerator()
 {
 }
 
 
-void I2sSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnalyzerSettings* settings )
+void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnalyzerSettings* settings )
 {
     mSimulationSampleRateHz = simulation_sample_rate;
     mSettings = settings;
@@ -122,7 +122,7 @@ void I2sSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mBitGenerationState = Init;
 }
 
-U32 I2sSimulationDataGenerator::GenerateSimulationData( U64 newest_sample_requested, U32 sample_rate,
+U32 TdmSimulationDataGenerator::GenerateSimulationData( U64 newest_sample_requested, U32 sample_rate,
                                                         SimulationChannelDescriptor** simulation_channels )
 {
     U64 adjusted_largest_sample_requested =
@@ -138,7 +138,7 @@ U32 I2sSimulationDataGenerator::GenerateSimulationData( U64 newest_sample_reques
 }
 
 
-BitState I2sSimulationDataGenerator::GetNextFrameBit()
+BitState TdmSimulationDataGenerator::GetNextFrameBit()
 {
     BitState bit_state = mFrameBits[ mCurrentFrameBitIndex ];
     mCurrentFrameBitIndex++;
@@ -148,7 +148,7 @@ BitState I2sSimulationDataGenerator::GetNextFrameBit()
 }
 
 // enum BitGenerarionState { Init, LeftPadding, Data, RightPadding };
-BitState I2sSimulationDataGenerator::GetNextAudioBit()
+BitState TdmSimulationDataGenerator::GetNextAudioBit()
 {
     switch( mBitGenerationState )
     {
@@ -234,7 +234,7 @@ BitState I2sSimulationDataGenerator::GetNextAudioBit()
     }
 }
 
-S64 I2sSimulationDataGenerator::GetNextAudioWord()
+S64 TdmSimulationDataGenerator::GetNextAudioWord()
 {
     S64 value;
 
@@ -257,7 +257,7 @@ S64 I2sSimulationDataGenerator::GetNextAudioWord()
     return value;
 }
 
-void I2sSimulationDataGenerator::InitSineWave()
+void TdmSimulationDataGenerator::InitSineWave()
 {
     U32 sine_freq = 220;
     U32 samples_for_one_cycle = U32( mAudioSampleRate / double( sine_freq ) );
@@ -275,7 +275,7 @@ void I2sSimulationDataGenerator::InitSineWave()
     }
 }
 
-inline void I2sSimulationDataGenerator::WriteBit( BitState data, BitState frame )
+inline void TdmSimulationDataGenerator::WriteBit( BitState data, BitState frame )
 {
     // start 'low', pause 1/2 period:
     mSimulationChannels.AdvanceAll( mClockGenerator.AdvanceByHalfPeriod( 1.0 ) );
