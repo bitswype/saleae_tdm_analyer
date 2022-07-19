@@ -2,8 +2,8 @@
 #define I2S_ANALYZER_H
 
 #include <Analyzer.h>
-#include "I2sAnalyzerResults.h"
-#include "I2sSimulationDataGenerator.h"
+#include "TdmAnalyzerResults.h"
+#include "TdmSimulationDataGenerator.h"
 
 class I2sAnalyzerSettings;
 class I2sAnalyzer : public Analyzer2

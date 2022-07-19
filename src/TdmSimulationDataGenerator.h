@@ -1,7 +1,7 @@
 #ifndef I2S_SIMULATION_DATA_GENERATOR
 #define I2S_SIMULATION_DATA_GENERATOR
 
-#include "I2sAnalyzerSettings.h"
+#include "TdmAnalyzerSettings.h"
 #include "AnalyzerHelpers.h"
 
 enum RightLeftDirection

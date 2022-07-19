@@ -1,4 +1,4 @@
-#include "I2sAnalyzerSettings.h"
+#include "TdmAnalyzerSettings.h"
 
 #include <AnalyzerHelpers.h>
 #include <sstream>

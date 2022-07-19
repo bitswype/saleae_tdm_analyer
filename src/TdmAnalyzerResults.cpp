@@ -1,7 +1,7 @@
-#include "I2sAnalyzerResults.h"
+#include "TdmAnalyzerResults.h"
 #include <AnalyzerHelpers.h>
-#include "I2sAnalyzer.h"
-#include "I2sAnalyzerSettings.h"
+#include "TdmAnalyzer.h"
+#include "TdmAnalyzerSettings.h"
 #include <iostream>
 #include <sstream>
 #include <stdio.h>

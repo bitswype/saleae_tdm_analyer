@@ -1,4 +1,4 @@
-#include "I2sSimulationDataGenerator.h"
+#include "TdmSimulationDataGenerator.h"
 #include <math.h>
 
 #include <algorithm>

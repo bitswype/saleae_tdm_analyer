@@ -1,5 +1,5 @@
-#include "I2sAnalyzer.h"
-#include "I2sAnalyzerSettings.h"
+#include "TdmAnalyzer.h"
+#include "TdmAnalyzerSettings.h"
 #include <AnalyzerChannelData.h>
 
 I2sAnalyzer::I2sAnalyzer() : Analyzer2(), mSettings( new I2sAnalyzerSettings() ), mSimulationInitilized( false )
@@ -307,12 +307,12 @@ bool I2sAnalyzer::NeedsRerun()
 
 const char* I2sAnalyzer::GetAnalyzerName() const
 {
-    return "I2S / PCM";
+    return "I2S / PCM / TDM";
 }
 
 const char* GetAnalyzerName()
 {
-    return "I2S / PCM";
+    return "I2S / PCM / TDM";
 }
 
 Analyzer* CreateAnalyzer()
