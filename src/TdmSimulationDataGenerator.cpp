@@ -80,23 +80,15 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
 
     // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
     // FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME };
-    U32 asserted = 1;
-    U32 deasserted = 0;
-    if(mFrameSyncInverted == TdmFrameSelectInverted::FS_INVERTED)
-    {
-        asserted = 0;
-        deasserted = 1;
-    }
-
     switch( mFrameType )
     {
     case FRAME_TRANSITION_TWICE_EVERY_WORD:
     case FRAME_TRANSITION_ONCE_EVERY_WORD:
     case FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS:
     case FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME:
-        mFrameBits.push_back( BIT_HIGH );
+        mFrameBits.push_back( mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_HIGH : BIT_LOW);
         for( U32 i = 1; i < ( mNumSlots * mBitsPerSlot); i++ )
-            mFrameBits.push_back( BIT_LOW );
+            mFrameBits.push_back(  mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_LOW : BIT_HIGH);
         break;
     default:
         AnalyzerHelpers::Assert( "unexpected" );
