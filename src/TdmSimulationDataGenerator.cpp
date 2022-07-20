@@ -298,3 +298,21 @@ void CountGen::Reset()
 {
     mVal = 0;
 };
+
+StaticGen::StaticGen(U64 val)
+  : mVal( val )
+{
+};
+
+StaticGen::~StaticGen()
+{
+};
+
+U64 StaticGen::GetNextValue()
+{
+    return (mVal);
+};
+
+void StaticGen::Reset()
+{
+};

@@ -48,6 +48,19 @@ class CountGen
   U64 mVal;
 };
 
+class StaticGen
+{
+  public:
+  StaticGen(U64 val);
+  ~StaticGen();
+
+  U64 GetNextValue();
+  void Reset();
+
+  protected:
+  U64 mVal;
+};
+
 class TdmSimulationDataGenerator
 {
   public:
