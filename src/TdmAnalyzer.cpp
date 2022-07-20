@@ -307,12 +307,12 @@ bool TdmAnalyzer::NeedsRerun()
 
 const char* TdmAnalyzer::GetAnalyzerName() const
 {
-    return "I2S / PCM / TDM";
+    return "TDM";
 }
 
 const char* GetAnalyzerName()
 {
-    return "I2S / PCM / TDM";
+    return "TDM";
 }
 
 Analyzer* CreateAnalyzer()

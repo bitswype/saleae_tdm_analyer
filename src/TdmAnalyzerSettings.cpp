@@ -24,15 +24,15 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mFrameSyncInverted( FS_NOT_INVERTED )
 {
     mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
-    mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka I2S/TDM SCK - Continuous Serial Clock, aka Bit Clock" );
+    mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka TDM SCK or BCLK - Continuous Serial Clock, aka Bit Clock" );
     mClockChannelInterface->SetChannel( mClockChannel );
 
     mFrameChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
-    mFrameChannelInterface->SetTitleAndTooltip( "FRAME", "Frame Delimiter / aka I2S WS / TDM FS - Word Select / Frame Sync aka Sampling Clock" );
+    mFrameChannelInterface->SetTitleAndTooltip( "FRAME", "Frame Delimiter / aka TDM FS - Frame Sync aka Sampling Clock" );
     mFrameChannelInterface->SetChannel( mFrameChannel );
 
     mDataChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
-    mDataChannelInterface->SetTitleAndTooltip( "DATA", "Data, aka I2S / TDM SD - Serial Data" );
+    mDataChannelInterface->SetTitleAndTooltip( "DATA", "Data, aka TDM SDx - Serial Data In/Out" );
     mDataChannelInterface->SetChannel( mDataChannel );
 
 
@@ -64,7 +64,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
 
     mSlotsPerFrameInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mSlotsPerFrameInterface->SetTitleAndTooltip( "Number of channels (slots) per TDM frame (slots/frame)",
-                                               "Specify the number of audio channels / TDM frame.  Any additional slots will be ignored" );
+                                                 "Specify the number of audio channels / TDM frame.  Any additional slots will be ignored" );
     for( U32 i = 1; i <= 64; i++ )
     {
         char str[ 256 ];
@@ -93,8 +93,8 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     // enum PcmBitAlignment { FIRST_FRAME_BIT_BELONGS_TO_PREVIOUS_WORD, FIRST_FRAME_BIT_BELONGS_TO_CURRENT_WORD };
     mBitAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mBitAlignmentInterface->SetTitleAndTooltip( "DATA Bits Shift", "Specify the bit shift with respect to the FRAME edges" );
-    mBitAlignmentInterface->AddNumber( BITS_SHIFTED_RIGHT_1, "Right-shifted by one (I2S typical)", "" );
-    mBitAlignmentInterface->AddNumber( NO_SHIFT, "No shift (PCM standard)", "" );
+    mBitAlignmentInterface->AddNumber( BITS_SHIFTED_RIGHT_1, "Right-shifted by one (TDM typical, DSP mode A)", "" );
+    mBitAlignmentInterface->AddNumber( NO_SHIFT, "No shift (DSP mode B)", "" );
     mBitAlignmentInterface->SetNumber( mBitAlignment );
 
     mSignedInterface.reset( new AnalyzerSettingInterfaceNumberList() );
@@ -133,9 +133,9 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddExportExtension( 0, "csv", "csv" );
 
     ClearChannels();
-    AddChannel( mClockChannel, "PCM CLOCK", false );
-    AddChannel( mFrameChannel, "PCM FRAME", false );
-    AddChannel( mDataChannel, "PCM DATA", false );
+    AddChannel( mClockChannel, "TDM CLOCK", false );
+    AddChannel( mFrameChannel, "TDM FRAME", false );
+    AddChannel( mDataChannel, "TDM DATA", false );
 }
 
 TdmAnalyzerSettings::~TdmAnalyzerSettings()
@@ -167,27 +167,27 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     Channel clock_channel = mClockChannelInterface->GetChannel();
     if( clock_channel == UNDEFINED_CHANNEL )
     {
-        SetErrorText( "Please select a channel for I2S/TDM CLOCK signal" );
+        SetErrorText( "Please select a channel for TDM CLOCK signal" );
         return false;
     }
 
     Channel frame_channel = mFrameChannelInterface->GetChannel();
     if( frame_channel == UNDEFINED_CHANNEL )
     {
-        SetErrorText( "Please select a channel for I2S/TDM FRAME signal" );
+        SetErrorText( "Please select a channel for TDM FRAME signal" );
         return false;
     }
 
     Channel data_channel = mDataChannelInterface->GetChannel();
     if( data_channel == UNDEFINED_CHANNEL )
     {
-        SetErrorText( "Please select a channel for I2S/TDM DATA signal" );
+        SetErrorText( "Please select a channel for TDM DATA signal" );
         return false;
     }
 
     if( ( clock_channel == frame_channel ) || ( clock_channel == data_channel ) || ( frame_channel == data_channel ) )
     {
-        SetErrorText( "Please select different channels for the I2S/TDM signals" );
+        SetErrorText( "Please select different channels for the TDM signals" );
         return false;
     }
 
@@ -211,9 +211,9 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
 
     ClearChannels();
-    AddChannel( mClockChannel, "PCM CLOCK", true );
-    AddChannel( mFrameChannel, "PCM FRAME", true );
-    AddChannel( mDataChannel, "PCM DATA", true );
+    AddChannel( mClockChannel, "TDM CLOCK", true );
+    AddChannel( mFrameChannel, "TDM FRAME", true );
+    AddChannel( mDataChannel, "TDM DATA", true );
 
     return true;
 }
@@ -252,9 +252,9 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
         mFrameSyncInverted = fs_inverted;
 
     ClearChannels();
-    AddChannel( mClockChannel, "PCM CLOCK", true );
-    AddChannel( mFrameChannel, "PCM FRAME", true );
-    AddChannel( mDataChannel, "PCM DATA", true );
+    AddChannel( mClockChannel, "TDM CLOCK", true );
+    AddChannel( mFrameChannel, "TDM FRAME", true );
+    AddChannel( mDataChannel, "TDM DATA", true );
 
     UpdateInterfacesFromSettings();
 }
