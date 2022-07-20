@@ -31,9 +31,18 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mData = mSimulationChannels.Add( mSettings->mDataChannel, mSimulationSampleRateHz, BIT_LOW );
 
     mNumSlots = mSettings->mSlotsPerFrame;
+    mBitsPerSlot = mSettings->mBitsPerSlot;
+    mDataBitsPerSlot = mSettings->mDataBitsPerSlot;
 
-    mSineWaveSamplesLeft = std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, 100.0, 0.99, 0));
-    mSineWaveSamplesRight = std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, 200.0, 0.99, 0));
+    for(U32 i = 0; i < mNumSlots; i++)
+    {
+        mVecCountGen.push_back(std::unique_ptr<CountGen>(new CountGen(i, U64(pow(2, mDataBitsPerSlot))-1)));
+    }
+
+    for(U32 i = 0; i < mNumSlots; i++)
+    {
+        mVecSineGen.push_back(std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, i*100.0, 0.99, 0)));
+    }
 
     double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mSettings->mDataBitsPerSlot + mNumPaddingBits) );
     mClockGenerator.Init( bits_per_s, mSimulationSampleRateHz );
@@ -243,12 +252,12 @@ S64 TdmSimulationDataGenerator::GetNextAudioWord()
 
     if( mCurrentAudioChannel == Left )
     {
-        value = mSineWaveSamplesLeft->GetNextValue();
+        value = mVecCountGen[0]->GetNextValue();
         mCurrentAudioChannel = Right;
     }
     else
     {
-        value = mSineWaveSamplesRight->GetNextValue();
+        value = mVecCountGen[1]->GetNextValue();
         mCurrentAudioChannel = Left;
     }
 
@@ -297,3 +306,23 @@ void SineGen::Reset()
 {
     mSample = 0;
 }
+
+CountGen::CountGen(U64 start_val, U64 max_val)
+  : mVal( start_val ),
+    mMaxVal( max_val )
+{
+};
+
+CountGen::~CountGen()
+{
+};
+
+U64 CountGen::GetNextValue()
+{
+    return mVal++ % mMaxVal;
+};
+
+void CountGen::Reset()
+{
+    mVal = 0;
+};

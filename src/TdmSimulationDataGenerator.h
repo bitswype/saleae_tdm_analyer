@@ -34,6 +34,20 @@ class SineGen
   U32 mSample;
 };
 
+class CountGen
+{
+  public:
+  CountGen(U64 start_val, U64 max_val);
+  ~CountGen();
+
+  U64 GetNextValue();
+  void Reset();
+
+  protected:
+  U64 mMaxVal;
+  U64 mVal;
+};
+
 class TdmSimulationDataGenerator
 {
   public:
@@ -59,8 +73,8 @@ class TdmSimulationDataGenerator
     BitState GetNextAudioBit();
     BitState GetNextFrameBit();
 
-    std::unique_ptr<SineGen> mSineWaveSamplesRight;
-    std::unique_ptr<SineGen> mSineWaveSamplesLeft;
+    std::vector<std::unique_ptr<SineGen>> mVecSineGen;
+    std::vector<std::unique_ptr<CountGen>> mVecCountGen;
 
     ClockGenerator mClockGenerator;
 
@@ -69,6 +83,8 @@ class TdmSimulationDataGenerator
 
     std::vector<U64> mBitMasks;
     U32 mNumSlots;
+    U32 mBitsPerSlot;
+    U32 mDataBitsPerSlot;
 
     RightLeftDirection mCurrentAudioChannel;
     U32 mCurrentBitIndex;
