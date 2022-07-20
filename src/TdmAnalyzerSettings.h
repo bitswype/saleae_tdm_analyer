@@ -46,6 +46,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     AnalyzerEnums::ShiftOrder mShiftOrder;
     AnalyzerEnums::EdgeDirection mDataValidEdge;
     U32 mBitsPerWord;
+    U32 mSlotsPerFrame;
 
     PcmWordAlignment mWordAlignment;
     PcmFrameType mFrameType;
@@ -63,6 +64,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mShiftOrderInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mDataValidEdgeInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerWordInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mSlotsPerFrameInterface;
 
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameTypeInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mWordAlignmentInterface;

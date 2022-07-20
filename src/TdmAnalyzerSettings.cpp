@@ -15,6 +15,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mShiftOrder( AnalyzerEnums::MsbFirst ),
       mDataValidEdge( AnalyzerEnums::NegEdge ),
       mBitsPerWord( 16 ),
+      mSlotsPerFrame( 8 ),
 
       mWordAlignment( LEFT_ALIGNED ),
       mFrameType( FRAME_TRANSITION_ONCE_EVERY_WORD ),
@@ -52,13 +53,25 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mBitsPerWordInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mBitsPerWordInterface->SetTitleAndTooltip( "Audio Bit Depth (bits/sample)",
                                                "Specify the number of audio bits/word.  Any additional bits will be ignored" );
-    char str[ 256 ];
     for( U32 i = 2; i <= 64; i++ )
     {
+        char str[ 256 ];
         sprintf( str, "%d Bits/Word", i );
         mBitsPerWordInterface->AddNumber( i, str, "" );
     }
     mBitsPerWordInterface->SetNumber( mBitsPerWord );
+
+
+    mSlotsPerFrameInterface.reset( new AnalyzerSettingInterfaceNumberList() );
+    mSlotsPerFrameInterface->SetTitleAndTooltip( "Number of channels (slots) per TDM frame (slots/frame)",
+                                               "Specify the number of audio channels / TDM frame.  Any additional slots will be ignored" );
+    for( U32 i = 1; i <= 64; i++ )
+    {
+        char str[ 256 ];
+        sprintf( str, "%d Slots/TDM Frame", i );
+        mSlotsPerFrameInterface->AddNumber( i, str, "" );
+    }
+    mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
 
 
     // enum PcmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
@@ -107,6 +120,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mShiftOrderInterface.get() );
     AddInterface( mDataValidEdgeInterface.get() );
     AddInterface( mBitsPerWordInterface.get() );
+    AddInterface( mSlotsPerFrameInterface.get() );
     AddInterface( mFrameTypeInterface.get() );
     AddInterface( mWordAlignmentInterface.get() );
     AddInterface( mBitAlignmentInterface.get() );
@@ -137,6 +151,7 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mShiftOrderInterface->SetNumber( mShiftOrder );
     mDataValidEdgeInterface->SetNumber( mDataValidEdge );
     mBitsPerWordInterface->SetNumber( mBitsPerWord );
+    mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
 
     mWordAlignmentInterface->SetNumber( mWordAlignment );
     mFrameTypeInterface->SetNumber( mFrameType );
@@ -183,6 +198,7 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mShiftOrder = AnalyzerEnums::ShiftOrder( U32( mShiftOrderInterface->GetNumber() ) );
     mDataValidEdge = AnalyzerEnums::EdgeDirection( U32( mDataValidEdgeInterface->GetNumber() ) );
     mBitsPerWord = U32( mBitsPerWordInterface->GetNumber() );
+    mSlotsPerFrame = U32( mSlotsPerFrameInterface->GetNumber() );
 
     mWordAlignment = PcmWordAlignment( U32( mWordAlignmentInterface->GetNumber() ) );
     mFrameType = PcmFrameType( U32( mFrameTypeInterface->GetNumber() ) );
@@ -219,6 +235,7 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     text_archive >> *( U32* )&mShiftOrder;
     text_archive >> *( U32* )&mDataValidEdge;
     text_archive >> mBitsPerWord;
+    text_archive >> mSlotsPerFrame;
 
     text_archive >> *( U32* )&mWordAlignment;
     text_archive >> *( U32* )&mFrameType;
@@ -255,6 +272,7 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mShiftOrder;
     text_archive << mDataValidEdge;
     text_archive << mBitsPerWord;
+    text_archive << mSlotsPerFrame;
 
     text_archive << mWordAlignment;
     text_archive << mFrameType;
