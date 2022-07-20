@@ -263,7 +263,7 @@ const char* TdmAnalyzerSettings::SaveSettings()
 { // SaleaeTdmmAnalyzer
     SimpleArchive text_archive;
 
-    text_archive << "SaleaeTdmPcmAnalyzer";
+    text_archive << "SaleaeTdmAnalyzer";
 
     text_archive << mClockChannel;
     text_archive << mFrameChannel;
