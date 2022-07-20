@@ -40,14 +40,17 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mFrame = mSimulationChannels.Add( mSettings->mFrameChannel, mSimulationSampleRateHz, BIT_LOW );
     mData = mSimulationChannels.Add( mSettings->mDataChannel, mSimulationSampleRateHz, BIT_LOW );
 
+    mVecCountGen.clear();
+    mVecSineGen.clear();
+
     for(U32 i = 0; i < mNumSlots; i++)
     {
-        mVecCountGen.push_back(std::unique_ptr<CountGen>(new CountGen(i, U64(pow(2, mDataBitsPerSlot))-1)));
+        mVecCountGen.push_back(std::unique_ptr<CountGen>(new CountGen(i, U64(pow(2, mDataBitsPerSlot)))));
     }
 
     for(U32 i = 0; i < mNumSlots; i++)
     {
-        mVecSineGen.push_back(std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, i*100.0, 0.99, 0)));
+        mVecSineGen.push_back(std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, i*100.0, (1<<(mDataBitsPerSlot-2))-1, 0)));
     }
 
     double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mBitsPerSlot) );
@@ -282,7 +285,9 @@ CountGen::~CountGen()
 
 U64 CountGen::GetNextValue()
 {
-    return mVal++ % mMaxVal;
+    U64 val = mVal++;
+    mVal = mVal % mMaxVal;
+    return val;
 };
 
 void CountGen::Reset()
