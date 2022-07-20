@@ -60,7 +60,7 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
         }
     }
 
-    // enum PcmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
+    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
     U32 bits_per_word = audio_bit_depth + mNumPaddingBits;
     switch( mSettings->mFrameType )
     {

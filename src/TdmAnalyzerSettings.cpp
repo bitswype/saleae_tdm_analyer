@@ -74,7 +74,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
 
 
-    // enum PcmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
+    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
     mFrameTypeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mFrameTypeInterface->SetTitleAndTooltip( "FRAME Signal Transitions", "Specify the type of frame signal used." );
     mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_WORD, "Twice each word", "" );
@@ -90,7 +90,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mWordAlignmentInterface->AddNumber( RIGHT_ALIGNED, "Right aligned", "" );
     mWordAlignmentInterface->SetNumber( mWordAlignment );
 
-    // enum PcmBitAlignment { FIRST_FRAME_BIT_BELONGS_TO_PREVIOUS_WORD, FIRST_FRAME_BIT_BELONGS_TO_CURRENT_WORD };
+    // enum TdmBitAlignment { FIRST_FRAME_BIT_BELONGS_TO_PREVIOUS_WORD, FIRST_FRAME_BIT_BELONGS_TO_CURRENT_WORD };
     mBitAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mBitAlignmentInterface->SetTitleAndTooltip( "DATA Bits Shift", "Specify the bit shift with respect to the FRAME edges" );
     mBitAlignmentInterface->AddNumber( BITS_SHIFTED_RIGHT_1, "Right-shifted by one (TDM typical, DSP mode A)", "" );
@@ -200,9 +200,9 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mBitsPerWord = U32( mBitsPerWordInterface->GetNumber() );
     mSlotsPerFrame = U32( mSlotsPerFrameInterface->GetNumber() );
 
-    mWordAlignment = PcmWordAlignment( U32( mWordAlignmentInterface->GetNumber() ) );
-    mFrameType = PcmFrameType( U32( mFrameTypeInterface->GetNumber() ) );
-    mBitAlignment = PcmBitAlignment( U32( mBitAlignmentInterface->GetNumber() ) );
+    mWordAlignment = TdmWordAlignment( U32( mWordAlignmentInterface->GetNumber() ) );
+    mFrameType = TdmFrameType( U32( mFrameTypeInterface->GetNumber() ) );
+    mBitAlignment = TdmBitAlignment( U32( mBitAlignmentInterface->GetNumber() ) );
 
     mSigned = AnalyzerEnums::Sign( U32( mSignedInterface->GetNumber() ) );
 

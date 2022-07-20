@@ -4,18 +4,18 @@
 #include <AnalyzerSettings.h>
 #include <AnalyzerTypes.h>
 
-enum PcmFrameType
+enum TdmFrameType
 {
     FRAME_TRANSITION_TWICE_EVERY_WORD,
     FRAME_TRANSITION_ONCE_EVERY_WORD,
     FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS
 };
-enum PcmWordAlignment
+enum TdmWordAlignment
 {
     LEFT_ALIGNED,
     RIGHT_ALIGNED
 };
-enum PcmBitAlignment
+enum TdmBitAlignment
 {
     BITS_SHIFTED_RIGHT_1,
     NO_SHIFT
@@ -48,9 +48,9 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     U32 mBitsPerWord;
     U32 mSlotsPerFrame;
 
-    PcmWordAlignment mWordAlignment;
-    PcmFrameType mFrameType;
-    PcmBitAlignment mBitAlignment;
+    TdmWordAlignment mWordAlignment;
+    TdmFrameType mFrameType;
+    TdmBitAlignment mBitAlignment;
     AnalyzerEnums::Sign mSigned;
 
 
