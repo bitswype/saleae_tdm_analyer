@@ -6,8 +6,7 @@
 #include <iostream>
 
 TdmSimulationDataGenerator::TdmSimulationDataGenerator()
-    : mAudioSampleRate( 10000 ),
-      mUseShortFrames( false )
+    : mAudioSampleRate( 10000 )
 {
 }
 
@@ -89,52 +88,8 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     switch( mFrameType )
     {
     case FRAME_TRANSITION_TWICE_EVERY_WORD:
-        if( mUseShortFrames == false )
-        {
-            U32 high_count = mDataBitsPerSlot / 2;
-            U32 low_count = mDataBitsPerSlot - high_count;
-            for( U32 i = 0; i < high_count; i++ )
-                mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 0; i < low_count; i++ )
-                mFrameBits.push_back( BIT_LOW );
-        }
-        else
-        {
-            mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 1; i < mDataBitsPerSlot; i++ )
-                mFrameBits.push_back( BIT_LOW );
-        }
-        break;
     case FRAME_TRANSITION_ONCE_EVERY_WORD:
-        if( mUseShortFrames == false )
-        {
-            for( U32 i = 0; i < mDataBitsPerSlot; i++ )
-                mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 0; i < mDataBitsPerSlot; i++ )
-                mFrameBits.push_back( BIT_LOW );
-        }
-        else
-        {
-            mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 1; i < ( mDataBitsPerSlot * 2 ); i++ )
-                mFrameBits.push_back( BIT_LOW );
-        }
-        break;
     case FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS:
-        if( mUseShortFrames == false )
-        {
-            for( U32 i = 0; i < ( mDataBitsPerSlot * 2 ); i++ )
-                mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 0; i < ( mDataBitsPerSlot * 2 ); i++ )
-                mFrameBits.push_back( BIT_LOW );
-        }
-        else
-        {
-            mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 1; i < ( mDataBitsPerSlot * 4 ); i++ )
-                mFrameBits.push_back( BIT_LOW );
-        }
-        break;
     case FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME:
         mFrameBits.push_back( BIT_HIGH );
         for( U32 i = 1; i < ( mNumSlots * mBitsPerSlot); i++ )

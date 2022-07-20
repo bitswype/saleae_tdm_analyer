@@ -104,6 +104,5 @@ class TdmSimulationDataGenerator
 
     // Fake data settings:
     double mAudioSampleRate;
-    bool mUseShortFrames;
 };
 #endif // TDM_SIMULATION_DATA_GENERATOR
