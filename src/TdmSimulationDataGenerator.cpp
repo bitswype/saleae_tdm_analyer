@@ -8,7 +8,7 @@
 TdmSimulationDataGenerator::TdmSimulationDataGenerator()
     : mNumPaddingBits( 0 ),
       /*mAudioSampleRate( 44000*2 ),*/
-      mAudioSampleRate( 220 * 16 ),
+      mAudioSampleRate( 10000 ),
       mUseShortFrames( false )
 {
 }
@@ -16,7 +16,6 @@ TdmSimulationDataGenerator::TdmSimulationDataGenerator()
 TdmSimulationDataGenerator::~TdmSimulationDataGenerator()
 {
 }
-
 
 void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnalyzerSettings* settings )
 {
@@ -31,11 +30,14 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mFrame = mSimulationChannels.Add( mSettings->mFrameChannel, mSimulationSampleRateHz, BIT_LOW );
     mData = mSimulationChannels.Add( mSettings->mDataChannel, mSimulationSampleRateHz, BIT_LOW );
 
-    InitSineWave();
-    double bits_per_s = mAudioSampleRate * 2.0 * double( mSettings->mBitsPerWord + mNumPaddingBits );
+    mNumSlots = mSettings->mSlotsPerFrame;
+
+    mSineWaveSamplesLeft = std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, 100.0, 0.99, 0));
+    mSineWaveSamplesRight = std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, 200.0, 0.99, 0));
+
+    double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mSettings->mBitsPerWord + mNumPaddingBits) );
     mClockGenerator.Init( bits_per_s, mSimulationSampleRateHz );
 
-    mCurrentAudioWordIndex = 0;
     mCurrentAudioChannel = Left;
     mPaddingCount = 0;
 
@@ -147,7 +149,7 @@ BitState TdmSimulationDataGenerator::GetNextFrameBit()
     return bit_state;
 }
 
-// enum BitGenerarionState { Init, LeftPadding, Data, RightPadding };
+// enum BitGenerationState { Init, LeftPadding, Data, RightPadding };
 BitState TdmSimulationDataGenerator::GetNextAudioBit()
 {
     switch( mBitGenerationState )
@@ -236,43 +238,22 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
 
 S64 TdmSimulationDataGenerator::GetNextAudioWord()
 {
-    S64 value;
-
-    // return 0xFFFF;
+    double value;
+    S64 max_amplitude = ( 1 << ( mSettings->mBitsPerWord - 2 ) ) - 1;
 
     if( mCurrentAudioChannel == Left )
     {
-        value = mSineWaveSamplesLeft[ mCurrentAudioWordIndex ];
+        value = mSineWaveSamplesLeft->GetNextValue();
         mCurrentAudioChannel = Right;
     }
     else
     {
-        value = mSineWaveSamplesLeft[ mCurrentAudioWordIndex ];
+        value = mSineWaveSamplesRight->GetNextValue();
         mCurrentAudioChannel = Left;
-        mCurrentAudioWordIndex++;
-        if( mCurrentAudioWordIndex >= mSineWaveSamplesLeft.size() )
-            mCurrentAudioWordIndex = 0;
     }
 
-    return value;
-}
-
-void TdmSimulationDataGenerator::InitSineWave()
-{
-    U32 sine_freq = 220;
-    U32 samples_for_one_cycle = U32( mAudioSampleRate / double( sine_freq ) );
-    S64 max_amplitude = ( 1 << ( mSettings->mBitsPerWord - 2 ) ) - 1;
-
-    mSineWaveSamplesRight.reserve( samples_for_one_cycle );
-    mSineWaveSamplesLeft.reserve( samples_for_one_cycle );
-    for( U32 i = 0; i < samples_for_one_cycle; i++ )
-    {
-        double t = double( i ) / double( samples_for_one_cycle );
-        double val_right = sin( t * 6.28318530718 );
-        double val_left = sin( t * 6.28318530718 * 2.0 );
-        mSineWaveSamplesRight.push_back( S64( double( max_amplitude ) * val_right ) );
-        mSineWaveSamplesLeft.push_back( S64( double( max_amplitude ) * val_left ) );
-    }
+    //return S64(double(max_amplitude) * value);
+    return S64( double(max_amplitude) * value);
 }
 
 inline void TdmSimulationDataGenerator::WriteBit( BitState data, BitState frame )
@@ -291,4 +272,28 @@ inline void TdmSimulationDataGenerator::WriteBit( BitState data, BitState frame 
 
     //'negedge' on clock, data is valid.
     mClock->Transition();
+}
+
+SineGen::SineGen(double sample_rate, double frequency_hz, double scale, double phase_degrees)
+    : mSampleRate( sample_rate ),
+      mFrequency( frequency_hz ),
+      mScale( scale ),
+      mPhase( phase_degrees ),
+      mSample( 0 )
+{
+}
+
+SineGen::~SineGen()
+{
+}
+
+double SineGen::GetNextValue()
+{
+    double t = double( mSample++ ) / double( mSampleRate );
+    return mScale * sin(t * mFrequency * (2.0 * M_PI) + (mPhase / 180.0 * M_PI));
+}
+
+void SineGen::Reset()
+{
+    mSample = 0;
 }

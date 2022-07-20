@@ -9,12 +9,29 @@ enum RightLeftDirection
     Right,
     Left
 };
-enum BitGenerarionState
+enum BitGenerationState
 {
     Init,
     LeftPadding,
     Data,
     RightPadding
+};
+
+class SineGen
+{
+  public:
+  SineGen(double sample_rate = 1000.0, double frequency_hz = 1.0, double scale = 1.0, double phase_degrees = 0.0);
+  ~SineGen();
+
+  double GetNextValue();
+  void Reset();
+
+  protected:
+  double mSampleRate;
+  double mFrequency;
+  double mScale;
+  double mPhase;
+  U32 mSample;
 };
 
 class TdmSimulationDataGenerator
@@ -42,8 +59,8 @@ class TdmSimulationDataGenerator
     BitState GetNextAudioBit();
     BitState GetNextFrameBit();
 
-    std::vector<S64> mSineWaveSamplesRight;
-    std::vector<S64> mSineWaveSamplesLeft;
+    std::unique_ptr<SineGen> mSineWaveSamplesRight;
+    std::unique_ptr<SineGen> mSineWaveSamplesLeft;
 
     ClockGenerator mClockGenerator;
 
@@ -51,13 +68,13 @@ class TdmSimulationDataGenerator
     U32 mCurrentFrameBitIndex;
 
     std::vector<U64> mBitMasks;
-    U32 mCurrentAudioWordIndex;
+    U32 mNumSlots;
 
     RightLeftDirection mCurrentAudioChannel;
     U32 mCurrentBitIndex;
     S64 mCurrentWord;
     U32 mPaddingCount;
-    BitGenerarionState mBitGenerationState;
+    BitGenerationState mBitGenerationState;
 
     // Fake data settings:
     double mAudioSampleRate;
