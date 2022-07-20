@@ -20,10 +20,10 @@ enum PcmBitAlignment
     BITS_SHIFTED_RIGHT_1,
     NO_SHIFT
 };
-enum PcmWordSelectInverted
+enum TdmFrameSelectInverted
 {
-    WS_INVERTED,
-    WS_NOT_INVERTED
+    FS_INVERTED,
+    FS_NOT_INVERTED
 };
 
 class TdmAnalyzerSettings : public AnalyzerSettings
@@ -54,7 +54,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     AnalyzerEnums::Sign mSigned;
 
 
-    PcmWordSelectInverted mWordSelectInverted;
+    TdmFrameSelectInverted mFrameSyncInverted;
 
   protected:
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
@@ -72,6 +72,6 @@ class TdmAnalyzerSettings : public AnalyzerSettings
 
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mSignedInterface;
 
-    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mWordSelectInvertedInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameSyncInvertedInterface;
 };
 #endif // TDM_ANALYZER_SETTINGS

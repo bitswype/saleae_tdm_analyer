@@ -21,7 +21,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mFrameType( FRAME_TRANSITION_ONCE_EVERY_WORD ),
       mBitAlignment( BITS_SHIFTED_RIGHT_1 ),
       mSigned( AnalyzerEnums::UnsignedInteger ),
-      mWordSelectInverted( WS_NOT_INVERTED )
+      mFrameSyncInverted( FS_NOT_INVERTED )
 {
     mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
     mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka I2S/TDM SCK - Continuous Serial Clock, aka Bit Clock" );
@@ -106,13 +106,13 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mSignedInterface->SetNumber( mSigned );
 
 
-    mWordSelectInvertedInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mWordSelectInvertedInterface->SetTitleAndTooltip( "Word Select High", "Select whether Word Select high is channel 1 or channel 2" );
-    mWordSelectInvertedInterface->AddNumber( WS_NOT_INVERTED, "Channel 2 (right - I2S typical)",
-                                             "when word select (FRAME) is logic 1, data is channel 2." );
-    mWordSelectInvertedInterface->AddNumber( WS_INVERTED, "Channel 1 (left - inverted)",
-                                             "when word select (FRAME) is logic 1, data is channel 1." );
-    mWordSelectInvertedInterface->SetNumber( mWordSelectInverted );
+    mFrameSyncInvertedInterface.reset( new AnalyzerSettingInterfaceNumberList() );
+    mFrameSyncInvertedInterface->SetTitleAndTooltip( "Frame Sync Inverted", "Select whether Frame Sync is active high (normal) or active low (inverted)" );
+    mFrameSyncInvertedInterface->AddNumber( FS_NOT_INVERTED, "Active High (TDM normal))",
+                                             "when frame sync (FRAME) is logic 1, indicate the start of a new frame (normal)" );
+    mFrameSyncInvertedInterface->AddNumber( FS_INVERTED, "Active Low (TDM inverted)",
+                                             "when frame sync (FRAME) is logic 0, indicate the start of a new frame (inverted)" );
+    mFrameSyncInvertedInterface->SetNumber( mFrameSyncInverted );
 
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
@@ -125,7 +125,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mWordAlignmentInterface.get() );
     AddInterface( mBitAlignmentInterface.get() );
     AddInterface( mSignedInterface.get() );
-    AddInterface( mWordSelectInvertedInterface.get() );
+    AddInterface( mFrameSyncInvertedInterface.get() );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
     AddExportOption( 0, "Export as text/csv file" );
@@ -159,7 +159,7 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
 
     mSignedInterface->SetNumber( mSigned );
 
-    mWordSelectInvertedInterface->SetNumber( mWordSelectInverted );
+    mFrameSyncInvertedInterface->SetNumber( mFrameSyncInverted );
 }
 
 bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
@@ -206,7 +206,7 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
 
     mSigned = AnalyzerEnums::Sign( U32( mSignedInterface->GetNumber() ) );
 
-    mWordSelectInverted = PcmWordSelectInverted( U32( mWordSelectInvertedInterface->GetNumber() ) );
+    mFrameSyncInverted = TdmFrameSelectInverted( U32( mFrameSyncInvertedInterface->GetNumber() ) );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
 
@@ -247,9 +247,9 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     if( text_archive >> *( U32* )&sign )
         mSigned = sign;
 
-    PcmWordSelectInverted word_inverted;
-    if( text_archive >> *( U32* )&word_inverted )
-        mWordSelectInverted = word_inverted;
+    TdmFrameSelectInverted fs_inverted;
+    if( text_archive >> *( U32* )&fs_inverted )
+        mFrameSyncInverted = fs_inverted;
 
     ClearChannels();
     AddChannel( mClockChannel, "PCM CLOCK", true );
@@ -280,7 +280,7 @@ const char* TdmAnalyzerSettings::SaveSettings()
 
     text_archive << mSigned;
 
-    text_archive << mWordSelectInverted;
+    text_archive << mFrameSyncInverted;
 
     return SetReturnString( text_archive.GetString() );
 }

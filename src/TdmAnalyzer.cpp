@@ -149,7 +149,7 @@ void TdmAnalyzer::AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subfram
 
 
     U32 channel_1_polarity = 1;
-    if( mSettings->mWordSelectInverted == WS_INVERTED )
+    if( mSettings->mFrameSyncInverted == FS_INVERTED )
         channel_1_polarity = 0;
 
     if( ( subframe_index & 0x1 ) == channel_1_polarity )
