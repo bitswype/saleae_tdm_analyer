@@ -71,7 +71,8 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
         }
     }
 
-    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
+    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
+    // FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME };
     U32 bits_per_word = audio_bit_depth + mNumPaddingBits;
     switch( mSettings->mFrameType )
     {
@@ -121,6 +122,11 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
             for( U32 i = 1; i < ( bits_per_word * 4 ); i++ )
                 mFrameBits.push_back( BIT_LOW );
         }
+        break;
+    case FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME:
+        mFrameBits.push_back( BIT_HIGH );
+        for( U32 i = 1; i < ( mNumSlots * mBitsPerSlot); i++ )
+            mFrameBits.push_back( BIT_LOW );
         break;
     default:
         AnalyzerHelpers::Assert( "unexpected" );

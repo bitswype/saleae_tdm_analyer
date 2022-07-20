@@ -83,12 +83,14 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mDataValidEdgeInterface->AddNumber( AnalyzerEnums::PosEdge, "Rising edge", "" );
     mDataValidEdgeInterface->SetNumber( mDataValidEdge );
 
-    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
+    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
+    // FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME };
     mFrameTypeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mFrameTypeInterface->SetTitleAndTooltip( "FRAME Signal Transitions", "Specify the type of frame signal used." );
     mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_WORD, "Twice each word", "" );
     mFrameTypeInterface->AddNumber( FRAME_TRANSITION_ONCE_EVERY_WORD, "Once each word (I2S, PCM standard)", "" );
     mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS, "Twice every 4 words", "" );
+    mFrameTypeInterface->AddNumber( FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME, "One bitclock per frame", "" );
     mFrameTypeInterface->SetNumber( mFrameType );
 
     mWordAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
