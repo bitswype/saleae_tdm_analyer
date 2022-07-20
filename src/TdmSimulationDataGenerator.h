@@ -82,9 +82,19 @@ class TdmSimulationDataGenerator
     U32 mCurrentFrameBitIndex;
 
     std::vector<U64> mBitMasks;
+
+    // TDM decode parameters
+    AnalyzerEnums::ShiftOrder mShiftOrder;
+    AnalyzerEnums::EdgeDirection mDataValidEdge;
     U32 mNumSlots;
     U32 mBitsPerSlot;
     U32 mDataBitsPerSlot;
+
+    TdmWordAlignment mWordAlignment;
+    TdmFrameType mFrameType;
+    TdmBitAlignment mBitAlignment;
+    AnalyzerEnums::Sign mSigned;
+    TdmFrameSelectInverted mFrameSyncInverted;
 
     RightLeftDirection mCurrentAudioChannel;
     U32 mCurrentBitIndex;
@@ -95,6 +105,5 @@ class TdmSimulationDataGenerator
     // Fake data settings:
     double mAudioSampleRate;
     bool mUseShortFrames;
-    U32 mNumPaddingBits;
 };
 #endif // TDM_SIMULATION_DATA_GENERATOR

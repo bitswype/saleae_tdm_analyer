@@ -6,9 +6,7 @@
 #include <iostream>
 
 TdmSimulationDataGenerator::TdmSimulationDataGenerator()
-    : mNumPaddingBits( 0 ),
-      /*mAudioSampleRate( 44000*2 ),*/
-      mAudioSampleRate( 10000 ),
+    : mAudioSampleRate( 10000 ),
       mUseShortFrames( false )
 {
 }
@@ -22,17 +20,26 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mSimulationSampleRateHz = simulation_sample_rate;
     mSettings = settings;
 
-    if( mSettings->mDataValidEdge == AnalyzerEnums::NegEdge )
+    mNumSlots = mSettings->mSlotsPerFrame;
+    mBitsPerSlot = mSettings->mBitsPerSlot;
+    mDataBitsPerSlot = mSettings->mDataBitsPerSlot;
+
+    mShiftOrder = mSettings->mShiftOrder;
+    mDataValidEdge = mSettings->mDataValidEdge;
+
+    mWordAlignment = mSettings->mWordAlignment;
+    mFrameType = mSettings->mFrameType;
+    mBitAlignment = mSettings->mBitAlignment;
+    mSigned = mSettings->mSigned;
+    mFrameSyncInverted = mSettings->mFrameSyncInverted;
+
+    if( mDataValidEdge == AnalyzerEnums::NegEdge )
         mClock = mSimulationChannels.Add( mSettings->mClockChannel, mSimulationSampleRateHz, BIT_LOW );
     else
         mClock = mSimulationChannels.Add( mSettings->mClockChannel, mSimulationSampleRateHz, BIT_HIGH );
 
     mFrame = mSimulationChannels.Add( mSettings->mFrameChannel, mSimulationSampleRateHz, BIT_LOW );
     mData = mSimulationChannels.Add( mSettings->mDataChannel, mSimulationSampleRateHz, BIT_LOW );
-
-    mNumSlots = mSettings->mSlotsPerFrame;
-    mBitsPerSlot = mSettings->mBitsPerSlot;
-    mDataBitsPerSlot = mSettings->mDataBitsPerSlot;
 
     for(U32 i = 0; i < mNumSlots; i++)
     {
@@ -44,18 +51,16 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
         mVecSineGen.push_back(std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, i*100.0, 0.99, 0)));
     }
 
-    double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mSettings->mDataBitsPerSlot + mNumPaddingBits) );
+    double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mBitsPerSlot) );
     mClockGenerator.Init( bits_per_s, mSimulationSampleRateHz );
 
     mCurrentAudioChannel = Left;
     mPaddingCount = 0;
 
-    U64 audio_bit_depth = mSettings->mDataBitsPerSlot;
-
-    if( mSettings->mShiftOrder == AnalyzerEnums::MsbFirst )
+    if( mShiftOrder == AnalyzerEnums::MsbFirst )
     {
-        U64 mask = 1ULL << ( audio_bit_depth - 1 );
-        for( U32 i = 0; i < audio_bit_depth; i++ )
+        U64 mask = 1ULL << ( mDataBitsPerSlot - 1 );
+        for( U32 i = 0; i < mDataBitsPerSlot; i++ )
         {
             mBitMasks.push_back( mask );
             mask = mask >> 1;
@@ -64,7 +69,7 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     else
     {
         U64 mask = 1;
-        for( U32 i = 0; i < audio_bit_depth; i++ )
+        for( U32 i = 0; i < mDataBitsPerSlot; i++ )
         {
             mBitMasks.push_back( mask );
             mask = mask << 1;
@@ -73,14 +78,21 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
 
     // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
     // FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME };
-    U32 bits_per_word = audio_bit_depth + mNumPaddingBits;
-    switch( mSettings->mFrameType )
+    U32 asserted = 1;
+    U32 deasserted = 0;
+    if(mFrameSyncInverted == TdmFrameSelectInverted::FS_INVERTED)
+    {
+        asserted = 0;
+        deasserted = 1;
+    }
+
+    switch( mFrameType )
     {
     case FRAME_TRANSITION_TWICE_EVERY_WORD:
         if( mUseShortFrames == false )
         {
-            U32 high_count = bits_per_word / 2;
-            U32 low_count = bits_per_word - high_count;
+            U32 high_count = mDataBitsPerSlot / 2;
+            U32 low_count = mDataBitsPerSlot - high_count;
             for( U32 i = 0; i < high_count; i++ )
                 mFrameBits.push_back( BIT_HIGH );
             for( U32 i = 0; i < low_count; i++ )
@@ -89,37 +101,37 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
         else
         {
             mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 1; i < bits_per_word; i++ )
+            for( U32 i = 1; i < mDataBitsPerSlot; i++ )
                 mFrameBits.push_back( BIT_LOW );
         }
         break;
     case FRAME_TRANSITION_ONCE_EVERY_WORD:
         if( mUseShortFrames == false )
         {
-            for( U32 i = 0; i < bits_per_word; i++ )
+            for( U32 i = 0; i < mDataBitsPerSlot; i++ )
                 mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 0; i < bits_per_word; i++ )
+            for( U32 i = 0; i < mDataBitsPerSlot; i++ )
                 mFrameBits.push_back( BIT_LOW );
         }
         else
         {
             mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 1; i < ( bits_per_word * 2 ); i++ )
+            for( U32 i = 1; i < ( mDataBitsPerSlot * 2 ); i++ )
                 mFrameBits.push_back( BIT_LOW );
         }
         break;
     case FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS:
         if( mUseShortFrames == false )
         {
-            for( U32 i = 0; i < ( bits_per_word * 2 ); i++ )
+            for( U32 i = 0; i < ( mDataBitsPerSlot * 2 ); i++ )
                 mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 0; i < ( bits_per_word * 2 ); i++ )
+            for( U32 i = 0; i < ( mDataBitsPerSlot * 2 ); i++ )
                 mFrameBits.push_back( BIT_LOW );
         }
         else
         {
             mFrameBits.push_back( BIT_HIGH );
-            for( U32 i = 1; i < ( bits_per_word * 4 ); i++ )
+            for( U32 i = 1; i < ( mDataBitsPerSlot * 4 ); i++ )
                 mFrameBits.push_back( BIT_LOW );
         }
         break;
@@ -170,7 +182,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
     switch( mBitGenerationState )
     {
     case Init:
-        if( mSettings->mBitAlignment == BITS_SHIFTED_RIGHT_1 )
+        if( mBitAlignment == BITS_SHIFTED_RIGHT_1 )
         {
             mBitGenerationState = LeftPadding;
             return BIT_LOW; // just once, we'll insert a 1-bit offset.
@@ -182,9 +194,9 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
         }
         break;
     case LeftPadding:
-        if( mSettings->mWordAlignment == RIGHT_ALIGNED )
+        if( mWordAlignment == RIGHT_ALIGNED )
         {
-            if( mPaddingCount < mNumPaddingBits )
+            if( mPaddingCount < (mBitsPerSlot - mDataBitsPerSlot) )
             {
                 mPaddingCount++;
                 return BIT_LOW;
@@ -203,7 +215,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
         }
         break;
     case Data:
-        if( mCurrentBitIndex == mSettings->mDataBitsPerSlot )
+        if( mCurrentBitIndex == mDataBitsPerSlot )
         {
             mCurrentBitIndex = 0;
             mCurrentWord = GetNextAudioWord();
@@ -224,9 +236,9 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
         }
         break;
     case RightPadding:
-        if( mSettings->mWordAlignment == LEFT_ALIGNED )
+        if( mWordAlignment == LEFT_ALIGNED )
         {
-            if( mPaddingCount < mNumPaddingBits )
+            if( mPaddingCount < (mBitsPerSlot - mDataBitsPerSlot) )
             {
                 mPaddingCount++;
                 return BIT_LOW;
@@ -254,7 +266,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
 S64 TdmSimulationDataGenerator::GetNextAudioWord()
 {
     double value;
-    S64 max_amplitude = ( 1 << ( mSettings->mDataBitsPerSlot - 2 ) ) - 1;
+    S64 max_amplitude = ( 1 << ( mDataBitsPerSlot - 2 ) ) - 1;
 
     if( mCurrentAudioChannel == Left )
     {
