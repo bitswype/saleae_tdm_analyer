@@ -32,14 +32,14 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
         char number_str[ 128 ];
         if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
         {
-            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
             std::stringstream ss;
             ss << signed_number;
             strcpy( number_str, ss.str().c_str() );
         }
         else
         {
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mBitsPerWord, number_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
         AddResultString( "1" );
         AddResultString( "Ch 1" );
@@ -51,14 +51,14 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
         char number_str[ 128 ];
         if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
         {
-            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
             std::stringstream ss;
             ss << signed_number;
             strcpy( number_str, ss.str().c_str() );
         }
         else
         {
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mBitsPerWord, number_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
         AddResultString( "2" );
         AddResultString( "Ch 2" );
@@ -68,7 +68,7 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
     case ErrorTooFewBits:
     {
         char bits_per_word[ 32 ];
-        sprintf( bits_per_word, "%d", mSettings->mBitsPerWord );
+        sprintf( bits_per_word, "%d", mSettings->mDataBitsPerSlot );
 
         AddResultString( "!" );
         AddResultString( "Error" );
@@ -110,14 +110,14 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
             char number_str[ 128 ];
             if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
             {
-                S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+                S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
                 std::stringstream ss;
                 ss << signed_number;
                 strcpy( number_str, ss.str().c_str() );
             }
             else
             {
-                AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mBitsPerWord, number_str, 128 );
+                AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
             }
 
             ss << time_str << ",1," << number_str << std::endl;
@@ -131,14 +131,14 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
             char number_str[ 128 ];
             if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
             {
-                S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+                S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
                 std::stringstream ss;
                 ss << signed_number;
                 strcpy( number_str, ss.str().c_str() );
             }
             else
             {
-                AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mBitsPerWord, number_str, 128 );
+                AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
             }
 
 
@@ -172,14 +172,14 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
         char number_str[ 128 ];
         if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
         {
-            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
             std::stringstream ss;
             ss << signed_number;
             strcpy( number_str, ss.str().c_str() );
         }
         else
         {
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mBitsPerWord, number_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
 
         AddTabularText( "Ch 1: ", number_str );
@@ -190,14 +190,14 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
         char number_str[ 128 ];
         if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
         {
-            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
             std::stringstream ss;
             ss << signed_number;
             strcpy( number_str, ss.str().c_str() );
         }
         else
         {
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mBitsPerWord, number_str, 128 );
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
 
         AddTabularText( "Ch 2: ", number_str );
@@ -206,7 +206,7 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
     case ErrorTooFewBits:
     {
         char bits_per_word[ 32 ];
-        sprintf( bits_per_word, "%d", mSettings->mBitsPerWord );
+        sprintf( bits_per_word, "%d", mSettings->mDataBitsPerSlot );
 
         AddTabularText( "Error: too few bits, expecting ", bits_per_word );
     }

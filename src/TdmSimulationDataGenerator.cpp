@@ -35,13 +35,13 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mSineWaveSamplesLeft = std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, 100.0, 0.99, 0));
     mSineWaveSamplesRight = std::unique_ptr<SineGen>(new SineGen(mAudioSampleRate, 200.0, 0.99, 0));
 
-    double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mSettings->mBitsPerWord + mNumPaddingBits) );
+    double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mSettings->mDataBitsPerSlot + mNumPaddingBits) );
     mClockGenerator.Init( bits_per_s, mSimulationSampleRateHz );
 
     mCurrentAudioChannel = Left;
     mPaddingCount = 0;
 
-    U64 audio_bit_depth = mSettings->mBitsPerWord;
+    U64 audio_bit_depth = mSettings->mDataBitsPerSlot;
 
     if( mSettings->mShiftOrder == AnalyzerEnums::MsbFirst )
     {
@@ -188,7 +188,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
         }
         break;
     case Data:
-        if( mCurrentBitIndex == mSettings->mBitsPerWord )
+        if( mCurrentBitIndex == mSettings->mDataBitsPerSlot )
         {
             mCurrentBitIndex = 0;
             mCurrentWord = GetNextAudioWord();
@@ -239,7 +239,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
 S64 TdmSimulationDataGenerator::GetNextAudioWord()
 {
     double value;
-    S64 max_amplitude = ( 1 << ( mSettings->mBitsPerWord - 2 ) ) - 1;
+    S64 max_amplitude = ( 1 << ( mSettings->mDataBitsPerSlot - 2 ) ) - 1;
 
     if( mCurrentAudioChannel == Left )
     {

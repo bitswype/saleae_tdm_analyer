@@ -83,7 +83,7 @@ void TdmAnalyzer::AnalyzeFrame()
     }
 
     U32 bits_per_frame = num_bits / num_frames;
-    U32 num_audio_bits = mSettings->mBitsPerWord;
+    U32 num_audio_bits = mSettings->mDataBitsPerSlot;
 
     if( bits_per_frame < num_audio_bits )
     {
@@ -166,7 +166,7 @@ void TdmAnalyzer::AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subfram
     S64 adjusted_value = result;
     if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
     {
-        adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mBitsPerWord );
+        adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
     }
     frame_v2.AddInteger( "data", adjusted_value );
     mResults->AddFrameV2( frame_v2, "data", frame.mStartingSampleInclusive, frame.mEndingSampleInclusive );

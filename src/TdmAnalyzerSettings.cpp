@@ -12,10 +12,11 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mFrameChannel( UNDEFINED_CHANNEL ),
       mDataChannel( UNDEFINED_CHANNEL ),
 
+      mSlotsPerFrame( 8 ),
+      mBitsPerSlot( 16 ),
+      mDataBitsPerSlot( 16 ),
       mShiftOrder( AnalyzerEnums::MsbFirst ),
       mDataValidEdge( AnalyzerEnums::NegEdge ),
-      mBitsPerWord( 16 ),
-      mSlotsPerFrame( 8 ),
 
       mWordAlignment( LEFT_ALIGNED ),
       mFrameType( FRAME_TRANSITION_ONCE_EVERY_WORD ),
@@ -35,6 +36,38 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mDataChannelInterface->SetTitleAndTooltip( "DATA", "Data, aka TDM SDx - Serial Data In/Out" );
     mDataChannelInterface->SetChannel( mDataChannel );
 
+    mSlotsPerFrameInterface.reset( new AnalyzerSettingInterfaceNumberList() );
+    mSlotsPerFrameInterface->SetTitleAndTooltip( "Number of slots (channels) per TDM frame (slots/frame)",
+                                                 "Specify the number of audio channels / TDM frame.  Any additional slots will be ignored" );
+    for( U32 i = 1; i <= 64; i++ )
+    {
+        char str[ 256 ];
+        sprintf( str, "%d Slots/TDM Frame", i );
+        mSlotsPerFrameInterface->AddNumber( i, str, "" );
+    }
+    mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
+
+    mBitsPerSlotInterface.reset( new AnalyzerSettingInterfaceNumberList() );
+    mBitsPerSlotInterface->SetTitleAndTooltip( "Number of bits per slot in the TDM frame",
+                                               "Specify the number of bits per slot.  There can be more bits in a slot than data bits" );
+    for( U32 i = 1; i <= 64; i++ )
+    {
+        char str[ 256 ];
+        sprintf( str, "%d bits/slot", i );
+        mBitsPerSlotInterface->AddNumber( i, str, "" );
+    }
+    mBitsPerSlotInterface->SetNumber( mBitsPerSlot );
+
+    mDataBitsPerSlotInterface.reset( new AnalyzerSettingInterfaceNumberList() );
+    mDataBitsPerSlotInterface->SetTitleAndTooltip( "Audio Bit Depth (data bits/slot, must be >= bits/slot)",
+                                                   "Specify the number of audio data bits/channel.  Must be equal or greater to bits/slot.  Any additional bits will be ignored" );
+    for( U32 i = 2; i <= 64; i++ )
+    {
+        char str[ 256 ];
+        sprintf( str, "%d Data bits/slot", i );
+        mDataBitsPerSlotInterface->AddNumber( i, str, "" );
+    }
+    mDataBitsPerSlotInterface->SetNumber( mDataBitsPerSlot );
 
     mShiftOrderInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mShiftOrderInterface->SetTitleAndTooltip( "DATA Significant Bit",
@@ -49,30 +82,6 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mDataValidEdgeInterface->AddNumber( AnalyzerEnums::NegEdge, "Falling edge", "" );
     mDataValidEdgeInterface->AddNumber( AnalyzerEnums::PosEdge, "Rising edge", "" );
     mDataValidEdgeInterface->SetNumber( mDataValidEdge );
-
-    mBitsPerWordInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mBitsPerWordInterface->SetTitleAndTooltip( "Audio Bit Depth (bits/sample)",
-                                               "Specify the number of audio bits/word.  Any additional bits will be ignored" );
-    for( U32 i = 2; i <= 64; i++ )
-    {
-        char str[ 256 ];
-        sprintf( str, "%d Bits/Word", i );
-        mBitsPerWordInterface->AddNumber( i, str, "" );
-    }
-    mBitsPerWordInterface->SetNumber( mBitsPerWord );
-
-
-    mSlotsPerFrameInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mSlotsPerFrameInterface->SetTitleAndTooltip( "Number of channels (slots) per TDM frame (slots/frame)",
-                                                 "Specify the number of audio channels / TDM frame.  Any additional slots will be ignored" );
-    for( U32 i = 1; i <= 64; i++ )
-    {
-        char str[ 256 ];
-        sprintf( str, "%d Slots/TDM Frame", i );
-        mSlotsPerFrameInterface->AddNumber( i, str, "" );
-    }
-    mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
-
 
     // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS };
     mFrameTypeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
@@ -92,7 +101,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
 
     // enum TdmBitAlignment { FIRST_FRAME_BIT_BELONGS_TO_PREVIOUS_WORD, FIRST_FRAME_BIT_BELONGS_TO_CURRENT_WORD };
     mBitAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mBitAlignmentInterface->SetTitleAndTooltip( "DATA Bits Shift", "Specify the bit shift with respect to the FRAME edges" );
+    mBitAlignmentInterface->SetTitleAndTooltip( "DATA Bits Shift relative to Frame Sync", "Specify the bit shift with respect to the FRAME edges" );
     mBitAlignmentInterface->AddNumber( BITS_SHIFTED_RIGHT_1, "Right-shifted by one (TDM typical, DSP mode A)", "" );
     mBitAlignmentInterface->AddNumber( NO_SHIFT, "No shift (DSP mode B)", "" );
     mBitAlignmentInterface->SetNumber( mBitAlignment );
@@ -117,10 +126,11 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
     AddInterface( mDataChannelInterface.get() );
+    AddInterface( mSlotsPerFrameInterface.get() );
+    AddInterface( mBitsPerSlotInterface.get() );
+    AddInterface( mDataBitsPerSlotInterface.get() );
     AddInterface( mShiftOrderInterface.get() );
     AddInterface( mDataValidEdgeInterface.get() );
-    AddInterface( mBitsPerWordInterface.get() );
-    AddInterface( mSlotsPerFrameInterface.get() );
     AddInterface( mFrameTypeInterface.get() );
     AddInterface( mWordAlignmentInterface.get() );
     AddInterface( mBitAlignmentInterface.get() );
@@ -148,10 +158,11 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mFrameChannelInterface->SetChannel( mFrameChannel );
     mDataChannelInterface->SetChannel( mDataChannel );
 
+    mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
+    mBitsPerSlotInterface->SetNumber( mBitsPerSlot );
+    mDataBitsPerSlotInterface->SetNumber( mDataBitsPerSlot );
     mShiftOrderInterface->SetNumber( mShiftOrder );
     mDataValidEdgeInterface->SetNumber( mDataValidEdge );
-    mBitsPerWordInterface->SetNumber( mBitsPerWord );
-    mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
 
     mWordAlignmentInterface->SetNumber( mWordAlignment );
     mFrameTypeInterface->SetNumber( mFrameType );
@@ -195,10 +206,18 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mFrameChannel = frame_channel;
     mDataChannel = data_channel;
 
+    mSlotsPerFrame = U32( mSlotsPerFrameInterface->GetNumber() );
+    mBitsPerSlot = U32( mBitsPerSlotInterface->GetNumber() );
+    mDataBitsPerSlot = U32( mDataBitsPerSlotInterface->GetNumber() );
+
+    if( mDataBitsPerSlot > mBitsPerSlot )
+    {
+        SetErrorText( "Number of data bits per slot must be less than or equal to number of bits per slot" );
+        return false;
+    }
+
     mShiftOrder = AnalyzerEnums::ShiftOrder( U32( mShiftOrderInterface->GetNumber() ) );
     mDataValidEdge = AnalyzerEnums::EdgeDirection( U32( mDataValidEdgeInterface->GetNumber() ) );
-    mBitsPerWord = U32( mBitsPerWordInterface->GetNumber() );
-    mSlotsPerFrame = U32( mSlotsPerFrameInterface->GetNumber() );
 
     mWordAlignment = TdmWordAlignment( U32( mWordAlignmentInterface->GetNumber() ) );
     mFrameType = TdmFrameType( U32( mFrameTypeInterface->GetNumber() ) );
@@ -232,10 +251,11 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     text_archive >> mFrameChannel;
     text_archive >> mDataChannel;
 
+    text_archive >> mSlotsPerFrame;
+    text_archive >> mBitsPerSlot;
+    text_archive >> mDataBitsPerSlot;
     text_archive >> *( U32* )&mShiftOrder;
     text_archive >> *( U32* )&mDataValidEdge;
-    text_archive >> mBitsPerWord;
-    text_archive >> mSlotsPerFrame;
 
     text_archive >> *( U32* )&mWordAlignment;
     text_archive >> *( U32* )&mFrameType;
@@ -269,10 +289,11 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mFrameChannel;
     text_archive << mDataChannel;
 
+    text_archive << mSlotsPerFrame;
+    text_archive << mBitsPerSlot;
+    text_archive << mDataBitsPerSlot;
     text_archive << mShiftOrder;
     text_archive << mDataValidEdge;
-    text_archive << mBitsPerWord;
-    text_archive << mSlotsPerFrame;
 
     text_archive << mWordAlignment;
     text_archive << mFrameType;
