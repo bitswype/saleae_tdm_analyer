@@ -267,7 +267,6 @@ S64 TdmSimulationDataGenerator::GetNextAudioWord()
         mCurrentAudioChannel = Left;
     }
 
-    //return S64(double(max_amplitude) * value);
     return S64( double(max_amplitude) * value);
 }
 

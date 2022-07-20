@@ -55,7 +55,6 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     TdmBitAlignment mBitAlignment;
     AnalyzerEnums::Sign mSigned;
 
-
     TdmFrameSelectInverted mFrameSyncInverted;
 
   protected:
@@ -63,11 +62,11 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mFrameChannelInterface;
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mDataChannelInterface;
 
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mSlotsPerFrameInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerSlotInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mDataBitsPerSlotInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mShiftOrderInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mDataValidEdgeInterface;
-    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mDataBitsPerSlotInterface;
-    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerSlotInterface;
-    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mSlotsPerFrameInterface;
 
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameTypeInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mWordAlignmentInterface;
