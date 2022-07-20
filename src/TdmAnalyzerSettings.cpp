@@ -44,7 +44,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mShiftOrderInterface->SetNumber( mShiftOrder );
 
     mDataValidEdgeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mDataValidEdgeInterface->SetTitleAndTooltip( "CLOCK State",
+    mDataValidEdgeInterface->SetTitleAndTooltip( "Data Valid CLOCK edge",
                                                  "Specify if data is valid (should be read) on the rising, or falling clock edge." );
     mDataValidEdgeInterface->AddNumber( AnalyzerEnums::NegEdge, "Falling edge", "" );
     mDataValidEdgeInterface->AddNumber( AnalyzerEnums::PosEdge, "Rising edge", "" );
