@@ -4,11 +4,6 @@
 #include "TdmAnalyzerSettings.h"
 #include "AnalyzerHelpers.h"
 
-enum RightLeftDirection
-{
-    Right,
-    Left
-};
 enum BitGenerationState
 {
     Init,
@@ -109,7 +104,7 @@ class TdmSimulationDataGenerator
     AnalyzerEnums::Sign mSigned;
     TdmFrameSelectInverted mFrameSyncInverted;
 
-    RightLeftDirection mCurrentAudioChannel;
+    U32 mCurrentAudioChannel;
     U32 mCurrentBitIndex;
     S64 mCurrentWord;
     U32 mPaddingCount;

@@ -53,7 +53,7 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     double bits_per_s = mAudioSampleRate * double(2.0 * mNumSlots * (mBitsPerSlot) );
     mClockGenerator.Init( bits_per_s, mSimulationSampleRateHz );
 
-    mCurrentAudioChannel = Left;
+    mCurrentAudioChannel = 0;
     mPaddingCount = 0;
 
     if( mShiftOrder == AnalyzerEnums::MsbFirst )
@@ -221,20 +221,11 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
 S64 TdmSimulationDataGenerator::GetNextAudioWord()
 {
     double value;
-    S64 max_amplitude = ( 1 << ( mDataBitsPerSlot - 2 ) ) - 1;
 
-    if( mCurrentAudioChannel == Left )
-    {
-        value = mVecCountGen[0]->GetNextValue();
-        mCurrentAudioChannel = Right;
-    }
-    else
-    {
-        value = mVecCountGen[1]->GetNextValue();
-        mCurrentAudioChannel = Left;
-    }
+    value = mVecCountGen[mCurrentAudioChannel]->GetNextValue();
+    mCurrentAudioChannel = ++mCurrentAudioChannel % mNumSlots;
 
-    return S64( double(max_amplitude) * value);
+    return S64(value);
 }
 
 inline void TdmSimulationDataGenerator::WriteBit( BitState data, BitState frame )
