@@ -78,8 +78,8 @@ https://cmake.org/download/
 Building the analyzer:
 ```
 mkdir build
-cd build -A x64
-cmake ..
+cd build
+cmake .. -A x64
 ```
 
 Then, open the newly created solution file located here: `build\tdm_analyzer.sln`
