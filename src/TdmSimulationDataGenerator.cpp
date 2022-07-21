@@ -27,7 +27,6 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mDataValidEdge = mSettings->mDataValidEdge;
 
     mWordAlignment = mSettings->mWordAlignment;
-    mFrameType = mSettings->mFrameType;
     mBitAlignment = mSettings->mBitAlignment;
     mSigned = mSettings->mSigned;
     mFrameSyncInverted = mSettings->mFrameSyncInverted;
@@ -78,22 +77,9 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
         }
     }
 
-    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
-    // FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME };
-    switch( mFrameType )
-    {
-    case FRAME_TRANSITION_TWICE_EVERY_WORD:
-    case FRAME_TRANSITION_ONCE_EVERY_WORD:
-    case FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS:
-    case FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME:
-        mFrameBits.push_back( mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_HIGH : BIT_LOW);
-        for( U32 i = 1; i < ( mNumSlots * mBitsPerSlot); i++ )
-            mFrameBits.push_back(  mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_LOW : BIT_HIGH);
-        break;
-    default:
-        AnalyzerHelpers::Assert( "unexpected" );
-        break;
-    }
+    mFrameBits.push_back( mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_HIGH : BIT_LOW);
+    for( U32 i = 1; i < ( mNumSlots * mBitsPerSlot); i++ )
+        mFrameBits.push_back(  mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_LOW : BIT_HIGH);
 
     mCurrentWord = GetNextAudioWord();
     mCurrentBitIndex = 0;

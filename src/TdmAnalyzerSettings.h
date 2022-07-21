@@ -4,13 +4,6 @@
 #include <AnalyzerSettings.h>
 #include <AnalyzerTypes.h>
 
-enum TdmFrameType
-{
-    FRAME_TRANSITION_TWICE_EVERY_WORD,
-    FRAME_TRANSITION_ONCE_EVERY_WORD,
-    FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
-    FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME
-};
 enum TdmWordAlignment
 {
     LEFT_ALIGNED,
@@ -51,7 +44,6 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     U32 mSlotsPerFrame;
 
     TdmWordAlignment mWordAlignment;
-    TdmFrameType mFrameType;
     TdmBitAlignment mBitAlignment;
     AnalyzerEnums::Sign mSigned;
 
@@ -68,7 +60,6 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mShiftOrderInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mDataValidEdgeInterface;
 
-    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameTypeInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mWordAlignmentInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mBitAlignmentInterface;
 

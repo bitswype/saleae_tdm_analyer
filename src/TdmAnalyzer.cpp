@@ -49,25 +49,11 @@ void TdmAnalyzer::WorkerThread()
     }
 }
 
-// enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
-// FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME };
 void TdmAnalyzer::AnalyzeFrame()
 {
     U32 num_bits = mDataBits.size();
 
-    U32 num_slots = 0;
-    switch( mSettings->mFrameType )
-    {
-    case FRAME_TRANSITION_TWICE_EVERY_WORD:
-    case FRAME_TRANSITION_ONCE_EVERY_WORD:
-    case FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS:
-    case FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME:
-        num_slots = mSettings->mSlotsPerFrame;
-        break;
-    default:
-        AnalyzerHelpers::Assert( "unexpected" );
-        break;
-    }
+    U32 num_slots = mSettings->mSlotsPerFrame;
 
     if( ( num_bits % num_slots ) != 0 )
     {

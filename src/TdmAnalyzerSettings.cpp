@@ -19,7 +19,6 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mDataValidEdge( AnalyzerEnums::NegEdge ),
 
       mWordAlignment( LEFT_ALIGNED ),
-      mFrameType( FRAME_TRANSITION_ONCE_EVERY_WORD ),
       mBitAlignment( BITS_SHIFTED_RIGHT_1 ),
       mSigned( AnalyzerEnums::UnsignedInteger ),
       mFrameSyncInverted( FS_NOT_INVERTED )
@@ -83,16 +82,6 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mDataValidEdgeInterface->AddNumber( AnalyzerEnums::PosEdge, "Rising edge", "" );
     mDataValidEdgeInterface->SetNumber( mDataValidEdge );
 
-    // enum TdmFrameType { FRAME_TRANSITION_TWICE_EVERY_WORD, FRAME_TRANSITION_ONCE_EVERY_WORD, FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS,
-    // FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME };
-    mFrameTypeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mFrameTypeInterface->SetTitleAndTooltip( "FRAME Signal Transitions", "Specify the type of frame signal used." );
-    mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_WORD, "Twice each word", "" );
-    mFrameTypeInterface->AddNumber( FRAME_TRANSITION_ONCE_EVERY_WORD, "Once each word (I2S, PCM standard)", "" );
-    mFrameTypeInterface->AddNumber( FRAME_TRANSITION_TWICE_EVERY_FOUR_WORDS, "Twice every 4 words", "" );
-    mFrameTypeInterface->AddNumber( FRAME_TRANSITION_ONE_BITCLOCK_PER_FRAME, "One bitclock per frame", "" );
-    mFrameTypeInterface->SetNumber( mFrameType );
-
     mWordAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mWordAlignmentInterface->SetTitleAndTooltip( "DATA Bits Alignment",
                                                  "Specify whether data bits are left or right aligned with respect to FRAME edges. Only "
@@ -133,7 +122,6 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mDataBitsPerSlotInterface.get() );
     AddInterface( mShiftOrderInterface.get() );
     AddInterface( mDataValidEdgeInterface.get() );
-    AddInterface( mFrameTypeInterface.get() );
     AddInterface( mWordAlignmentInterface.get() );
     AddInterface( mBitAlignmentInterface.get() );
     AddInterface( mSignedInterface.get() );
@@ -167,7 +155,6 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mDataValidEdgeInterface->SetNumber( mDataValidEdge );
 
     mWordAlignmentInterface->SetNumber( mWordAlignment );
-    mFrameTypeInterface->SetNumber( mFrameType );
     mBitAlignmentInterface->SetNumber( mBitAlignment );
 
     mSignedInterface->SetNumber( mSigned );
@@ -222,7 +209,6 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mDataValidEdge = AnalyzerEnums::EdgeDirection( U32( mDataValidEdgeInterface->GetNumber() ) );
 
     mWordAlignment = TdmWordAlignment( U32( mWordAlignmentInterface->GetNumber() ) );
-    mFrameType = TdmFrameType( U32( mFrameTypeInterface->GetNumber() ) );
     mBitAlignment = TdmBitAlignment( U32( mBitAlignmentInterface->GetNumber() ) );
 
     mSigned = AnalyzerEnums::Sign( U32( mSignedInterface->GetNumber() ) );
@@ -260,7 +246,6 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     text_archive >> *( U32* )&mDataValidEdge;
 
     text_archive >> *( U32* )&mWordAlignment;
-    text_archive >> *( U32* )&mFrameType;
     text_archive >> *( U32* )&mBitAlignment;
 
     // check to make sure loading it actual works befor assigning the result -- do this when adding settings to an anylzer which has been
@@ -298,7 +283,6 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mDataValidEdge;
 
     text_archive << mWordAlignment;
-    text_archive << mFrameType;
     text_archive << mBitAlignment;
 
     text_archive << mSigned;

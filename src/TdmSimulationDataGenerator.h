@@ -99,7 +99,6 @@ class TdmSimulationDataGenerator
     U32 mDataBitsPerSlot;
 
     TdmWordAlignment mWordAlignment;
-    TdmFrameType mFrameType;
     TdmBitAlignment mBitAlignment;
     AnalyzerEnums::Sign mSigned;
     TdmFrameSelectInverted mFrameSyncInverted;
