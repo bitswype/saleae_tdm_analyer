@@ -36,7 +36,7 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     else
         mClock = mSimulationChannels.Add( mSettings->mClockChannel, mSimulationSampleRateHz, BIT_HIGH );
 
-    mFrame = mSimulationChannels.Add( mSettings->mFrameChannel, mSimulationSampleRateHz, BIT_LOW );
+    mFrame = mSimulationChannels.Add( mSettings->mFrameChannel, mSimulationSampleRateHz, mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_LOW : BIT_HIGH );
     mData = mSimulationChannels.Add( mSettings->mDataChannel, mSimulationSampleRateHz, BIT_LOW );
 
     mVecCountGen.clear();
@@ -80,6 +80,12 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mFrameBits.push_back( mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_HIGH : BIT_LOW);
     for( U32 i = 1; i < ( mNumSlots * mBitsPerSlot); i++ )
         mFrameBits.push_back(  mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_LOW : BIT_HIGH);
+
+    // add some padding to the beginning of the simulation so that the analyzer can catch the first FS pulse
+    for(U32 i = 0; i < 16; i++)
+    {
+        WriteBit(BIT_LOW, mFrameSyncInverted == TdmFrameSelectInverted::FS_NOT_INVERTED ? BIT_LOW : BIT_HIGH);
+    }
 
     mCurrentWord = GetNextAudioWord();
     mCurrentBitIndex = 0;
