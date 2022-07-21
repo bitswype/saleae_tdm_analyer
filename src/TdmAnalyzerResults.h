@@ -8,9 +8,9 @@ class TdmAnalyzerSettings;
 
 enum TdmResultType
 {
-    Channel1,
-    Channel2,
-    ErrorTooFewBits,
+    // leave numerical space for channels, frame mType is limited to 8 bits
+    // which this is stored in, so keep the max number below 255
+    ErrorTooFewBits = 128,
     ErrorDoesntDivideEvenly
 };
 
