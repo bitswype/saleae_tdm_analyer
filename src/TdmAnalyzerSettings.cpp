@@ -16,7 +16,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mBitsPerSlot( 16 ),
       mDataBitsPerSlot( 16 ),
       mShiftOrder( AnalyzerEnums::MsbFirst ),
-      mDataValidEdge( AnalyzerEnums::NegEdge ),
+      mDataValidEdge( AnalyzerEnums::PosEdge ),
 
       mWordAlignment( LEFT_ALIGNED ),
       mBitAlignment( BITS_SHIFTED_RIGHT_1 ),
