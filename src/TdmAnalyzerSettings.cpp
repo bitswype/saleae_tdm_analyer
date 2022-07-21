@@ -58,8 +58,8 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mBitsPerSlotInterface->SetNumber( mBitsPerSlot );
 
     mDataBitsPerSlotInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mDataBitsPerSlotInterface->SetTitleAndTooltip( "Audio Bit Depth (data bits/slot, must be >= bits/slot)",
-                                                   "Specify the number of audio data bits/channel.  Must be equal or greater to bits/slot.  Any additional bits will be ignored" );
+    mDataBitsPerSlotInterface->SetTitleAndTooltip( "Audio Bit Depth (data bits/slot, must be <= bits/slot)",
+                                                   "Specify the number of audio data bits/channel.  Must be equal or less than bits/slot.  Any additional bits will be ignored" );
     for( U32 i = 2; i <= 64; i++ )
     {
         char str[ 256 ];
