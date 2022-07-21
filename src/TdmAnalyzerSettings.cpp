@@ -38,10 +38,10 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mSlotsPerFrameInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mSlotsPerFrameInterface->SetTitleAndTooltip( "Number of slots (channels) per TDM frame (slots/frame)",
                                                  "Specify the number of audio channels / TDM frame.  Any additional slots will be ignored" );
-    for( U32 i = 1; i <= 64; i++ )
+    for( U32 i = 1; i <= 128; i++ )
     {
         char str[ 256 ];
-        sprintf( str, "%d Slots/TDM Frame", i );
+        sprintf( str, "%d Slot%s/TDM Frame", i , i == 1 ? "" : "s");
         mSlotsPerFrameInterface->AddNumber( i, str, "" );
     }
     mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );

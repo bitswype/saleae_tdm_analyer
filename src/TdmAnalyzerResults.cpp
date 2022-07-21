@@ -62,13 +62,13 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
             AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
 
-        sprintf( channel_num_str, "%d", frame.mType );
+        sprintf( channel_num_str, "%d", frame.mType + 1 );
         AddResultString( channel_num_str );
 
-        sprintf( channel_num_str, "Ch %d", frame.mType );
+        sprintf( channel_num_str, "Ch %d", frame.mType + 1 );
         AddResultString( channel_num_str );
 
-        sprintf( channel_num_str, "Ch %d: ", frame.mType );
+        sprintf( channel_num_str, "Ch %d: ", frame.mType + 1 );
         AddResultString( channel_num_str, number_str );
     }
     break;
@@ -107,7 +107,7 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
             AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
 
-        sprintf( channel_num_str, "%d", frame.mType );
+        sprintf( channel_num_str, "%d", frame.mType  + 1);
         ss << time_str << "," << channel_num_str << "," << number_str << std::endl;
 
         AnalyzerHelpers::AppendToFile( ( U8* )ss.str().c_str(), ss.str().length(), f );
@@ -161,7 +161,7 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
             AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
 
-        sprintf( channel_num_str, "ch %d: ", frame.mType );
+        sprintf( channel_num_str, "ch %d: ", frame.mType + 1 );
         AddTabularText( channel_num_str, number_str );
     }
     break;

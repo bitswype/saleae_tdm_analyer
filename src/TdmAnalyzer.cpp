@@ -137,7 +137,7 @@ void TdmAnalyzer::AnalyzeSubFrame( U32 starting_index, U32 num_audio_bits, U32 s
     Frame frame;
     frame.mData1 = result;
     
-    frame.mType = U8( subframe_index + 1);
+    frame.mType = U8( subframe_index);
 
     frame.mFlags = 0;
     frame.mStartingSampleInclusive = mDataValidEdges[ starting_index ];
