@@ -21,7 +21,8 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mWordAlignment( LEFT_ALIGNED ),
       mBitAlignment( BITS_SHIFTED_RIGHT_1 ),
       mSigned( AnalyzerEnums::UnsignedInteger ),
-      mFrameSyncInverted( FS_NOT_INVERTED )
+      mFrameSyncInverted( FS_NOT_INVERTED ),
+      mEnableAdvancedAnalysis( false )
 {
     mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
     mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka TDM SCK or BCLK - Continuous Serial Clock, aka Bit Clock" );
@@ -114,6 +115,13 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
                                              "when frame sync (FRAME) is logic 0, indicate the start of a new frame (inverted)" );
     mFrameSyncInvertedInterface->SetNumber( mFrameSyncInverted );
 
+    mEnableAdvancedAnalysisInterface.reset(new AnalyzerSettingInterfaceBool() );
+    mEnableAdvancedAnalysisInterface->SetTitleAndTooltip(
+        "Advanced analysis of TDM signals", "Enables more in depth analysis of the TDM data stream, identifies more potential problems"
+    );
+    mEnableAdvancedAnalysisInterface->SetCheckBoxText("Perform more analysis on the TDM signal, may slow down processing");
+    mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
+
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
     AddInterface( mDataChannelInterface.get() );
@@ -126,6 +134,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mBitAlignmentInterface.get() );
     AddInterface( mSignedInterface.get() );
     AddInterface( mFrameSyncInvertedInterface.get() );
+    AddInterface( mEnableAdvancedAnalysisInterface.get() );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
     AddExportOption( 0, "Export as text/csv file" );
@@ -160,6 +169,7 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mSignedInterface->SetNumber( mSigned );
 
     mFrameSyncInvertedInterface->SetNumber( mFrameSyncInverted );
+    mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
 }
 
 bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
@@ -214,6 +224,7 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mSigned = AnalyzerEnums::Sign( U32( mSignedInterface->GetNumber() ) );
 
     mFrameSyncInverted = TdmFrameSelectInverted( U32( mFrameSyncInvertedInterface->GetNumber() ) );
+    mEnableAdvancedAnalysis = bool(mEnableAdvancedAnalysisInterface->GetValue() );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
 
@@ -258,6 +269,8 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     if( text_archive >> *( U32* )&fs_inverted )
         mFrameSyncInverted = fs_inverted;
 
+    text_archive >> *( bool* )&mEnableAdvancedAnalysis;
+
     ClearChannels();
     AddChannel( mClockChannel, "TDM CLOCK", true );
     AddChannel( mFrameChannel, "TDM FRAME", true );
@@ -288,6 +301,7 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mSigned;
 
     text_archive << mFrameSyncInverted;
+    text_archive << mEnableAdvancedAnalysis;
 
     return SetReturnString( text_archive.GetString() );
 }
