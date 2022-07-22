@@ -246,30 +246,85 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     if( strcmp( name_string, "SaleaeTdmAnalyzer" ) != 0 )
         AnalyzerHelpers::Assert( "SaleaeTdmAnalyzer: Provided with a settings string that doesn't belong to us;" );
 
-    text_archive >> mClockChannel;
-    text_archive >> mFrameChannel;
-    text_archive >> mDataChannel;
-
-    text_archive >> mSlotsPerFrame;
-    text_archive >> mBitsPerSlot;
-    text_archive >> mDataBitsPerSlot;
-    text_archive >> *( U32* )&mShiftOrder;
-    text_archive >> *( U32* )&mDataValidEdge;
-
-    text_archive >> *( U32* )&mWordAlignment;
-    text_archive >> *( U32* )&mBitAlignment;
-
     // check to make sure loading it actual works befor assigning the result -- do this when adding settings to an anylzer which has been
     // previously released.
+    Channel clock_channel;
+    if( text_archive >> clock_channel )
+    {
+        mClockChannel = clock_channel;
+    }
+
+    Channel frame_channel;
+    if( text_archive >> frame_channel )
+    {
+        mFrameChannel = frame_channel;
+    }
+
+    Channel data_channel;
+    if( text_archive >> data_channel )
+    {
+        mDataChannel = data_channel;
+    }
+
+    U32 slots_per_frame;
+    if( text_archive >> slots_per_frame )
+    {
+        mSlotsPerFrame = slots_per_frame;
+    }
+
+    U32 bits_per_slot;
+    if( text_archive >> bits_per_slot )
+    {
+        mBitsPerSlot = bits_per_slot;
+    }
+
+    U32 data_bits_per_slot;
+    if( text_archive >> data_bits_per_slot )
+    {
+        mDataBitsPerSlot = data_bits_per_slot;
+    }
+
+    U32 shift_order;
+    if( text_archive >> shift_order )
+    {
+        mShiftOrder = AnalyzerEnums::ShiftOrder( shift_order );
+    }
+
+    U32 data_valid_edge;
+    if( text_archive >> data_valid_edge )
+    {
+        mDataValidEdge = AnalyzerEnums::EdgeDirection( data_valid_edge );
+    }
+
+    U32 data_alignment;
+    if( text_archive >> data_alignment )
+    {
+        mWordAlignment = TdmWordAlignment( data_alignment );
+    }
+
+    U32 bit_alignment;
+    if( text_archive >> bit_alignment )
+    {
+        mBitAlignment = TdmBitAlignment( bit_alignment );
+    }
+
     AnalyzerEnums::Sign sign;
     if( text_archive >> *( U32* )&sign )
+    {
         mSigned = sign;
+    }
 
     TdmFrameSelectInverted fs_inverted;
     if( text_archive >> *( U32* )&fs_inverted )
+    {
         mFrameSyncInverted = fs_inverted;
+    }
 
-    text_archive >> *( bool* )&mEnableAdvancedAnalysis;
+    bool enable_advanced;
+    if (text_archive >> enable_advanced)
+    {
+        mEnableAdvancedAnalysis = enable_advanced;
+    }
 
     ClearChannels();
     AddChannel( mClockChannel, "TDM CLOCK", true );
