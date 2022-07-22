@@ -207,8 +207,11 @@ void TdmAnalyzer::GetFrame()
         if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrame == BIT_HIGH) && (mLastFrame == BIT_LOW)) ||
             ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrame == BIT_LOW) && (mLastFrame == BIT_HIGH)))
         {
-            mResults->AddMarker(mCurrentSample, AnalyzerResults::MarkerType::Start, mSettings->mFrameChannel);
-
+            if( mSettings->mEnableAdvancedAnalysis )
+            {
+                mResults->AddMarker(mCurrentSample, AnalyzerResults::MarkerType::Start, mSettings->mFrameChannel);
+            }
+            
             if( mSettings->mBitAlignment == BITS_SHIFTED_RIGHT_1 )
             {
                 // this bit belongs to us:
@@ -260,7 +263,7 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     U32 data_transitions = mData->AdvanceToAbsPosition( data_valid_sample );
     data = mData->GetBitState();
 
-    if(data_transitions > 1)
+    if(data_transitions > 1 && mSettings->mEnableAdvancedAnalysis )
     {
         mResults->AddMarker(data_valid_sample, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mFrameChannel);
     }
@@ -268,7 +271,7 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     U32 frame_transitions = mFrame->AdvanceToAbsPosition( data_valid_sample );
     frame = mFrame->GetBitState();
 
-    if(frame_transitions > 1)
+    if(frame_transitions > 1 && mSettings->mEnableAdvancedAnalysis )
     {
         mResults->AddMarker(data_valid_sample, AnalyzerResults::MarkerType::ErrorX, mSettings->mFrameChannel);
     }
@@ -276,9 +279,12 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     sample_number = data_valid_sample;
 
     mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
-    mResults->AddMarker(data_valid_sample,
-    data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero, 
-    mSettings->mDataChannel);
+    if( mSettings->mEnableAdvancedAnalysis )
+    {
+        mResults->AddMarker(data_valid_sample,
+        data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero, 
+        mSettings->mDataChannel);
+    }
 
     mClock->AdvanceToNextEdge(); // advance one more, so we're ready for next time this function is called.
 }
