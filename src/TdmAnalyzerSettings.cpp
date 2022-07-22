@@ -218,7 +218,7 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mShiftOrder = AnalyzerEnums::ShiftOrder( U32( mShiftOrderInterface->GetNumber() ) );
     mDataValidEdge = AnalyzerEnums::EdgeDirection( U32( mDataValidEdgeInterface->GetNumber() ) );
 
-    mDataAlignment = TdmWordAlignment( U32( mWordAlignmentInterface->GetNumber() ) );
+    mDataAlignment = TdmDataAlignment( U32( mWordAlignmentInterface->GetNumber() ) );
     mBitAlignment = TdmBitAlignment( U32( mBitAlignmentInterface->GetNumber() ) );
 
     mSigned = AnalyzerEnums::Sign( U32( mSignedInterface->GetNumber() ) );
@@ -299,7 +299,7 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     U32 data_alignment;
     if( text_archive >> data_alignment )
     {
-        mDataAlignment = TdmWordAlignment( data_alignment );
+        mDataAlignment = TdmDataAlignment( data_alignment );
     }
 
     U32 bit_alignment;
