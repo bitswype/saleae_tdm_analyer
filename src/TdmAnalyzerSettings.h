@@ -48,6 +48,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     AnalyzerEnums::Sign mSigned;
 
     TdmFrameSelectInverted mFrameSyncInverted;
+    bool mEnableAdvancedAnalysis;
 
   protected:
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
@@ -66,5 +67,6 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mSignedInterface;
 
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameSyncInvertedInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceBool> mEnableAdvancedAnalysisInterface;
 };
 #endif // TDM_ANALYZER_SETTINGS
