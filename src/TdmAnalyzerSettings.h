@@ -4,7 +4,7 @@
 #include <AnalyzerSettings.h>
 #include <AnalyzerTypes.h>
 
-enum TdmWordAlignment
+enum TdmDataAlignment
 {
     LEFT_ALIGNED,
     RIGHT_ALIGNED
@@ -43,7 +43,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     U32 mDataBitsPerSlot;
     U32 mSlotsPerFrame;
 
-    TdmWordAlignment mDataAlignment;
+    TdmDataAlignment mDataAlignment;
     TdmBitAlignment mBitAlignment;
     AnalyzerEnums::Sign mSigned;
 
