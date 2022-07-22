@@ -26,7 +26,7 @@ void TdmSimulationDataGenerator::Initialize( U32 simulation_sample_rate, TdmAnal
     mShiftOrder = mSettings->mShiftOrder;
     mDataValidEdge = mSettings->mDataValidEdge;
 
-    mWordAlignment = mSettings->mWordAlignment;
+    mDataAlignment = mSettings->mDataAlignment;
     mBitAlignment = mSettings->mBitAlignment;
     mSigned = mSettings->mSigned;
     mFrameSyncInverted = mSettings->mFrameSyncInverted;
@@ -136,7 +136,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
         }
         break;
     case LeftPadding:
-        if( mWordAlignment == RIGHT_ALIGNED )
+        if( mDataAlignment == RIGHT_ALIGNED )
         {
             if( mPaddingCount < (mBitsPerSlot - mDataBitsPerSlot) )
             {
@@ -178,7 +178,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
         }
         break;
     case RightPadding:
-        if( mWordAlignment == LEFT_ALIGNED )
+        if( mDataAlignment == LEFT_ALIGNED )
         {
             if( mPaddingCount < (mBitsPerSlot - mDataBitsPerSlot) )
             {

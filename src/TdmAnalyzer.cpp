@@ -93,7 +93,7 @@ void TdmAnalyzer::AnalyzeFrame()
     U32 num_unused_bits = bits_per_slot - num_audio_bits;
     U32 starting_offset;
 
-    if( mSettings->mWordAlignment == LEFT_ALIGNED )
+    if( mSettings->mDataAlignment == LEFT_ALIGNED )
         starting_offset = 0;
     else
         starting_offset = num_unused_bits;

@@ -43,7 +43,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     U32 mDataBitsPerSlot;
     U32 mSlotsPerFrame;
 
-    TdmWordAlignment mWordAlignment;
+    TdmWordAlignment mDataAlignment;
     TdmBitAlignment mBitAlignment;
     AnalyzerEnums::Sign mSigned;
 
