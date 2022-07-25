@@ -256,37 +256,66 @@ void TdmAnalyzer::SetupForGettingFirstBit()
 
 void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_number )
 {
-    // we always start off here so that the next edge is where the data is valid.
+    bool data_edge_concern = false;
+    bool frame_edge_concern = false;
+
+    // we enter the function with the clock state such that on the next edge is where the data is valid.
     mClock->AdvanceToNextEdge();
     U64 data_valid_sample = mClock->GetSampleNumber();
 
-    U32 data_transitions = mData->AdvanceToAbsPosition( data_valid_sample );
+    mData->AdvanceToAbsPosition( data_valid_sample );
     data = mData->GetBitState();
 
-    if(data_transitions > 1 && mSettings->mEnableAdvancedAnalysis )
-    {
-        mResults->AddMarker(data_valid_sample, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mFrameChannel);
-    }
-
-    U32 frame_transitions = mFrame->AdvanceToAbsPosition( data_valid_sample );
+    mFrame->AdvanceToAbsPosition( data_valid_sample );
     frame = mFrame->GetBitState();
 
-    if(frame_transitions > 1 && mSettings->mEnableAdvancedAnalysis )
-    {
-        mResults->AddMarker(data_valid_sample, AnalyzerResults::MarkerType::ErrorX, mSettings->mFrameChannel);
-    }
-
-    sample_number = data_valid_sample;
-
-    mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
     if( mSettings->mEnableAdvancedAnalysis )
+    {
+        // This section did not work.  Using these bools in the later check (marked below with a <here>)
+        // instead of the actual transition count would _always_ result in a marked edge.
+        U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge();
+        if( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true )
+        {
+            data_edge_concern = true;//mData->GetSampleOfNextEdge();
+            //mData->AdvanceToAbsPosition( data_edge_concern );
+        }
+        
+        if ( mFrame->WouldAdvancingCauseTransition( next_clk_edge_sample ) == true )
+        {
+            frame_edge_concern = true;//mFrame->GetSampleOfNextEdge();
+            //mFrame->AdvanceToAbsPosition( frame_edge_concern );
+        }
+    }
+    else
     {
         mResults->AddMarker(data_valid_sample,
         data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero, 
         mSettings->mDataChannel);
     }
 
+    sample_number = data_valid_sample;
+
+    mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
     mClock->AdvanceToNextEdge(); // advance one more, so we're ready for next time this function is called.
+
+    if ( mSettings->mEnableAdvancedAnalysis == true )
+    {
+        U64 next_clock_edge = mClock->GetSampleNumber();
+        U32 data_tranistions = mData->AdvanceToAbsPosition( next_clock_edge );
+        U32 frame_transitions = mFrame->AdvanceToAbsPosition( next_clock_edge );
+
+        U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge();
+        // <here> replace transition count with bool flag and always get a marker
+        if((data_tranistions > 0) && ( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
+        {
+            mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mDataChannel);
+        }
+
+        if((frame_transitions > 0) && ( mFrame->WouldAdvancingCauseTransition( next_clk_edge_sample ) == true))
+        {
+            mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mFrameChannel);
+        }
+    }
 }
 
 U32 TdmAnalyzer::GenerateSimulationData( U64 newest_sample_requested, U32 sample_rate, SimulationChannelDescriptor** simulation_channels )
