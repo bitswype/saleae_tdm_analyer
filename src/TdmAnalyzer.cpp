@@ -256,9 +256,6 @@ void TdmAnalyzer::SetupForGettingFirstBit()
 
 void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_number )
 {
-    bool data_edge_concern = false;
-    bool frame_edge_concern = false;
-
     // we enter the function with the clock state such that on the next edge is where the data is valid.
     mClock->AdvanceToNextEdge();
     U64 data_valid_sample = mClock->GetSampleNumber();
@@ -269,24 +266,7 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     mFrame->AdvanceToAbsPosition( data_valid_sample );
     frame = mFrame->GetBitState();
 
-    if( mSettings->mEnableAdvancedAnalysis )
-    {
-        // This section did not work.  Using these bools in the later check (marked below with a <here>)
-        // instead of the actual transition count would _always_ result in a marked edge.
-        U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge();
-        if( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true )
-        {
-            data_edge_concern = true;//mData->GetSampleOfNextEdge();
-            //mData->AdvanceToAbsPosition( data_edge_concern );
-        }
-        
-        if ( mFrame->WouldAdvancingCauseTransition( next_clk_edge_sample ) == true )
-        {
-            frame_edge_concern = true;//mFrame->GetSampleOfNextEdge();
-            //mFrame->AdvanceToAbsPosition( frame_edge_concern );
-        }
-    }
-    else
+    if( mSettings->mEnableAdvancedAnalysis == false)
     {
         mResults->AddMarker(data_valid_sample,
         data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero, 
@@ -305,7 +285,6 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
         U32 frame_transitions = mFrame->AdvanceToAbsPosition( next_clock_edge );
 
         U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge();
-        // <here> replace transition count with bool flag and always get a marker
         if((data_tranistions > 0) && ( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
         {
             mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mDataChannel);
