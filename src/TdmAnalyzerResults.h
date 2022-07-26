@@ -6,12 +6,16 @@
 class TdmAnalyzer;
 class TdmAnalyzerSettings;
 
+#define TOO_FEW_BITS_PER_FRAME  ( 1 << 0 )
+#define UNEXPECTED_BITS         ( 1 << 1 )
+#define MISSED_DATA             ( 1 << 2 )
+#define SHORT_SLOT              ( 1 << 3 )
+#define MISSED_FRAME_SYNC       ( 1 << 4 )
+
 enum TdmResultType
 {
     // leave numerical space for channels, frame mType is limited to 8 bits
     // which this is stored in, so keep the max number below 255
-    ErrorTooFewBits = 128,
-    ErrorDoesntDivideEvenly
 };
 
 

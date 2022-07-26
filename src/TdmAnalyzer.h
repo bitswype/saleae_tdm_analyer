@@ -25,7 +25,7 @@ class TdmAnalyzer : public Analyzer2
     disable : 4251 ) // warning C4251: 'TdmAnalyzer::<...>' : class <...> needs to have dll-interface to be used by clients of class
 
   protected: // functions
-    void AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subframe_index );
+    bool AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subframe_index ); // return true while there is data to analyze
     void AnalyzeFrame();
     void SetupForGettingFirstFrame();
     void GetFrame();
@@ -35,6 +35,8 @@ class TdmAnalyzer : public Analyzer2
   protected:
     std::unique_ptr<TdmAnalyzerSettings> mSettings;
     std::unique_ptr<TdmAnalyzerResults> mResults;
+    Frame mResultsFrame;
+    FrameV2 mResultsFrameV2;
     bool mSimulationInitilized;
     TdmSimulationDataGenerator mSimulationDataGenerator;
 
@@ -47,6 +49,7 @@ class TdmAnalyzer : public Analyzer2
     BitState mCurrentData;
     BitState mCurrentFrame;
     U64 mCurrentSample;
+    U8 mBitFlag;
 
     BitState mLastData;
     BitState mLastFrame;
@@ -54,6 +57,7 @@ class TdmAnalyzer : public Analyzer2
 
     std::vector<BitState> mDataBits;
     std::vector<U64> mDataValidEdges;
+    std::vector<U8> mDataFlags;
 #pragma warning( pop )
 };
 
