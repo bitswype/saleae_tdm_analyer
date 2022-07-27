@@ -41,7 +41,6 @@ void TdmAnalyzer::WorkerThread()
     for( ;; )
     {
         GetTdmFrame();
-        AnalyzeTdmFrame();
 
         mResults->CommitResults();
         ReportProgress( mClock->GetSampleNumber() );
@@ -97,13 +96,15 @@ void TdmAnalyzer::SetupForGettingFirstTdmFrame()
 void TdmAnalyzer::GetTdmFrame()
 {
     // on entering this function:
-    // mCurrentFrameState and State are the values of the first bit -- that belongs to us -- in the frame.
+    // we are at the beginning of a new TDM frame
+    // mCurrentFrameState and State are the values of the first bit -- that belongs to us -- in the TDM frame.
     // mLastFrameState and mLastDataState are the values from the bit just before.
 
     mDataBits.clear();
     mDataValidEdges.clear();
     mDataFlags.clear();
 
+    mSlotNum = 0;
 
     mDataBits.push_back( mCurrentDataState );
     mDataValidEdges.push_back( mCurrentSample );
@@ -115,6 +116,11 @@ void TdmAnalyzer::GetTdmFrame()
 
     for( ;; )
     {
+        if( mDataBits.size() >= mSettings->mBitsPerSlot)
+        {
+            AnalyzeTdmSlot();
+        }
+
         GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
 
         if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrameState == BIT_HIGH) && (mLastFrameState == BIT_LOW)) ||
@@ -136,6 +142,8 @@ void TdmAnalyzer::GetTdmFrame()
                 mLastFrameState = mCurrentFrameState;
                 mLastDataState = mCurrentDataState;
                 mLastSample = mCurrentSample;
+
+                AnalyzeTdmSlot();
 
                 GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
             }
@@ -200,30 +208,57 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     }
 }
 
-bool TdmAnalyzer::AnalyzeTdmSlot( U32 starting_index, U32 num_audio_bits, U32 subframe_index )
+void TdmAnalyzer::AnalyzeTdmSlot()
 {
     U64 result = 0;
-    U32 target_count = starting_index + num_audio_bits;
+    U32 starting_index = 0;
+    U32 num_bits_to_process = mDataBits.size();
 
+    // begin a new frame
     mResultsFrame.mFlags = 0;
+    mResultsFrame.mStartingSampleInclusive = 0;
+    mResultsFrame.mEndingSampleInclusive = 0;
+    mResultsFrame.mData1 = 0;
+    mResultsFrame.mData2 = 0;
+    mResultsFrame.mType = 0;
 
-    if( starting_index >= mDataBits.size() )
+    if( mSlotNum >= mSettings->mSlotsPerFrame )
     {
-        // case where there is enough bits of padding, but no data
-        // case where there is no data
-        return false;
+        mResultsFrame.mFlags |= UNEXPECTED_BITS | DISPLAY_AS_WARNING_FLAG;
     }
 
-    // verify we have enough data to process a complete slot
-    if( (mDataBits.size() - (starting_index + num_audio_bits)) < 0)
+    if( num_bits_to_process < mSettings->mBitsPerSlot )
     {
-        // how many bits can we use?
-        target_count = starting_index + (mDataBits.size() - starting_index);
         mResultsFrame.mFlags |= SHORT_SLOT | DISPLAY_AS_ERROR_FLAG;
-        return false;
+        mDataBits.clear();
+        mDataValidEdges.clear();
+        mDataFlags.clear();
+
+        mSlotNum++;
+        return;
     }
 
-    for( U32 i = starting_index; i < target_count; i++)
+    if( mSettings->mDataAlignment == TdmDataAlignment::RIGHT_ALIGNED )
+    {
+        starting_index = mSettings->mBitsPerSlot - mSettings->mDataBitsPerSlot - 1;
+    }
+    else // mSettings->mDataAlignment == TdmDataAlignment::LEFT_ALIGNED
+    {
+        num_bits_to_process = mSettings->mDataBitsPerSlot;
+    }
+
+    if( num_bits_to_process - starting_index <= 1 )
+    {
+        mDataBits.clear();
+        mDataValidEdges.clear();
+        mDataFlags.clear();
+
+        mSlotNum++;
+        return;
+    }
+
+    // scan for and flag any data errors found during processing of each non-padded bit
+    for( U32 i = starting_index; i < num_bits_to_process; i++)
     {
         mResultsFrame.mFlags |= mDataFlags[ i ];
     }
@@ -231,7 +266,7 @@ bool TdmAnalyzer::AnalyzeTdmSlot( U32 starting_index, U32 num_audio_bits, U32 su
     if( mSettings->mShiftOrder == AnalyzerEnums::LsbFirst )
     {
         U64 bit_value = 1ULL;
-        for( U32 i = starting_index; i < target_count; i++ )
+        for( U32 i = starting_index; i < num_bits_to_process; i++ )
         {
             if( mDataBits[ i ] == BIT_HIGH )
                 result |= bit_value;
@@ -241,8 +276,8 @@ bool TdmAnalyzer::AnalyzeTdmSlot( U32 starting_index, U32 num_audio_bits, U32 su
     }
     else
     {
-        U64 bit_value = 1ULL << ( num_audio_bits - 1 );
-        for( U32 i = starting_index; i < target_count; i++ )
+        U64 bit_value = 1ULL << ( mSettings->mDataBitsPerSlot - 1 );
+        for( U32 i = starting_index; i < num_bits_to_process; i++ )
         {
             if( mDataBits[ i ] == BIT_HIGH )
                 result |= bit_value;
@@ -250,20 +285,13 @@ bool TdmAnalyzer::AnalyzeTdmSlot( U32 starting_index, U32 num_audio_bits, U32 su
             bit_value >>= 1;
         }
     }
-
-    // enum TdmResultType { Channel1, Channel2, ErrorTooFewBits, ErrorDoesntDivideEvenly };
-    // add result bubble
     
     mResultsFrame.mData1 = result;
-    mResultsFrame.mType = U8( subframe_index );
-
-    if( subframe_index >= mSettings->mSlotsPerFrame )
-    {
-        mResultsFrame.mFlags |= UNEXPECTED_BITS | DISPLAY_AS_WARNING_FLAG;
-    }
+    mResultsFrame.mType = U8( mSlotNum );
     mResultsFrame.mStartingSampleInclusive = mDataValidEdges[ starting_index ];
-    mResultsFrame.mEndingSampleInclusive = mDataValidEdges[ target_count - 1 ];
+    mResultsFrame.mEndingSampleInclusive = mDataValidEdges[ num_bits_to_process - 1 ];
     mResults->AddFrame( mResultsFrame );
+
     FrameV2 frame_v2;
     frame_v2.AddInteger( "channel", mResultsFrame.mType );
     S64 adjusted_value = result;
@@ -273,53 +301,13 @@ bool TdmAnalyzer::AnalyzeTdmSlot( U32 starting_index, U32 num_audio_bits, U32 su
     }
     frame_v2.AddInteger( "data", adjusted_value );
     mResults->AddFrameV2( frame_v2, "data", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
+    //mResults->CommitResults();
 
-    return true;
-}
+    mDataBits.clear();
+    mDataValidEdges.clear();
+    mDataFlags.clear();
 
-void TdmAnalyzer::AnalyzeTdmFrame()
-{
-    U32 num_bits = mDataBits.size();
-
-    U32 num_slots = mSettings->mSlotsPerFrame;
-    U32 bits_per_slot = mSettings->mBitsPerSlot;
-    U32 num_audio_bits = mSettings->mDataBitsPerSlot;
-
-    mResultsFrame.mStartingSampleInclusive = 0;
-    mResultsFrame.mEndingSampleInclusive = 0;
-    mResultsFrame.mData1 = 0;
-    mResultsFrame.mData2 = 0;
-    mResultsFrame.mType = 0;
-    mResultsFrame.mFlags = 0;
-
-    if( num_bits < (num_slots * bits_per_slot))
-    {
-        //Frame frame;
-        //frame.mData1 = num_bits;
-        //frame.mType = U8( ErrorTooFewBitsPerFrame );
-        mResultsFrame.mFlags |= TOO_FEW_BITS_PER_FRAME | DISPLAY_AS_ERROR_FLAG;
-        //frame.mStartingSampleInclusive = mDataValidEdges.front();
-        //frame.mEndingSampleInclusive = mDataValidEdges.back();
-        //mResults->AddFrame( frame );
-        //FrameV2 frame_v2;
-        //frame_v2.AddString( "error", "invalid number of bits in frame" );
-        //mResults->AddFrameV2( frame_v2, "error", frame.mStartingSampleInclusive, frame.mEndingSampleInclusive );
-        //return;
-    }
-    
-    U32 num_unused_bits = bits_per_slot - num_audio_bits;
-    U32 starting_offset;
-
-    if( mSettings->mDataAlignment == LEFT_ALIGNED )
-        starting_offset = 0;
-    else
-        starting_offset = num_unused_bits;
-
-    U32 i = 0;
-    while( AnalyzeTdmSlot( i * bits_per_slot + starting_offset, num_audio_bits, i ) )
-    {
-        i++;
-    }
+    mSlotNum++;
 }
 
 U32 TdmAnalyzer::GenerateSimulationData( U64 newest_sample_requested, U32 sample_rate, SimulationChannelDescriptor** simulation_channels )

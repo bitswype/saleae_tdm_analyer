@@ -25,8 +25,7 @@ class TdmAnalyzer : public Analyzer2
     disable : 4251 ) // warning C4251: 'TdmAnalyzer::<...>' : class <...> needs to have dll-interface to be used by clients of class
 
   protected: // functions
-    bool AnalyzeTdmSlot( U32 starting_index, U32 num_bits, U32 subframe_index ); // return true while there is data to analyze
-    void AnalyzeTdmFrame();
+    void AnalyzeTdmSlot();
     void SetupForGettingFirstTdmFrame();
     void GetTdmFrame();
     void SetupForGettingFirstBit();
@@ -50,6 +49,7 @@ class TdmAnalyzer : public Analyzer2
     BitState mCurrentFrameState;
     U64 mCurrentSample;
     U8 mBitFlag;
+    U32 mSlotNum;
 
     BitState mLastDataState;
     BitState mLastFrameState;
