@@ -59,6 +59,10 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
         {
             sprintf(error_str + strlen(error_str), "Frame Sync Missed ");
         }
+        if(frame.mFlags & BITCLOCK_ERROR)
+        {
+            sprintf(error_str + strlen(error_str), "Bitclock Error ");
+        }
 
         if(frame.mFlags & UNEXPECTED_BITS)
         {
@@ -162,27 +166,28 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
 
     if(frame.mFlags & SHORT_SLOT)
     {
-        sprintf(error_str, "Short Slot ");
+        sprintf(error_str, " Short Slot");
     }
     if(frame.mFlags & MISSED_DATA)
     {
-        sprintf(error_str + strlen(error_str), "Data Error ");
+        sprintf(error_str + strlen(error_str), " Data Error");
     }
     if(frame.mFlags & MISSED_FRAME_SYNC)
     {
-        sprintf(error_str + strlen(error_str), "Frame Sync Missed ");
+        sprintf(error_str + strlen(error_str), " Frame Sync Missed");
+    }
+    if(frame.mFlags & BITCLOCK_ERROR)
+    {
+        sprintf(error_str + strlen(error_str), " Bitclock Error");
     }
 
     if(frame.mFlags & UNEXPECTED_BITS)
     {
-        sprintf(warning_str, "Extra Slot ");
+        sprintf(warning_str, " Extra Slot");
     }
 
     sprintf( channel_num_str, "ch %d: ", frame.mType + 1 );
-    AddTabularText( channel_num_str, number_str );
-    AddTabularText( "Errors", error_str);
-    AddTabularText( "Warnings", warning_str );
-
+    AddTabularText( channel_num_str, number_str, error_str, warning_str, "\n" );
 }
 
 void TdmAnalyzerResults::GeneratePacketTabularText( U64 /*packet_id*/,

@@ -11,6 +11,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     : mClockChannel( UNDEFINED_CHANNEL ),
       mFrameChannel( UNDEFINED_CHANNEL ),
       mDataChannel( UNDEFINED_CHANNEL ),
+      mTdmFrameRate(48000),
 
       mSlotsPerFrame( 8 ),
       mBitsPerSlot( 16 ),
@@ -35,6 +36,11 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mDataChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
     mDataChannelInterface->SetTitleAndTooltip( "DATA", "Data, aka TDM SDx - Serial Data In/Out" );
     mDataChannelInterface->SetChannel( mDataChannel );
+
+    mTdmFrameRateInterface.reset( new AnalyzerSettingInterfaceInteger() );
+    mTdmFrameRateInterface->SetTitleAndTooltip("Frame Rate (Audio Sample Rate) Hz", "Set the number of frames / second");
+    mTdmFrameRateInterface->SetMin(1);
+    mTdmFrameRateInterface->SetInteger( mTdmFrameRate );
 
     mSlotsPerFrameInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mSlotsPerFrameInterface->SetTitleAndTooltip( "Number of slots (channels) per TDM frame (slots/frame)",
@@ -116,15 +122,15 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mFrameSyncInvertedInterface->SetNumber( mFrameSyncInverted );
 
     mEnableAdvancedAnalysisInterface.reset(new AnalyzerSettingInterfaceBool() );
-    mEnableAdvancedAnalysisInterface->SetTitleAndTooltip(
-        "Advanced analysis of TDM signals", "Enables more in depth analysis of the TDM data stream, identifies more potential problems"
-    );
+    mEnableAdvancedAnalysisInterface->SetTitleAndTooltip("Advanced analysis of TDM signals", 
+                        "Enables more in depth analysis of the TDM data stream, identifies more potential problems");
     mEnableAdvancedAnalysisInterface->SetCheckBoxText("Perform more analysis on the TDM signal, may slow down processing");
     mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
 
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
     AddInterface( mDataChannelInterface.get() );
+    AddInterface( mTdmFrameRateInterface.get() );
     AddInterface( mSlotsPerFrameInterface.get() );
     AddInterface( mBitsPerSlotInterface.get() );
     AddInterface( mDataBitsPerSlotInterface.get() );
@@ -157,6 +163,7 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mFrameChannelInterface->SetChannel( mFrameChannel );
     mDataChannelInterface->SetChannel( mDataChannel );
 
+    mTdmFrameRateInterface->SetInteger( mTdmFrameRate );
     mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
     mBitsPerSlotInterface->SetNumber( mBitsPerSlot );
     mDataBitsPerSlotInterface->SetNumber( mDataBitsPerSlot );
@@ -205,6 +212,7 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mFrameChannel = frame_channel;
     mDataChannel = data_channel;
 
+    mTdmFrameRate = U32( mTdmFrameRateInterface->GetInteger() );
     mSlotsPerFrame = U32( mSlotsPerFrameInterface->GetNumber() );
     mBitsPerSlot = U32( mBitsPerSlotInterface->GetNumber() );
     mDataBitsPerSlot = U32( mDataBitsPerSlotInterface->GetNumber() );
@@ -264,6 +272,12 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
     if( text_archive >> data_channel )
     {
         mDataChannel = data_channel;
+    }
+
+    U32 tdm_frame_rate;
+    if( text_archive >> tdm_frame_rate )
+    {
+        mTdmFrameRate = tdm_frame_rate;
     }
 
     U32 slots_per_frame;
@@ -344,6 +358,7 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mFrameChannel;
     text_archive << mDataChannel;
 
+    text_archive << mTdmFrameRate;
     text_archive << mSlotsPerFrame;
     text_archive << mBitsPerSlot;
     text_archive << mDataBitsPerSlot;

@@ -11,6 +11,8 @@ class TdmAnalyzerSettings;
 #define MISSED_DATA             ( 1 << 2 )
 #define SHORT_SLOT              ( 1 << 3 )
 #define MISSED_FRAME_SYNC       ( 1 << 4 )
+#define BITCLOCK_ERROR          ( 1 << 5 )
+// bits 6 & 7 are used for the warning / error flag
 
 enum TdmResultType
 {

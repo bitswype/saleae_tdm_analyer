@@ -37,6 +37,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     Channel mFrameChannel;
     Channel mDataChannel;
 
+    U32 mTdmFrameRate;
     AnalyzerEnums::ShiftOrder mShiftOrder;
     AnalyzerEnums::EdgeDirection mDataValidEdge;
     U32 mBitsPerSlot;
@@ -55,6 +56,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mFrameChannelInterface;
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mDataChannelInterface;
 
+    std::unique_ptr<AnalyzerSettingInterfaceInteger> mTdmFrameRateInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mSlotsPerFrameInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mBitsPerSlotInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mDataBitsPerSlotInterface;
