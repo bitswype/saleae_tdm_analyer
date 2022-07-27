@@ -194,14 +194,10 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
         U32 frame_transitions = mFrame->AdvanceToAbsPosition( next_clock_edge );
         U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge(); // psuedo low -> high
 
-        mResultsFrame.mData2 = U64(mDesiredBitClockPeriod); // mSampleRate;
-
         if(((next_clk_edge_sample - data_valid_sample) > (U64(mDesiredBitClockPeriod) + 1)) || ((next_clk_edge_sample - data_valid_sample) < (U64(mDesiredBitClockPeriod) - 1)))
         {
-            mResultsFrame.mData2 = (next_clk_edge_sample - data_valid_sample);
             mBitFlag |= BITCLOCK_ERROR | DISPLAY_AS_ERROR_FLAG;
         }
-
         
         if((data_tranistions > 0) && ( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
         {
@@ -228,7 +224,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mResultsFrame.mStartingSampleInclusive = 0;
     mResultsFrame.mEndingSampleInclusive = 0;
     mResultsFrame.mData1 = 0;
-    //mResultsFrame.mData2 = 0;
+    mResultsFrame.mData2 = 0;
     mResultsFrame.mType = 0;
 
     if( mSlotNum >= mSettings->mSlotsPerFrame )
@@ -336,7 +332,6 @@ void TdmAnalyzer::AnalyzeTdmSlot()
 
     frame_v2.AddString("errors", error_str);
     frame_v2.AddString("warnings", warning_str);
-    frame_v2.AddInteger("data2", mResultsFrame.mData2);
     mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     
     mResults->CommitResults();
