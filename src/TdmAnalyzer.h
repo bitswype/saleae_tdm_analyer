@@ -25,10 +25,10 @@ class TdmAnalyzer : public Analyzer2
     disable : 4251 ) // warning C4251: 'TdmAnalyzer::<...>' : class <...> needs to have dll-interface to be used by clients of class
 
   protected: // functions
-    bool AnalyzeSubFrame( U32 starting_index, U32 num_bits, U32 subframe_index ); // return true while there is data to analyze
-    void AnalyzeFrame();
-    void SetupForGettingFirstFrame();
-    void GetFrame();
+    bool AnalyzeTdmSlot( U32 starting_index, U32 num_bits, U32 subframe_index ); // return true while there is data to analyze
+    void AnalyzeTdmFrame();
+    void SetupForGettingFirstTdmFrame();
+    void GetTdmFrame();
     void SetupForGettingFirstBit();
     void GetNextBit( BitState& data, BitState& frame, U64& sample_number );
 
@@ -46,13 +46,13 @@ class TdmAnalyzer : public Analyzer2
 
     AnalyzerResults::MarkerType mArrowMarker;
 
-    BitState mCurrentData;
-    BitState mCurrentFrame;
+    BitState mCurrentDataState;
+    BitState mCurrentFrameState;
     U64 mCurrentSample;
     U8 mBitFlag;
 
-    BitState mLastData;
-    BitState mLastFrame;
+    BitState mLastDataState;
+    BitState mLastFrameState;
     U64 mLastSample;
 
     std::vector<BitState> mDataBits;
