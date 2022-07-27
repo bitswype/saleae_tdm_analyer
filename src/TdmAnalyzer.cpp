@@ -41,9 +41,6 @@ void TdmAnalyzer::WorkerThread()
     for( ;; )
     {
         GetTdmFrame();
-
-        mResults->CommitResults();
-        ReportProgress( mClock->GetSampleNumber() );
         CheckIfThreadShouldExit();
     }
 }
@@ -230,21 +227,17 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     if( num_bits_to_process < mSettings->mBitsPerSlot )
     {
         mResultsFrame.mFlags |= SHORT_SLOT | DISPLAY_AS_ERROR_FLAG;
-        mDataBits.clear();
-        mDataValidEdges.clear();
-        mDataFlags.clear();
-
-        mSlotNum++;
-        return;
     }
-
-    if( mSettings->mDataAlignment == TdmDataAlignment::RIGHT_ALIGNED )
+    else
     {
-        starting_index = mSettings->mBitsPerSlot - mSettings->mDataBitsPerSlot - 1;
-    }
-    else // mSettings->mDataAlignment == TdmDataAlignment::LEFT_ALIGNED
-    {
-        num_bits_to_process = mSettings->mDataBitsPerSlot;
+        if( mSettings->mDataAlignment == TdmDataAlignment::RIGHT_ALIGNED )
+        {
+            starting_index = mSettings->mBitsPerSlot - mSettings->mDataBitsPerSlot - 1;
+        }
+        else // mSettings->mDataAlignment == TdmDataAlignment::LEFT_ALIGNED
+        {
+            num_bits_to_process = mSettings->mDataBitsPerSlot;
+        }
     }
 
     if( num_bits_to_process - starting_index <= 1 )
@@ -263,26 +256,29 @@ void TdmAnalyzer::AnalyzeTdmSlot()
         mResultsFrame.mFlags |= mDataFlags[ i ];
     }
 
-    if( mSettings->mShiftOrder == AnalyzerEnums::LsbFirst )
+    if( mResultsFrame.mFlags & SHORT_SLOT == 0)
     {
-        U64 bit_value = 1ULL;
-        for( U32 i = starting_index; i < num_bits_to_process; i++ )
+        if( mSettings->mShiftOrder == AnalyzerEnums::LsbFirst )
         {
-            if( mDataBits[ i ] == BIT_HIGH )
-                result |= bit_value;
+            U64 bit_value = 1ULL;
+            for( U32 i = starting_index; i < num_bits_to_process; i++ )
+            {
+                if( mDataBits[ i ] == BIT_HIGH )
+                    result |= bit_value;
 
-            bit_value <<= 1;
+                bit_value <<= 1;
+            }
         }
-    }
-    else
-    {
-        U64 bit_value = 1ULL << ( mSettings->mDataBitsPerSlot - 1 );
-        for( U32 i = starting_index; i < num_bits_to_process; i++ )
+        else
         {
-            if( mDataBits[ i ] == BIT_HIGH )
-                result |= bit_value;
+            U64 bit_value = 1ULL << ( mSettings->mDataBitsPerSlot - 1 );
+            for( U32 i = starting_index; i < num_bits_to_process; i++ )
+            {
+                if( mDataBits[ i ] == BIT_HIGH )
+                    result |= bit_value;
 
-            bit_value >>= 1;
+                bit_value >>= 1;
+            }
         }
     }
     
@@ -301,7 +297,9 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     }
     frame_v2.AddInteger( "data", adjusted_value );
     mResults->AddFrameV2( frame_v2, "data", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
-    //mResults->CommitResults();
+    
+    mResults->CommitResults();
+    ReportProgress( mClock->GetSampleNumber() );
 
     mDataBits.clear();
     mDataValidEdges.clear();
