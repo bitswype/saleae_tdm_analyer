@@ -35,6 +35,9 @@ void TdmAnalyzer::WorkerThread()
     mFrame = GetAnalyzerChannelData( mSettings->mFrameChannel );
     mData = GetAnalyzerChannelData( mSettings->mDataChannel );
 
+    mSampleRate = GetSampleRate();
+    mDesiredBitClockPeriod = double (mSampleRate) / double (mSettings->mSlotsPerFrame * mSettings->mBitsPerSlot * mSettings->mTdmFrameRate);
+
     SetupForGettingFirstBit();
     SetupForGettingFirstTdmFrame();
 
@@ -163,8 +166,8 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     mBitFlag = 0;
     
     // we enter the function with the clock state such that on the next edge is where the data is valid.
-    mClock->AdvanceToNextEdge();
-    U64 data_valid_sample = mClock->GetSampleNumber();
+    mClock->AdvanceToNextEdge(); // low -> high
+    U64 data_valid_sample = mClock->GetSampleNumber(); // high
 
     mData->AdvanceToAbsPosition( data_valid_sample );
     data = mData->GetBitState();
@@ -182,15 +185,24 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     sample_number = data_valid_sample;
 
     mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
-    mClock->AdvanceToNextEdge(); // advance one more, so we're ready for next time this function is called.
+    mClock->AdvanceToNextEdge(); // high -> low, advance one more, so we're ready for next time this function is called.
 
     if ( mSettings->mEnableAdvancedAnalysis == true )
     {
-        U64 next_clock_edge = mClock->GetSampleNumber();
+        U64 next_clock_edge = mClock->GetSampleNumber(); // low
         U32 data_tranistions = mData->AdvanceToAbsPosition( next_clock_edge );
         U32 frame_transitions = mFrame->AdvanceToAbsPosition( next_clock_edge );
+        U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge(); // psuedo low -> high
 
-        U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge();
+        mResultsFrame.mData2 = U64(mDesiredBitClockPeriod); // mSampleRate;
+
+        if(((next_clk_edge_sample - data_valid_sample) > (U64(mDesiredBitClockPeriod) + 1)) || ((next_clk_edge_sample - data_valid_sample) < (U64(mDesiredBitClockPeriod) - 1)))
+        {
+            mResultsFrame.mData2 = (next_clk_edge_sample - data_valid_sample);
+            mBitFlag |= BITCLOCK_ERROR | DISPLAY_AS_ERROR_FLAG;
+        }
+
+        
         if((data_tranistions > 0) && ( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
         {
             mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mDataChannel);
@@ -216,7 +228,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mResultsFrame.mStartingSampleInclusive = 0;
     mResultsFrame.mEndingSampleInclusive = 0;
     mResultsFrame.mData1 = 0;
-    mResultsFrame.mData2 = 0;
+    //mResultsFrame.mData2 = 0;
     mResultsFrame.mType = 0;
 
     if( mSlotNum >= mSettings->mSlotsPerFrame )
@@ -302,24 +314,29 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     
     if(mResultsFrame.mFlags & SHORT_SLOT)
     {
-        sprintf(error_str, "Short Slot ");
+        sprintf(error_str, "E: Short Slot ");
     }
     if(mResultsFrame.mFlags & MISSED_DATA)
     {
-        sprintf(error_str + strlen(error_str), "Data Error ");
+        sprintf(error_str + strlen(error_str), "E: Data Error ");
     }
     if(mResultsFrame.mFlags & MISSED_FRAME_SYNC)
     {
-        sprintf(error_str + strlen(error_str), "Frame Sync Missed ");
+        sprintf(error_str + strlen(error_str), "E: Frame Sync Missed ");
+    }
+    if(mResultsFrame.mFlags & BITCLOCK_ERROR)
+    {
+        sprintf(error_str + strlen(error_str), "E: Bitclock Error ");
     }
 
     if(mResultsFrame.mFlags & UNEXPECTED_BITS)
     {
-        sprintf(warning_str, "Extra Slot ");
+        sprintf(warning_str, "W: Extra Slot ");
     }
 
     frame_v2.AddString("errors", error_str);
     frame_v2.AddString("warnings", warning_str);
+    frame_v2.AddInteger("data2", mResultsFrame.mData2);
     mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     
     mResults->CommitResults();
@@ -345,7 +362,8 @@ U32 TdmAnalyzer::GenerateSimulationData( U64 newest_sample_requested, U32 sample
 
 U32 TdmAnalyzer::GetMinimumSampleRateHz()
 {
-    return 4000000; // just enough for our simulation.  Ideally we would be smarter about this but we don't know the bit rate in advance.
+    
+    return mSettings->mSlotsPerFrame * mSettings->mBitsPerSlot * mSettings->mTdmFrameRate * 4;
 }
 
 bool TdmAnalyzer::NeedsRerun()
