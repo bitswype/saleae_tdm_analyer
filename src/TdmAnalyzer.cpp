@@ -166,8 +166,8 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     mBitFlag = 0;
     
     // we enter the function with the clock state such that on the next edge is where the data is valid.
-    mClock->AdvanceToNextEdge(); // low -> high
-    U64 data_valid_sample = mClock->GetSampleNumber(); // high
+    mClock->AdvanceToNextEdge(); // R: low -> high / F: high -> low
+    U64 data_valid_sample = mClock->GetSampleNumber(); // R: high / F: low
 
     mData->AdvanceToAbsPosition( data_valid_sample );
     data = mData->GetBitState();
@@ -185,14 +185,14 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
     sample_number = data_valid_sample;
 
     mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
-    mClock->AdvanceToNextEdge(); // high -> low, advance one more, so we're ready for next time this function is called.
+    mClock->AdvanceToNextEdge(); // R: high -> low / F: low -> high, advance one more, so we're ready for next time this function is called.
 
     if ( mSettings->mEnableAdvancedAnalysis == true )
     {
-        U64 next_clock_edge = mClock->GetSampleNumber(); // low
+        U64 next_clock_edge = mClock->GetSampleNumber(); // R: low / F: high
         U32 data_tranistions = mData->AdvanceToAbsPosition( next_clock_edge );
         U32 frame_transitions = mFrame->AdvanceToAbsPosition( next_clock_edge );
-        U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge(); // psuedo low -> high
+        U64 next_clk_edge_sample = mClock->GetSampleOfNextEdge(); // psuedo R: low -> high / F: high -> low
 
         if(((next_clk_edge_sample - data_valid_sample) > (U64(mDesiredBitClockPeriod) + 1)) || ((next_clk_edge_sample - data_valid_sample) < (U64(mDesiredBitClockPeriod) - 1)))
         {
@@ -205,7 +205,7 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
             mBitFlag |= MISSED_DATA | DISPLAY_AS_ERROR_FLAG;
         }
 
-        if((frame_transitions > 0) && ( mFrame->WouldAdvancingCauseTransition( next_clk_edge_sample ) == true))
+        if((frame_transitions > 0) && ( mFrame->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
         {
             mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mFrameChannel);
             mBitFlag |= MISSED_FRAME_SYNC | DISPLAY_AS_ERROR_FLAG;
