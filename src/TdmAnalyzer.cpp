@@ -289,6 +289,9 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mResults->AddFrame( mResultsFrame );
 
     FrameV2 frame_v2;
+    char error_str[ 80 ] = "";
+    char warning_str[ 32 ] = "";
+
     frame_v2.AddInteger( "channel", mResultsFrame.mType );
     S64 adjusted_value = result;
     if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
@@ -296,7 +299,28 @@ void TdmAnalyzer::AnalyzeTdmSlot()
         adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( mResultsFrame.mData1, mSettings->mDataBitsPerSlot );
     }
     frame_v2.AddInteger( "data", adjusted_value );
-    mResults->AddFrameV2( frame_v2, "data", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
+    
+    if(mResultsFrame.mFlags & SHORT_SLOT)
+    {
+        sprintf(error_str, "Short Slot ");
+    }
+    if(mResultsFrame.mFlags & MISSED_DATA)
+    {
+        sprintf(error_str + strlen(error_str), "Data Error ");
+    }
+    if(mResultsFrame.mFlags & MISSED_FRAME_SYNC)
+    {
+        sprintf(error_str + strlen(error_str), "Frame Sync Missed ");
+    }
+
+    if(mResultsFrame.mFlags & UNEXPECTED_BITS)
+    {
+        sprintf(warning_str, "Extra Slot ");
+    }
+
+    frame_v2.AddString("errors", error_str);
+    frame_v2.AddString("warnings", warning_str);
+    mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     
     mResults->CommitResults();
     ReportProgress( mClock->GetSampleNumber() );

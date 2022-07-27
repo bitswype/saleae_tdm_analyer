@@ -93,7 +93,7 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
     U64 trigger_sample = mAnalyzer->GetTriggerSample();
     U32 sample_rate = mAnalyzer->GetSampleRate();
 
-    ss << "Time [s],Channel,Value" << std::endl;
+    ss << "Time [s],Channel,Value,Flags" << std::endl;
 
     U64 num_frames = GetNumFrames();
     for( U64 i = 0; i < num_frames; i++ )
@@ -102,6 +102,7 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
 
         char channel_num_str[ 128 ];
         char time_str[ 128 ];
+        char flag_str[ 8 ];
         AnalyzerHelpers::GetTimeString( frame.mStartingSampleInclusive, trigger_sample, sample_rate, time_str, 128 );
 
         char number_str[ 128 ];
@@ -118,7 +119,8 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
         }
 
         sprintf( channel_num_str, "%d", frame.mType  + 1);
-        ss << time_str << "," << channel_num_str << "," << number_str << std::endl;
+        sprintf( flag_str, "0x%02X", frame.mFlags);
+        ss << time_str << "," << channel_num_str << "," << number_str << "," << flag_str << std::endl;
 
         AnalyzerHelpers::AppendToFile( ( U8* )ss.str().c_str(), ss.str().length(), f );
         ss.str( std::string() );
@@ -136,48 +138,51 @@ void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase displ
 
 void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase display_base )
 {
+    char error_str[ 80 ] = "";
+    char warning_str[ 32 ] = "";
+
     ClearTabularText();
 
     Frame frame = GetFrame( frame_index );
 
-    switch( TdmResultType( frame.mType ) )
-    {
-    /*
-    case ErrorTooFewBits:
-    {
-        char bits_per_word[ 32 ];
-        sprintf( bits_per_word, "%d", mSettings->mDataBitsPerSlot );
+    char channel_num_str[ 128 ];
+    char number_str[ 128 ];
 
-        AddTabularText( "Error: too few bits, expecting ", bits_per_word );
-    }
-    break;
-    case ErrorDoesntDivideEvenly:
+    if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
     {
-        AddTabularText( "Error: bits don't divide evenly between subframes" );
+        S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
+        std::stringstream ss;
+        ss << signed_number;
+        strcpy( number_str, ss.str().c_str() );
     }
-    break;
-    */
-    default:
+    else
     {
-        char channel_num_str[ 128 ];
-        char number_str[ 128 ];
-        if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
-        {
-            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
-            std::stringstream ss;
-            ss << signed_number;
-            strcpy( number_str, ss.str().c_str() );
-        }
-        else
-        {
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
-        }
+        AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
+    }
 
-        sprintf( channel_num_str, "ch %d: ", frame.mType + 1 );
-        AddTabularText( channel_num_str, number_str );
+    if(frame.mFlags & SHORT_SLOT)
+    {
+        sprintf(error_str, "Short Slot ");
     }
-    break;
+    if(frame.mFlags & MISSED_DATA)
+    {
+        sprintf(error_str + strlen(error_str), "Data Error ");
     }
+    if(frame.mFlags & MISSED_FRAME_SYNC)
+    {
+        sprintf(error_str + strlen(error_str), "Frame Sync Missed ");
+    }
+
+    if(frame.mFlags & UNEXPECTED_BITS)
+    {
+        sprintf(warning_str, "Extra Slot ");
+    }
+
+    sprintf( channel_num_str, "ch %d: ", frame.mType + 1 );
+    AddTabularText( channel_num_str, number_str );
+    AddTabularText( "Errors", error_str);
+    AddTabularText( "Warnings", warning_str );
+
 }
 
 void TdmAnalyzerResults::GeneratePacketTabularText( U64 /*packet_id*/,
