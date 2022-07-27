@@ -36,12 +36,12 @@ void TdmAnalyzer::WorkerThread()
     mData = GetAnalyzerChannelData( mSettings->mDataChannel );
 
     SetupForGettingFirstBit();
-    SetupForGettingFirstFrame();
+    SetupForGettingFirstTdmFrame();
 
     for( ;; )
     {
-        GetFrame();
-        AnalyzeFrame();
+        GetTdmFrame();
+        AnalyzeTdmFrame();
 
         mResults->CommitResults();
         ReportProgress( mClock->GetSampleNumber() );
@@ -49,7 +49,7 @@ void TdmAnalyzer::WorkerThread()
     }
 }
 
-void TdmAnalyzer::AnalyzeFrame()
+void TdmAnalyzer::AnalyzeTdmFrame()
 {
     U32 num_bits = mDataBits.size();
 
@@ -88,13 +88,13 @@ void TdmAnalyzer::AnalyzeFrame()
         starting_offset = num_unused_bits;
 
     U32 i = 0;
-    while( AnalyzeSubFrame( i * bits_per_slot + starting_offset, num_audio_bits, i ) )
+    while( AnalyzeTdmSlot( i * bits_per_slot + starting_offset, num_audio_bits, i ) )
     {
         i++;
     }
 }
 
-bool TdmAnalyzer::AnalyzeSubFrame( U32 starting_index, U32 num_audio_bits, U32 subframe_index )
+bool TdmAnalyzer::AnalyzeTdmSlot( U32 starting_index, U32 num_audio_bits, U32 subframe_index )
 {
     U64 result = 0;
     U32 target_count = starting_index + num_audio_bits;
@@ -171,60 +171,60 @@ bool TdmAnalyzer::AnalyzeSubFrame( U32 starting_index, U32 num_audio_bits, U32 s
     return true;
 }
 
-void TdmAnalyzer::SetupForGettingFirstFrame()
+void TdmAnalyzer::SetupForGettingFirstTdmFrame()
 {
-    GetNextBit( mLastData, mLastFrame, mLastSample ); // we have to throw away one bit to get enough history on the FRAME line.
+    GetNextBit( mLastDataState, mLastFrameState, mLastSample ); // we have to throw away one bit to get enough history on the FRAME line.
 
     for( ;; )
     {
-        GetNextBit( mCurrentData, mCurrentFrame, mCurrentSample );
+        GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
 
-        if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrame == BIT_HIGH) && (mLastFrame == BIT_LOW)) ||
-            ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrame == BIT_LOW) && (mLastFrame == BIT_HIGH)))
+        if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrameState == BIT_HIGH) && (mLastFrameState == BIT_LOW)) ||
+            ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrameState == BIT_LOW) && (mLastFrameState == BIT_HIGH)))
         {
             if( mSettings->mBitAlignment == BITS_SHIFTED_RIGHT_1 )
             {
                 // we need to advance to the next bit past the frame.
-                mLastFrame = mCurrentFrame;
-                mLastData = mCurrentData;
+                mLastFrameState = mCurrentFrameState;
+                mLastDataState = mCurrentDataState;
                 mLastSample = mCurrentSample;
 
-                GetNextBit( mCurrentData, mCurrentFrame, mCurrentSample );
+                GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
             }
             return;
         }
 
-        mLastFrame = mCurrentFrame;
-        mLastData = mCurrentData;
+        mLastFrameState = mCurrentFrameState;
+        mLastDataState = mCurrentDataState;
         mLastSample = mCurrentSample;
     }
 }
 
-void TdmAnalyzer::GetFrame()
+void TdmAnalyzer::GetTdmFrame()
 {
     // on entering this function:
-    // mCurrentFrame and mCurrentData are the values of the first bit -- that belongs to us -- in the frame.
-    // mLastFrame and mLastData are the values from the bit just before.
+    // mCurrentFrameState and State are the values of the first bit -- that belongs to us -- in the frame.
+    // mLastFrameState and mLastDataState are the values from the bit just before.
 
     mDataBits.clear();
     mDataValidEdges.clear();
     mDataFlags.clear();
 
 
-    mDataBits.push_back( mCurrentData );
+    mDataBits.push_back( mCurrentDataState );
     mDataValidEdges.push_back( mCurrentSample );
     mDataFlags.push_back( mBitFlag );
 
-    mLastFrame = mCurrentFrame;
-    mLastData = mCurrentData;
+    mLastFrameState = mCurrentFrameState;
+    mLastDataState = mCurrentDataState;
     mLastSample = mCurrentSample;
 
     for( ;; )
     {
-        GetNextBit( mCurrentData, mCurrentFrame, mCurrentSample );
+        GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
 
-        if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrame == BIT_HIGH) && (mLastFrame == BIT_LOW)) ||
-            ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrame == BIT_LOW) && (mLastFrame == BIT_HIGH)))
+        if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrameState == BIT_HIGH) && (mLastFrameState == BIT_LOW)) ||
+            ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrameState == BIT_LOW) && (mLastFrameState == BIT_HIGH)))
         {
             if( mSettings->mEnableAdvancedAnalysis )
             {
@@ -234,27 +234,27 @@ void TdmAnalyzer::GetFrame()
             if( mSettings->mBitAlignment == BITS_SHIFTED_RIGHT_1 )
             {
                 // this bit belongs to us:
-                mDataBits.push_back( mCurrentData );
+                mDataBits.push_back( mCurrentDataState );
                 mDataValidEdges.push_back( mCurrentSample );
                 mDataFlags.push_back( mBitFlag );
 
                 // we need to advance to the next bit past the frame.
-                mLastFrame = mCurrentFrame;
-                mLastData = mCurrentData;
+                mLastFrameState = mCurrentFrameState;
+                mLastDataState = mCurrentDataState;
                 mLastSample = mCurrentSample;
 
-                GetNextBit( mCurrentData, mCurrentFrame, mCurrentSample );
+                GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
             }
 
             return;
         }
 
-        mDataBits.push_back( mCurrentData );
+        mDataBits.push_back( mCurrentDataState );
         mDataValidEdges.push_back( mCurrentSample );
         mDataFlags.push_back( mBitFlag );
 
-        mLastFrame = mCurrentFrame;
-        mLastData = mCurrentData;
+        mLastFrameState = mCurrentFrameState;
+        mLastDataState = mCurrentDataState;
         mLastSample = mCurrentSample;
     }
 }
