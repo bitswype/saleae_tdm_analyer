@@ -264,7 +264,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
         mResultsFrame.mFlags |= mDataFlags[ i ];
     }
 
-    if( mResultsFrame.mFlags & SHORT_SLOT == 0)
+    if( (mResultsFrame.mFlags & SHORT_SLOT) == 0)
     {
         if( mSettings->mShiftOrder == AnalyzerEnums::LsbFirst )
         {
