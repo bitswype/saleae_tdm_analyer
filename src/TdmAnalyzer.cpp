@@ -40,6 +40,7 @@ void TdmAnalyzer::WorkerThread()
 
     SetupForGettingFirstBit();
     SetupForGettingFirstTdmFrame();
+    mFrameNum = 0;
 
     for( ;; )
     {
@@ -147,7 +148,8 @@ void TdmAnalyzer::GetTdmFrame()
 
                 GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
             }
-
+            
+            mFrameNum++;
             return;
         }
 
@@ -332,6 +334,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
 
     frame_v2.AddString("errors", error_str);
     frame_v2.AddString("warnings", warning_str);
+    frame_v2.AddInteger("frame #", mFrameNum);
     mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     
     mResults->CommitResults();
