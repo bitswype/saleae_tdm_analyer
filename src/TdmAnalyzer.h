@@ -52,6 +52,7 @@ class TdmAnalyzer : public Analyzer2
     U64 mCurrentSample;
     U8 mBitFlag;
     U32 mSlotNum;
+    U64 mFrameNum;
 
     BitState mLastDataState;
     BitState mLastFrameState;
