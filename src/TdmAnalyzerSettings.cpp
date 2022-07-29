@@ -45,7 +45,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mSlotsPerFrameInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mSlotsPerFrameInterface->SetTitleAndTooltip( "Number of slots (channels) per TDM frame (slots/frame)",
                                                  "Specify the number of audio channels / TDM frame.  Any additional slots will be ignored" );
-    for( U32 i = 1; i <= 128; i++ )
+    for( U32 i = 1; i <= 256; i++ )
     {
         char str[ 256 ];
         sprintf( str, "%d Slot%s/TDM Frame", i , i == 1 ? "" : "s");
@@ -54,9 +54,9 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
 
     mBitsPerSlotInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mBitsPerSlotInterface->SetTitleAndTooltip( "Number of bits per slot in the TDM frame",
+    mBitsPerSlotInterface->SetTitleAndTooltip( "Number of bits per slot in the TDM frame.",
                                                "Specify the number of bits per slot.  There can be more bits in a slot than data bits" );
-    for( U32 i = 1; i <= 64; i++ )
+    for( U32 i = 2; i <= 64; i++ )
     {
         char str[ 256 ];
         sprintf( str, "%d bits/slot", i );
