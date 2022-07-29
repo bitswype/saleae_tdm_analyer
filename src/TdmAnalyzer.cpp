@@ -127,11 +127,7 @@ void TdmAnalyzer::GetTdmFrame()
         if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrameState == BIT_HIGH) && (mLastFrameState == BIT_LOW)) ||
             ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrameState == BIT_LOW) && (mLastFrameState == BIT_HIGH)))
         {
-            if( mSettings->mEnableAdvancedAnalysis )
-            {
-                mResults->AddMarker(mCurrentSample, AnalyzerResults::MarkerType::Start, mSettings->mFrameChannel);
-            }
-            
+
             if( mSettings->mBitAlignment == BITS_SHIFTED_RIGHT_1 )
             {
                 // this bit belongs to us:
@@ -203,13 +199,13 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
         
         if((data_tranistions > 0) && ( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
         {
-            mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mDataChannel);
+            mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::Stop, mSettings->mDataChannel);
             mBitFlag |= MISSED_DATA | DISPLAY_AS_ERROR_FLAG;
         }
 
         if((frame_transitions > 0) && ( mFrame->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
         {
-            mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::ErrorSquare, mSettings->mFrameChannel);
+            mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::Stop, mSettings->mFrameChannel);
             mBitFlag |= MISSED_FRAME_SYNC | DISPLAY_AS_ERROR_FLAG;
         }
     }
