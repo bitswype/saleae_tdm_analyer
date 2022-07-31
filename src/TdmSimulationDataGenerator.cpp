@@ -207,7 +207,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
 
 S64 TdmSimulationDataGenerator::GetNextAudioWord()
 {
-    double value;
+    U64 value;
 
     value = mVecCountGen[mCurrentAudioChannel]->GetNextValue();
     mCurrentAudioChannel = ++mCurrentAudioChannel % mNumSlots;

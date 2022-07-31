@@ -215,7 +215,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
 {
     U64 result = 0;
     U32 starting_index = 0;
-    U32 num_bits_to_process = mDataBits.size();
+    size_t num_bits_to_process = mDataBits.size();
 
     // begin a new frame
     mResultsFrame.mFlags = 0;

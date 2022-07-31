@@ -1,8 +1,10 @@
 #ifndef TDM_SIMULATION_DATA_GENERATOR
 #define TDM_SIMULATION_DATA_GENERATOR
 
+#define _USE_MATH_DEFINES
 #include "TdmAnalyzerSettings.h"
 #include "AnalyzerHelpers.h"
+#include <math.h>
 
 enum BitGenerationState
 {
