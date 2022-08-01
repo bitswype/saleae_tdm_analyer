@@ -35,6 +35,8 @@ class TdmAnalyzerResults : public AnalyzerResults
     virtual void GenerateTransactionTabularText( U64 transaction_id, DisplayBase display_base );
 
   protected: // functions
+    void GenerateCSV( const char* file, DisplayBase display_base );
+    void GenerateWAV( const char* file );
   protected: // vars
     TdmAnalyzerSettings* mSettings;
     TdmAnalyzer* mAnalyzer;
