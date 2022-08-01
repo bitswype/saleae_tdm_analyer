@@ -89,10 +89,82 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
     AddResultString( channel_num_str, number_str );
 }
 
-void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase display_base, U32 /*export_type_user_id*/ )
+void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase display_base, U32 file_type/*export_type_user_id*/ )
+{
+    switch(file_type)
+    {
+        case 1:
+        {
+            // WAV
+            break;
+        }
+        case 0:
+        default:
+        {
+            // TEXT/CSV
+            GenerateCSV( file, display_base )
+            break;
+        }
+    }
+
+}
+
+void GenerateCSV( const char* file, DisplayBase display_base )
 {
     std::stringstream ss;
     void* f = AnalyzerHelpers::StartFile( file );
+
+    U64 trigger_sample = mAnalyzer->GetTriggerSample();
+    U32 sample_rate = mAnalyzer->GetSampleRate();
+
+    ss << "Time [s],Channel,Value,Flags" << std::endl;
+
+    U64 num_frames = GetNumFrames();
+    for( U64 i = 0; i < num_frames; i++ )
+    {
+        Frame frame = GetFrame( i );
+
+        char channel_num_str[ 128 ];
+        char time_str[ 128 ];
+        char flag_str[ 8 ];
+        AnalyzerHelpers::GetTimeString( frame.mStartingSampleInclusive, trigger_sample, sample_rate, time_str, 128 );
+
+        char number_str[ 128 ];
+        if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
+        {
+            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
+            std::stringstream ss;
+            ss << signed_number;
+            strcpy( number_str, ss.str().c_str() );
+        }
+        else
+        {
+            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
+        }
+
+        sprintf( channel_num_str, "%d", frame.mType  + 1);
+        sprintf( flag_str, "0x%02X", frame.mFlags);
+        ss << time_str << "," << channel_num_str << "," << number_str << "," << flag_str << std::endl;
+
+        AnalyzerHelpers::AppendToFile( ( U8* )ss.str().c_str(), ss.str().length(), f );
+        ss.str( std::string() );
+
+        if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
+        {
+            AnalyzerHelpers::EndFile( f );
+            return;
+        }
+    }
+
+    UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
+    AnalyzerHelpers::EndFile( f );
+}
+
+void GenerateWAV( const char* file )
+{
+    std::stringstream ss;
+    void* f = AnalyzerHelpers::StartFile( file );
+    void* g = AnalyzerHelpers::
 
     U64 trigger_sample = mAnalyzer->GetTriggerSample();
     U32 sample_rate = mAnalyzer->GetSampleRate();

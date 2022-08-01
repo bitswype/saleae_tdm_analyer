@@ -54,7 +54,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
 
     mBitsPerSlotInterface.reset( new AnalyzerSettingInterfaceNumberList() );
-    mBitsPerSlotInterface->SetTitleAndTooltip( "Number of bits per slot in the TDM frame.",
+    mBitsPerSlotInterface->SetTitleAndTooltip( "Number of bits per slot in the TDM frame",
                                                "Specify the number of bits per slot.  There can be more bits in a slot than data bits" );
     for( U32 i = 2; i <= 64; i++ )
     {
@@ -146,6 +146,8 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddExportOption( 0, "Export as text/csv file" );
     AddExportExtension( 0, "text", "txt" );
     AddExportExtension( 0, "csv", "csv" );
+    AddExportOption( 1, "Export as wav file" );
+    AddExportExtension( 1, "wav", "wav" );
 
     ClearChannels();
     AddChannel( mClockChannel, "TDM CLOCK", false );
