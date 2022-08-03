@@ -64,11 +64,11 @@ typedef struct
 #pragma pack(pop)
 #pragma scalar_storage_order default
 
-class WaveFileHandler
+class PCMWaveFileHandler
 {
   public:
-    WaveFileHandler(std::ofstream & file, U32 sample_rate = 48000, U32 num_channels = 2, U32 bits_per_channel = 32);
-    ~WaveFileHandler();
+    PCMWaveFileHandler(std::ofstream & file, U32 sample_rate = 48000, U32 num_channels = 2, U32 bits_per_channel = 32);
+    ~PCMWaveFileHandler();
 
     void addSample(U64 sample);
     void close(void);
