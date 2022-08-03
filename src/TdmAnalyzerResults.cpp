@@ -169,7 +169,7 @@ void TdmAnalyzerResults::GenerateWAV( const char* file )
 
     if( f.is_open() )
     {
-        WaveFileHandler wave_file_handler(f, mSettings->mTdmFrameRate, mSettings->mSlotsPerFrame, mSettings->mDataBitsPerSlot);
+        PCMWaveFileHandler wave_file_handler(f, mSettings->mTdmFrameRate, mSettings->mSlotsPerFrame, mSettings->mDataBitsPerSlot);
         U8 num_slots_per_frame = mSettings->mSlotsPerFrame;
         
         for( U64 i = 0; i < num_frames; i++ )
@@ -192,7 +192,7 @@ void TdmAnalyzerResults::GenerateWAV( const char* file )
     }
 }
 
-WaveFileHandler::WaveFileHandler(std::ofstream & file, U32 sample_rate, U32 num_channels, U32 bits_per_channel) : 
+PCMWaveFileHandler::PCMWaveFileHandler(std::ofstream & file, U32 sample_rate, U32 num_channels, U32 bits_per_channel) : 
   mFile( file ),
   mSampleRate( sample_rate ),
   mNumChannels( num_channels ),
@@ -234,7 +234,7 @@ WaveFileHandler::WaveFileHandler(std::ofstream & file, U32 sample_rate, U32 num_
     mFile.write((const char *) (&mWaveHeader), sizeof(mWaveHeader));
 }
 
-WaveFileHandler::~WaveFileHandler()
+PCMWaveFileHandler::~PCMWaveFileHandler()
 {
     if(mFile.is_open())
     {
@@ -242,7 +242,7 @@ WaveFileHandler::~WaveFileHandler()
     }
 }
 
-void WaveFileHandler::addSample(U64 sample)
+void PCMWaveFileHandler::addSample(U64 sample)
 {
     if(mBytesPerChannel == 1)
     {
@@ -269,7 +269,7 @@ void WaveFileHandler::addSample(U64 sample)
     return;
 }
 
-void WaveFileHandler::writeLittleEndianData(U64 value, U8 num_bytes)
+void PCMWaveFileHandler::writeLittleEndianData(U64 value, U8 num_bytes)
 {
     char data_byte;
 
@@ -281,7 +281,7 @@ void WaveFileHandler::writeLittleEndianData(U64 value, U8 num_bytes)
     }
 }
 
-void WaveFileHandler::close(void)
+void PCMWaveFileHandler::close(void)
 {
     updateFileSize();
     if(((mTotalFrames * mFrameSizeBytes) % 2) == 1){
@@ -291,7 +291,7 @@ void WaveFileHandler::close(void)
     return;
 }
 
-void WaveFileHandler::updateFileSize(void)
+void PCMWaveFileHandler::updateFileSize(void)
 {
     U32 data_size_bytes = mTotalFrames * mFrameSizeBytes;
 
