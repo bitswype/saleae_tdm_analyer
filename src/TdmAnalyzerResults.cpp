@@ -171,7 +171,7 @@ void TdmAnalyzerResults::GenerateWAV( const char* file )
     {
         PCMWaveFileHandler wave_file_handler(f, mSettings->mTdmFrameRate, mSettings->mSlotsPerFrame, mSettings->mDataBitsPerSlot);
         //PCMExtendedWaveFileHandler wave_file_handler(f, mSettings->mTdmFrameRate, mSettings->mSlotsPerFrame, mSettings->mDataBitsPerSlot);
-        U8 num_slots_per_frame = mSettings->mSlotsPerFrame;
+        U16 num_slots_per_frame = mSettings->mSlotsPerFrame;
         
         for( U64 i = 0; i < num_frames; i++ )
         {
@@ -278,7 +278,7 @@ void PCMWaveFileHandler::writeLittleEndianData(U64 value, U8 num_bytes)
     {
         data_byte = value & 0xFF;
         mFile.write(&data_byte, 1);
-        value >>= 8;// sample >> 8;
+        value >>= 8;
     }
 }
 
@@ -286,7 +286,8 @@ void PCMWaveFileHandler::close(void)
 {
     updateFileSize();
     if(((mTotalFrames * mFrameSizeBytes) % 2) == 1){
-        mFile.write(0, 1);
+        char zero = 0;
+        mFile.write(&zero, 1);
     }
     mFile.close();
     return;
@@ -405,7 +406,8 @@ void PCMExtendedWaveFileHandler::close(void)
 {
     updateFileSize();
     if(((mTotalFrames * mFrameSizeBytes) % 2) == 1){
-        mFile.write(0, 1);
+        char zero = 0;
+        mFile.write(&zero, 1);
     }
     mFile.close();
     return;
