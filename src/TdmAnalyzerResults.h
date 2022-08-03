@@ -87,7 +87,6 @@ class PCMWaveFileHandler
     U32 mFrameSizeBytes;
     U32 mSampleCount;
     U32 mTotalFrames;
-    char mBuf[128];
     std::ofstream & mFile;
     std::streampos mWtPosSaved;
 
