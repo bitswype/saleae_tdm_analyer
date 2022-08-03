@@ -3,6 +3,7 @@
 #include "TdmAnalyzer.h"
 #include "TdmAnalyzerSettings.h"
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <stdio.h>
 #include <cstring>
@@ -91,25 +92,25 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
 
 void TdmAnalyzerResults::GenerateExportFile( const char* file, DisplayBase display_base, U32 file_type/*export_type_user_id*/ )
 {
-    switch(file_type)
+    // replace with file_type when Saleae fixes the export options menu
+    switch(mSettings->mExportFileType)
     {
-        case 1:
+        case ExportFileType::WAV:
         {
-            // WAV
+            GenerateWAV( file );
             break;
         }
-        case 0:
+        case ExportFileType::CSV:
         default:
         {
-            // TEXT/CSV
-            GenerateCSV( file, display_base )
+            GenerateCSV( file, display_base );
             break;
         }
     }
 
 }
 
-void GenerateCSV( const char* file, DisplayBase display_base )
+void TdmAnalyzerResults::GenerateCSV( const char* file, DisplayBase display_base )
 {
     std::stringstream ss;
     void* f = AnalyzerHelpers::StartFile( file );
@@ -160,56 +161,154 @@ void GenerateCSV( const char* file, DisplayBase display_base )
     AnalyzerHelpers::EndFile( f );
 }
 
-void GenerateWAV( const char* file )
+void TdmAnalyzerResults::GenerateWAV( const char* file )
 {
-    std::stringstream ss;
-    void* f = AnalyzerHelpers::StartFile( file );
-    void* g = AnalyzerHelpers::
-
-    U64 trigger_sample = mAnalyzer->GetTriggerSample();
-    U32 sample_rate = mAnalyzer->GetSampleRate();
-
-    ss << "Time [s],Channel,Value,Flags" << std::endl;
-
+    std::ofstream f;
+    f.open( file , std::ios::out | std::ios::binary );
     U64 num_frames = GetNumFrames();
-    for( U64 i = 0; i < num_frames; i++ )
+
+    if( f.is_open() )
     {
-        Frame frame = GetFrame( i );
-
-        char channel_num_str[ 128 ];
-        char time_str[ 128 ];
-        char flag_str[ 8 ];
-        AnalyzerHelpers::GetTimeString( frame.mStartingSampleInclusive, trigger_sample, sample_rate, time_str, 128 );
-
-        char number_str[ 128 ];
-        if( ( display_base == Decimal ) && ( mSettings->mSigned == AnalyzerEnums::SignedInteger ) )
+        WaveFileHandler wave_file_handler(f, mSettings->mTdmFrameRate, mSettings->mSlotsPerFrame, mSettings->mDataBitsPerSlot);
+        U8 num_slots_per_frame = mSettings->mSlotsPerFrame;
+        
+        for( U64 i = 0; i < num_frames; i++ )
         {
-            S64 signed_number = AnalyzerHelpers::ConvertToSignedNumber( frame.mData1, mSettings->mDataBitsPerSlot );
-            std::stringstream ss;
-            ss << signed_number;
-            strcpy( number_str, ss.str().c_str() );
+            Frame frame = GetFrame( i );
+            
+            // only populate slots we expect, extra slots are not stored in the wave file
+            if(frame.mType < num_slots_per_frame)
+            {
+                wave_file_handler.addSample( frame.mData1 );
+                if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
+                {
+                    wave_file_handler.close();
+                    return;
+                }
+            }
         }
-        else
-        {
-            AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
-        }
+        UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
+        wave_file_handler.close();
+    }
+}
 
-        sprintf( channel_num_str, "%d", frame.mType  + 1);
-        sprintf( flag_str, "0x%02X", frame.mFlags);
-        ss << time_str << "," << channel_num_str << "," << number_str << "," << flag_str << std::endl;
-
-        AnalyzerHelpers::AppendToFile( ( U8* )ss.str().c_str(), ss.str().length(), f );
-        ss.str( std::string() );
-
-        if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
-        {
-            AnalyzerHelpers::EndFile( f );
-            return;
-        }
+WaveFileHandler::WaveFileHandler(std::ofstream & file, U32 sample_rate, U32 num_channels, U32 bits_per_channel) : 
+  mFile( file ),
+  mSampleRate( sample_rate ),
+  mNumChannels( num_channels ),
+  mBitsPerChannel( bits_per_channel ),
+  mSampleCount( 0 ),
+  mTotalFrames( 0 ),
+  mWtPosSaved( 0 )
+{
+    if(bits_per_channel <= 8){
+        mWaveHeader.mBitsPerSample = 8;
+        mBytesPerChannel = 1;
+    }else if(bits_per_channel <= 16){
+        mWaveHeader.mBitsPerSample = 16;
+        mBytesPerChannel = 2;
+    }else if(bits_per_channel <= 32){
+        mWaveHeader.mBitsPerSample = 32;
+        mBytesPerChannel = 4;
+    // sizes above 32 bits might not work
+    }else if(bits_per_channel <= 40){
+        mWaveHeader.mBitsPerSample = 40;
+        mBytesPerChannel = 5;
+    }else if(bits_per_channel <= 48){
+        mWaveHeader.mBitsPerSample = 48;
+        mBytesPerChannel = 6;
+    }else if(bits_per_channel <= 64){
+        mWaveHeader.mBitsPerSample = 64;
+        mBytesPerChannel = 8;
     }
 
-    UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
-    AnalyzerHelpers::EndFile( f );
+    mWaveHeader.mBlockSizeBytes = mBytesPerChannel * num_channels;
+    mFrameSizeBytes = mWaveHeader.mBlockSizeBytes;
+    mBitShift = mWaveHeader.mBitsPerSample - bits_per_channel;
+
+    mWaveHeader.mNumChannels = num_channels;
+    mWaveHeader.mSamplesPerSec = sample_rate;
+    mWaveHeader.mBytesPerSec = mFrameSizeBytes * sample_rate;
+
+    mFile.seekp(0);
+    mFile.write((const char *) (&mWaveHeader), sizeof(mWaveHeader));
+}
+
+WaveFileHandler::~WaveFileHandler()
+{
+    if(mFile.is_open())
+    {
+        close();
+    }
+}
+
+void WaveFileHandler::addSample(U64 sample)
+{
+    if(mBytesPerChannel == 1)
+    {
+        // in a wave file, 8 bit data is stored as "offset" instead of 2's compliment
+        // for offset data, 0 = min value, 255 = max value which means for 8 data bits
+        // 0x80 -> -128 (min value), we need to add 128 to get 0
+        // for less than 8 bits, we have to do a little manipulation,
+        // 8 data bits, add 128 (1 << 7)
+        // 7 data bits, add 64 ( 1 << 6)
+        // ...
+        // 2 data bits, add 2 ( 1 << 1)
+
+        sample = sample + (1ULL << (7 - mBitShift));
+    }
+
+    writeLittleEndianData(sample << mBitShift, mBytesPerChannel);
+    
+    if(((++mSampleCount) % mNumChannels) == 0){
+        mTotalFrames++;
+        if((mTotalFrames % (mSampleRate / 100)) == 0){
+            updateFileSize();
+        }
+    }
+    return;
+}
+
+void WaveFileHandler::writeLittleEndianData(U64 value, U8 num_bytes)
+{
+    char data_byte;
+
+    for(U8 i = 0; i < num_bytes; i++)
+    {
+        data_byte = value & 0xFF;
+        mFile.write(&data_byte, 1);
+        value >>= 8;// sample >> 8;
+    }
+}
+
+void WaveFileHandler::close(void)
+{
+    updateFileSize();
+    if(((mTotalFrames * mFrameSizeBytes) % 2) == 1){
+        mFile.write(0, 1);
+    }
+    mFile.close();
+    return;
+}
+
+void WaveFileHandler::updateFileSize(void)
+{
+    U32 data_size_bytes = mTotalFrames * mFrameSizeBytes;
+
+    if((data_size_bytes % 2) == 1){
+        data_size_bytes += 1;
+    }
+
+    mWtPosSaved = mFile.tellp();
+
+    mFile.seekp(RIFF_CKSIZE_POS);
+    writeLittleEndianData( 36 + data_size_bytes, 4 );
+
+    mFile.seekp(DATA_CKSIZE_POS);
+    writeLittleEndianData( data_size_bytes, 4 );
+    
+    mFile.seekp(mWtPosSaved);
+    return;
 }
 
 void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase display_base )

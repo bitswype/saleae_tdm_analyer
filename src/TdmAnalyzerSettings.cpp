@@ -23,6 +23,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mBitAlignment( BITS_SHIFTED_RIGHT_1 ),
       mSigned( AnalyzerEnums::UnsignedInteger ),
       mFrameSyncInverted( FS_NOT_INVERTED ),
+      mExportFileType( CSV ),
       mEnableAdvancedAnalysis( false )
 {
     mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
@@ -127,6 +128,13 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mEnableAdvancedAnalysisInterface->SetCheckBoxText("Perform more analysis on the TDM signal, may slow down processing");
     mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
 
+    mExportFileTypeInterface.reset( new AnalyzerSettingInterfaceNumberList() );
+    mExportFileTypeInterface->SetTitleAndTooltip("Select export file type (TXT/CSV will actually be this file type)",
+                        "The file export option only shows TXT/CSV, but this dropdown will change what file type is actually generated");
+    mExportFileTypeInterface->AddNumber( 0, "TXT/CSV", "Export data as a TXT / CSV");
+    mExportFileTypeInterface->AddNumber( 1, "WAV", "Export data as a wave file");
+    mExportFileTypeInterface->SetNumber( mEnableAdvancedAnalysis );
+
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
     AddInterface( mDataChannelInterface.get() );
@@ -140,12 +148,14 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mBitAlignmentInterface.get() );
     AddInterface( mSignedInterface.get() );
     AddInterface( mFrameSyncInvertedInterface.get() );
+    AddInterface( mExportFileTypeInterface.get() );
     AddInterface( mEnableAdvancedAnalysisInterface.get() );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
     AddExportOption( 0, "Export as text/csv file" );
     AddExportExtension( 0, "text", "txt" );
     AddExportExtension( 0, "csv", "csv" );
+
     AddExportOption( 1, "Export as wav file" );
     AddExportExtension( 1, "wav", "wav" );
 
@@ -178,6 +188,7 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mSignedInterface->SetNumber( mSigned );
 
     mFrameSyncInvertedInterface->SetNumber( mFrameSyncInverted );
+    mExportFileTypeInterface->SetNumber( mExportFileType );
     mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
 }
 
@@ -234,6 +245,7 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mSigned = AnalyzerEnums::Sign( U32( mSignedInterface->GetNumber() ) );
 
     mFrameSyncInverted = TdmFrameSelectInverted( U32( mFrameSyncInvertedInterface->GetNumber() ) );
+    mExportFileType = ExportFileType( U32( mExportFileTypeInterface->GetNumber() ) );
     mEnableAdvancedAnalysis = bool(mEnableAdvancedAnalysisInterface->GetValue() );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
@@ -336,6 +348,12 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
         mFrameSyncInverted = fs_inverted;
     }
 
+    ExportFileType export_file_type;
+    if( text_archive >> *( U32* )&export_file_type )
+    {
+        mExportFileType = export_file_type;
+    }
+
     bool enable_advanced;
     if (text_archive >> enable_advanced)
     {
@@ -373,6 +391,7 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mSigned;
 
     text_archive << mFrameSyncInverted;
+    text_archive << mExportFileType;
     text_archive << mEnableAdvancedAnalysis;
 
     return SetReturnString( text_archive.GetString() );

@@ -42,4 +42,57 @@ class TdmAnalyzerResults : public AnalyzerResults
     TdmAnalyzer* mAnalyzer;
 };
 
+#pragma scalar_storage_order little-endian
+#pragma pack(push, 1)
+typedef struct
+{
+    char mRiffCkId[4] = {'R', 'I', 'F', 'F'};   // @ 0
+    U32 mRiffCkSize = 36;                       // @ 4
+    char mRiffWaveId[4] = {'W', 'A', 'V', 'E'}; // @ 8, 4
+    char mFmtCkId[4] = {'f', 'm', 't', ' '};    // @ 12, 8
+    U32 mFmtCkSize = 16;                        // @ 16, 12
+    U16 mFormatTag = 0x0001;                    // @ 20, 14 + 2
+    U16 mNumChannels = 1;                       // @ 22, 16 + 4
+    U32 mSamplesPerSec = 8000;                  // @ 24, 20 + 8
+    U32 mBytesPerSec = 16000;                   // @ 28, 24 + 12
+    U16 mBlockSizeBytes = 2;                    // @ 32, 26 + 14
+    U16 mBitsPerSample = 16;                    // @ 34, 28 + 16
+    char mDataCkId[4] = {'d' , 'a', 't', 'a'};  // @ 36, 32
+    U32 mDataCkSize = 0;                        // @ 40, 36
+    /* data */                                  // @ 44
+} WavePCMHeader;
+#pragma pack(pop)
+#pragma scalar_storage_order default
+
+class WaveFileHandler
+{
+  public:
+    WaveFileHandler(std::ofstream & file, U32 sample_rate = 48000, U32 num_channels = 2, U32 bits_per_channel = 32);
+    ~WaveFileHandler();
+
+    void addSample(U64 sample);
+    void close(void);
+
+  private:
+    void writeLittleEndianData(U64 value, U8 num_bytes);
+    void updateFileSize();
+
+  private:
+    WavePCMHeader mWaveHeader;
+    U32 mNumChannels;
+    U32 mBitsPerChannel;
+    U8 mBitShift;
+    U32 mBytesPerChannel;
+    U32 mSampleRate;
+    U32 mFrameSizeBytes;
+    U32 mSampleCount;
+    U32 mTotalFrames;
+    char mBuf[128];
+    std::ofstream & mFile;
+    std::streampos mWtPosSaved;
+
+    constexpr static U64 RIFF_CKSIZE_POS = 4;
+    constexpr static U64 DATA_CKSIZE_POS = 40;
+};
+
 #endif // TDM_ANALYZER_RESULTS
