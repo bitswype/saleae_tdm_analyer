@@ -20,6 +20,12 @@ enum TdmFrameSelectInverted
     FS_NOT_INVERTED
 };
 
+enum ExportFileType
+{
+  CSV,
+  WAV,
+};
+
 class TdmAnalyzerSettings : public AnalyzerSettings
 {
   public:
@@ -50,6 +56,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
 
     TdmFrameSelectInverted mFrameSyncInverted;
     bool mEnableAdvancedAnalysis;
+    ExportFileType mExportFileType;
 
   protected:
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
@@ -70,5 +77,6 @@ class TdmAnalyzerSettings : public AnalyzerSettings
 
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameSyncInvertedInterface;
     std::unique_ptr<AnalyzerSettingInterfaceBool> mEnableAdvancedAnalysisInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mExportFileTypeInterface;
 };
 #endif // TDM_ANALYZER_SETTINGS
