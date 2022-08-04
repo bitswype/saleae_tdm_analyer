@@ -5,7 +5,7 @@
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
 
- # Features
+# Features
 
 - 1 to 256 slots per frame
 - Slot sizes from 2 to 64 bits
@@ -29,8 +29,6 @@
 
 ![Analyzer settings](pictures/analyzer_settings.PNG)
 
-## Searching for errors or warnings
-
 ## Supported Errors and Warnings
 
 _Note:_ Certain errors and warnings are only available with the `Advanced analysis` option enabled in the analyzer settings.  When advanced analysis is not enabled, each slot will show the sampled bits when zoomed in.  Due to the other markers placed on the serial data, these bits are not shown when advanced analysis is enabled.
@@ -44,14 +42,14 @@ _Note:_ Certain errors and warnings are only available with the `Advanced analys
 ### E: Short Slot
   - Available all the time
   - Flag `0x08`
-  - The expected number of bits for the slot were not captured.  This will occur even if the missing bits are not data bits.  For example, if the expected number of bits per slot is 32, and there are 16 data bits in the slot, you will receive a warning if anything less than 32 bits is counted for the slot.
+  - The expected number of bits for the slot were not captured.  This will occur even if the missing bits are not data bits.  For example, if the expected number of bits per slot is 32, and there are 16 left justified data bits in the slot, you will receive a warning if anything less than 32 bits is counted for the slot.  This error will only ever occur on the last slot of a frame.
 
 ![Example of a short slot error](pictures/short_slot.PNG)
 
 ### E: Data Error
   - Only Available if the `Advanced analysis` option is enabled.
   - Flag `0x04`
-  - If the serial data transitions twice between valid bitclock edges (detected by neither clock edge), there may be missed data.  The slot will be flagged and a marker will be placed on the suspect data.
+  - If the serial data transitions twice between valid bitclock edges (meaning the data change is not detected either bitclock edge), there may be missed data.  The slot will be flagged and a marker will be placed on the suspect data.
 
 ![Example of a data error with marker](pictures/data_error.PNG)
 
@@ -65,7 +63,7 @@ _Note:_ Certain errors and warnings are only available with the `Advanced analys
 ### E: Bitclock Error
   - Only Available if the `Advanced analysis` option is enabled.
   - Flag `0x20`
-  - Using the sample rate, number of slots per frame, and slot size an expected bitclock rate is calculated.  If the bitclock varies outside of this expected frequency by more than 1 Logic analyzer sample, the slot is flagged.
+  - Using the sample rate, number of slots per frame, and slot size, an expected bitclock rate is calculated.  If the bitclock varies outside of this expected frequency by more than 1 Logic analyzer sample, the slot is flagged.
 
 ![Example of a bitclock error](pictures/bitclock_error.PNG)
 
@@ -99,14 +97,14 @@ There is a bug in Logic 2 where the displayed export options are limited to `TXT
 1. Open the analyzer settings, click on the "Select export file type" dropdown and select "WAV" from the list. ![Analyzer setting to select the output of the TXT/CSV export option](pictures/select_export_option.PNG)
 1. Save the settings
 1. When analysis is complete, click on the three dots next to the analyzer and select "Export to TXT/CSV" ![exporting data](pictures/export_data.PNG)
-1. Once the file is writted, the contents of the file will be set based on the export file type in the analyzer settings, but the extension will always be either `.txt` or `.csv` depending on what you selected when you saved the file.  _You must change the extension yourself after the data is exported._
+1. Once the file is written, the contents of the file will be set based on the export file type in the analyzer settings, but the extension will always be either `.txt` or `.csv` depending on what you selected when you saved the file.  _You must change the extension yourself after the data is exported._
 
 ### Things to be aware of when exporting a wav file
 
 - The sample rate for the exported wave file is set from the sample rate in the analyzer settings
 - The number of channels is set from the number of slots in the analyzer settings.
-  - If the data contains more slots per frame than specified in the settings, the extra slots will be ignored and not put into the wave file
-  - If the data contains less slots per frame than specified in the settings, the frame sync signal will be ignored and the slots will populate the wave file as if they were in order.  For example, if you specified 4 slots per frame in the settings, but the data only contains 3 slots per frame, then the wave file will be populated with 4 channels per sample consiting of:
+  - If the decoded data contains more slots per frame than specified in the settings, the extra decoded slots will be ignored and not put into the wave file
+  - If the decoded data contains less slots per frame than specified in the settings, the frame sync signal will be ignored and the slots will populate the wave file as if they were in order.  For example, if you specified 4 slots per frame in the settings, but the data only contains 3 slots per frame, then the wave file will be populated with 4 channels per sample consiting of:
   ```
   // F# is frame number and S# is slot #. So F3S2 is frame 3 slot 2's data
   [F1S1, F1S2, F1S3, F2S1]
@@ -123,10 +121,10 @@ There is a bug in Logic 2 where the displayed export options are limited to `TXT
   41 - 48 data bits : 48 bits per channel
   49 - 64 data bits : 64 bits per channel
   ```
-- Data bits above 32 are "supported" but are not likely to to open.
-- The wave file header is always a standard PCM header.  This header has been tested to work with channel counts > 2 and bit depths <= 32 bits in Audacity.  There is an extended PCM header option in the code, but it is not currently used.  A future version of the analyzer might select between then standard header and extended header based on slots / frame and number of data bits if there is evidence that it is needed.
-- Data bits are always scaled to ensure that the maximum values are always achievable.\
-  - For example, this means that with 2 data bits, the range will map to
+- Data bit settings above 32 are "supported", but the wave files generated are not likely to to open.
+- The wave file header is always a standard PCM header.  This header has been tested to work in Audacity with channel counts from 1 to 256, and bit depths up to 32 bits.  There is an extended PCM header option in the code, but it is disabled.  A future version of the analyzer might select between then standard header and extended header based on slots / frame and number of data bits if there is evidence that it is needed.  Bit depths above 32 bits do not open in Audacity with either the standard or extended PCM header.
+- Data bits are always scaled to ensure that the maximum values are always achievable.
+  - For example, with 2 data bits, the values will map to
     ```
     0x1 -> +0.5
     0x0 ->  0
@@ -264,24 +262,3 @@ cmake .. -A x64
 ```
 
 Then, open the newly created solution file located here: `build\tdm_analyzer.sln`
-
-
-## Output Frame Format
-  
-### Frame Type: `"error"`
-
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `error` | str | Error details. TDM errors usually indicate the wrong number of bits inside of a frame |
-
-TDM decode error
-
-### Frame Type: `"data"`
-
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `channel` | int | channel index. 0 or 1 |
-| `data` | int | Audio value. signed or unsigned, based on TDM analyzer settings |
-
-A single sample from a single channel
-
