@@ -178,7 +178,7 @@ Misc dependencies:
 sudo apt-get install build-essential
 ```
 
-Building the analyzer (oringinal instructions):
+Building the analyzer (original instructions):
 ```
 mkdir build
 cd build
