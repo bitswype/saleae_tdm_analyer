@@ -238,7 +238,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     {
         if( mSettings->mDataAlignment == TdmDataAlignment::RIGHT_ALIGNED )
         {
-            starting_index = mSettings->mBitsPerSlot - mSettings->mDataBitsPerSlot - 1;
+            starting_index = mSettings->mBitsPerSlot - mSettings->mDataBitsPerSlot;
         }
         else // mSettings->mDataAlignment == TdmDataAlignment::LEFT_ALIGNED
         {
