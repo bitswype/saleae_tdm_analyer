@@ -1,0 +1,3 @@
+/home/ed/Documents/saleae_tdm_analyer/build/_deps/analyzersdk-subbuild/CMakeFiles/analyzersdk-populate.dir
+/home/ed/Documents/saleae_tdm_analyer/build/_deps/analyzersdk-subbuild/CMakeFiles/edit_cache.dir
+/home/ed/Documents/saleae_tdm_analyer/build/_deps/analyzersdk-subbuild/CMakeFiles/rebuild_cache.dir
