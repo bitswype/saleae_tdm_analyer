@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/CMakeFiles/analyzersdk-populate"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/CMakeFiles/analyzersdk-populate.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/CMakeFiles/analyzersdk-populate-complete.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-build.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-configure.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-download.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-install.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-patch.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-test.rule"
+		},
+		{
+			"file" : "/home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-subbuild/analyzersdk-populate-prefix/src/analyzersdk-populate-stamp/analyzersdk-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"analyzersdk-populate"
+		],
+		"name" : "analyzersdk-populate"
+	}
+}

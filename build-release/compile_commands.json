@@ -1,0 +1,22 @@
+[
+{
+  "directory": "/home/ed/Documents/saleae_tdm_analyer/build-release",
+  "command": "/usr/bin/c++ -DLOGIC2 -Dtdm_analyzer_EXPORTS -isystem /home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-src/include -O3 -DNDEBUG -fPIC -std=gnu++11 -o CMakeFiles/tdm_analyzer.dir/src/TdmAnalyzer.cpp.o -c /home/ed/Documents/saleae_tdm_analyer/src/TdmAnalyzer.cpp",
+  "file": "/home/ed/Documents/saleae_tdm_analyer/src/TdmAnalyzer.cpp"
+},
+{
+  "directory": "/home/ed/Documents/saleae_tdm_analyer/build-release",
+  "command": "/usr/bin/c++ -DLOGIC2 -Dtdm_analyzer_EXPORTS -isystem /home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-src/include -O3 -DNDEBUG -fPIC -std=gnu++11 -o CMakeFiles/tdm_analyzer.dir/src/TdmAnalyzerResults.cpp.o -c /home/ed/Documents/saleae_tdm_analyer/src/TdmAnalyzerResults.cpp",
+  "file": "/home/ed/Documents/saleae_tdm_analyer/src/TdmAnalyzerResults.cpp"
+},
+{
+  "directory": "/home/ed/Documents/saleae_tdm_analyer/build-release",
+  "command": "/usr/bin/c++ -DLOGIC2 -Dtdm_analyzer_EXPORTS -isystem /home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-src/include -O3 -DNDEBUG -fPIC -std=gnu++11 -o CMakeFiles/tdm_analyzer.dir/src/TdmAnalyzerSettings.cpp.o -c /home/ed/Documents/saleae_tdm_analyer/src/TdmAnalyzerSettings.cpp",
+  "file": "/home/ed/Documents/saleae_tdm_analyer/src/TdmAnalyzerSettings.cpp"
+},
+{
+  "directory": "/home/ed/Documents/saleae_tdm_analyer/build-release",
+  "command": "/usr/bin/c++ -DLOGIC2 -Dtdm_analyzer_EXPORTS -isystem /home/ed/Documents/saleae_tdm_analyer/build-release/_deps/analyzersdk-src/include -O3 -DNDEBUG -fPIC -std=gnu++11 -o CMakeFiles/tdm_analyzer.dir/src/TdmSimulationDataGenerator.cpp.o -c /home/ed/Documents/saleae_tdm_analyer/src/TdmSimulationDataGenerator.cpp",
+  "file": "/home/ed/Documents/saleae_tdm_analyer/src/TdmSimulationDataGenerator.cpp"
+}
+]
