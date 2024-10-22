@@ -133,6 +133,10 @@ There is a bug in Logic 2 where the displayed export options are limited to `TXT
     ```
 - The headers of the wave file are updated every 10 ms of audio data, so if the analyzer crashes or the export is cancelled early, the most data that will be lost is the most recently written 10 ms.
 
+# Install instructions
+
+[https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer](https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer)
+
 # Building instructions
 
 ### MacOS
