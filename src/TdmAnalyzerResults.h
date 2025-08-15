@@ -118,6 +118,8 @@ class PCMWaveFileHandler
     U32 mTotalFrames;
     std::ofstream & mFile;
     std::streampos mWtPosSaved;
+    U64* mSampleData;
+    U32  mSampleIndex;
 
     constexpr static U64 RIFF_CKSIZE_POS = 4;
     constexpr static U64 DATA_CKSIZE_POS = 40;
@@ -148,6 +150,8 @@ class PCMExtendedWaveFileHandler
     U32 mTotalFrames;
     std::ofstream & mFile;
     std::streampos mWtPosSaved;
+    U64* mSampleData;
+    U32  mSampleIndex;
 
     constexpr static U64 EXT_RIFF_CKSIZE_POS = 4;
     constexpr static U64 EXT_FACT_CKSIZE_POS = 68;

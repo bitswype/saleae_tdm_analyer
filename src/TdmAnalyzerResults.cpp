@@ -200,7 +200,9 @@ PCMWaveFileHandler::PCMWaveFileHandler(std::ofstream & file, U32 sample_rate, U3
   mBitsPerChannel( bits_per_channel ),
   mSampleCount( 0 ),
   mTotalFrames( 0 ),
-  mWtPosSaved( 0 )
+  mWtPosSaved( 0 ),
+  mSampleData( nullptr ),
+  mSampleIndex( 0 )
 {
     if(bits_per_channel <= 8){
         mWaveHeader.mBitsPerSample = 8;
@@ -231,8 +233,12 @@ PCMWaveFileHandler::PCMWaveFileHandler(std::ofstream & file, U32 sample_rate, U3
     mWaveHeader.mSamplesPerSec = sample_rate;
     mWaveHeader.mBytesPerSec = mFrameSizeBytes * sample_rate;
 
-    mFile.seekp(0);
-    mFile.write((const char *) (&mWaveHeader), sizeof(mWaveHeader));
+    if(mFile.is_open())
+    {
+        mFile.seekp(0);
+        mFile.write((const char *) (&mWaveHeader), sizeof(mWaveHeader));
+        mSampleData = new U64[mNumChannels];
+    }
 }
 
 PCMWaveFileHandler::~PCMWaveFileHandler()
@@ -259,10 +265,17 @@ void PCMWaveFileHandler::addSample(U64 sample)
         sample = sample + (1ULL << (7 - mBitShift));
     }
 
-    writeLittleEndianData(sample << mBitShift, mBytesPerChannel);
+    // writeLittleEndianData(sample << mBitShift, mBytesPerChannel);
+    mSampleData[mSampleIndex++] = sample;
     
-    if(((++mSampleCount) % mNumChannels) == 0){
+    //if(((++mSampleCount) % mNumChannels) == 0){
+    if(mSampleIndex >= mNumChannels){ // we have another complete frame
         mTotalFrames++;
+        mSampleCount += mNumChannels;
+        mSampleIndex = 0;
+        for (U32 i = 0; i < mNumChannels; i++)
+            writeLittleEndianData(mSampleData[i] << mBitShift, mBytesPerChannel);
+
         if((mTotalFrames % (mSampleRate / 100)) == 0){
             updateFileSize();
         }
@@ -290,6 +303,8 @@ void PCMWaveFileHandler::close(void)
         mFile.write(&zero, 1);
     }
     mFile.close();
+    delete[] mSampleData;
+    mSampleData = nullptr;
     return;
 }
 
@@ -320,7 +335,9 @@ PCMExtendedWaveFileHandler::PCMExtendedWaveFileHandler(std::ofstream & file, U32
   mBitsPerChannel( bits_per_channel ),
   mSampleCount( 0 ),
   mTotalFrames( 0 ),
-  mWtPosSaved( 0 )
+  mWtPosSaved( 0 ),
+  mSampleData( nullptr ),
+  mSampleIndex( 0 )
 {
     if(bits_per_channel <= 8){
         mWaveHeader.mBitsPerSample = 8;
@@ -351,8 +368,12 @@ PCMExtendedWaveFileHandler::PCMExtendedWaveFileHandler(std::ofstream & file, U32
     mWaveHeader.mSamplesPerSec = sample_rate;
     mWaveHeader.mBytesPerSec = mFrameSizeBytes * sample_rate;
 
-    mFile.seekp(0);
-    mFile.write((const char *) (&mWaveHeader), sizeof(mWaveHeader));
+    if(mFile.is_open())
+    {
+        mFile.seekp(0);
+        mFile.write((const char *) (&mWaveHeader), sizeof(mWaveHeader));
+        mSampleData = new U64[mNumChannels];
+    }
 }
 
 PCMExtendedWaveFileHandler::~PCMExtendedWaveFileHandler()
@@ -379,10 +400,17 @@ void PCMExtendedWaveFileHandler::addSample(U64 sample)
         sample = sample + (1ULL << (7 - mBitShift));
     }
 
-    writeLittleEndianData(sample << mBitShift, mBytesPerChannel);
+    // writeLittleEndianData(sample << mBitShift, mBytesPerChannel);
+    mSampleData[mSampleIndex++] = sample;
     
-    if(((++mSampleCount) % mNumChannels) == 0){
+    //if(((++mSampleCount) % mNumChannels) == 0){
+    if(mSampleIndex >= mNumChannels){ // we have another complete frame
         mTotalFrames++;
+        mSampleCount += mNumChannels;
+        mSampleIndex = 0;
+        for (U32 i = 0; i < mNumChannels; i++)
+            writeLittleEndianData(mSampleData[i] << mBitShift, mBytesPerChannel);
+
         if((mTotalFrames % (mSampleRate / 100)) == 0){
             updateFileSize();
         }
@@ -410,6 +438,8 @@ void PCMExtendedWaveFileHandler::close(void)
         mFile.write(&zero, 1);
     }
     mFile.close();
+    delete[] mSampleData;
+    mSampleData = nullptr;
     return;
 }
 
