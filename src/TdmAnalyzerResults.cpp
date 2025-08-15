@@ -265,10 +265,8 @@ void PCMWaveFileHandler::addSample(U64 sample)
         sample = sample + (1ULL << (7 - mBitShift));
     }
 
-    // writeLittleEndianData(sample << mBitShift, mBytesPerChannel);
     mSampleData[mSampleIndex++] = sample;
     
-    //if(((++mSampleCount) % mNumChannels) == 0){
     if(mSampleIndex >= mNumChannels){ // we have another complete frame
         mTotalFrames++;
         mSampleCount += mNumChannels;
@@ -400,10 +398,8 @@ void PCMExtendedWaveFileHandler::addSample(U64 sample)
         sample = sample + (1ULL << (7 - mBitShift));
     }
 
-    // writeLittleEndianData(sample << mBitShift, mBytesPerChannel);
     mSampleData[mSampleIndex++] = sample;
     
-    //if(((++mSampleCount) % mNumChannels) == 0){
     if(mSampleIndex >= mNumChannels){ // we have another complete frame
         mTotalFrames++;
         mSampleCount += mNumChannels;
