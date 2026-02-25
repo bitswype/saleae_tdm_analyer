@@ -131,7 +131,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
                         "The file export option only shows TXT/CSV, but this dropdown will change what file type is actually generated");
     mExportFileTypeInterface->AddNumber( 0, "TXT/CSV", "Export data as a TXT / CSV");
     mExportFileTypeInterface->AddNumber( 1, "WAV", "Export data as a wave file");
-    mExportFileTypeInterface->SetNumber( mEnableAdvancedAnalysis );
+    mExportFileTypeInterface->SetNumber( mExportFileType );
 
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
