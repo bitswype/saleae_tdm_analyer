@@ -66,27 +66,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SDKM-01 | — | Pending |
-| SDKM-02 | — | Pending |
-| SDKM-03 | — | Pending |
-| FRM2-01 | — | Pending |
-| FRM2-02 | — | Pending |
-| FRM2-03 | — | Pending |
-| FRM2-04 | — | Pending |
-| FRM2-05 | — | Pending |
-| FRM2-06 | — | Pending |
-| RF64-01 | — | Pending |
-| RF64-02 | — | Pending |
-| RF64-03 | — | Pending |
-| RF64-04 | — | Pending |
-| SRAT-01 | — | Pending |
-| SRAT-02 | — | Pending |
+| SDKM-01 | Phase 4 | Pending |
+| SDKM-02 | Phase 4 | Pending |
+| SDKM-03 | Phase 4 | Pending |
+| FRM2-01 | Phase 5 | Pending |
+| FRM2-02 | Phase 5 | Pending |
+| FRM2-03 | Phase 5 | Pending |
+| FRM2-04 | Phase 5 | Pending |
+| FRM2-05 | Phase 5 | Pending |
+| FRM2-06 | Phase 5 | Pending |
+| RF64-01 | Phase 7 | Pending |
+| RF64-02 | Phase 7 | Pending |
+| RF64-03 | Phase 7 | Pending |
+| RF64-04 | Phase 7 | Pending |
+| SRAT-01 | Phase 6 | Pending |
+| SRAT-02 | Phase 6 | Pending |
 
 **Coverage:**
 - v1.4 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15 ⚠️
+- Mapped to phases: 15
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after initial definition*
+*Last updated: 2026-02-25 after roadmap creation*
