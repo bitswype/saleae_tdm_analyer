@@ -15,7 +15,10 @@ if(NOT TARGET Saleae::AnalyzerSDK)
     FetchContent_Declare(
         analyzersdk
         GIT_REPOSITORY https://github.com/saleae/AnalyzerSDK.git
-        GIT_TAG        master
+        # Pinned to the last known-good SDK commit (July 2023, hash verified via git ls-remote).
+        # Use the full SHA for reproducible builds — branch names like 'master' are mutable.
+        # To upgrade: verify new commit builds on all three platforms, then update this hash.
+        GIT_TAG        114a3b8306e6a5008453546eda003db15b002027
         GIT_SHALLOW    True
         GIT_PROGRESS   True
     )
