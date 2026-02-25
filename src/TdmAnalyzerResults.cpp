@@ -473,6 +473,9 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
     char error_str[ 80 ] = "";
     char warning_str[ 32 ] = "";
 
+    // Required by AnalyzerSDK >= 1.1.32: ClearTabularText() must be the first
+    // executable call in GenerateFrameTabularText(). Omitting it causes Logic 2
+    // to crash when displaying tabular data. Do not move or remove this call.
     ClearTabularText();
 
     Frame frame = GetFrame( frame_index );
