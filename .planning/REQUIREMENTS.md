@@ -9,9 +9,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### SDK Modernization
 
-- [ ] **SDKM-01**: Audit AnalyzerSDK pin — verify 114a3b8 is latest HEAD, document finding in commit message
-- [ ] **SDKM-02**: Remove unused `mResultsFrameV2` member variable from TdmAnalyzer.h — dead state that creates confusion
-- [ ] **SDKM-03**: Rename FrameV2 key `"frame #"` to `"frame_number"` — space and hash in key breaks HLA Python attribute-style access
+- [x] **SDKM-01**: Audit AnalyzerSDK pin — verify 114a3b8 is latest HEAD, document finding in commit message
+- [x] **SDKM-02**: Remove unused `mResultsFrameV2` member variable from TdmAnalyzer.h — dead state that creates confusion
+- [x] **SDKM-03**: Rename FrameV2 key `"frame #"` to `"frame_number"` — space and hash in key breaks HLA Python attribute-style access
 
 ### FrameV2 Enrichment
 
@@ -66,9 +66,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SDKM-01 | Phase 4 | Pending |
-| SDKM-02 | Phase 4 | Pending |
-| SDKM-03 | Phase 4 | Pending |
+| SDKM-01 | Phase 4 | Complete |
+| SDKM-02 | Phase 4 | Complete |
+| SDKM-03 | Phase 4 | Complete |
 | FRM2-01 | Phase 5 | Pending |
 | FRM2-02 | Phase 5 | Pending |
 | FRM2-03 | Phase 5 | Pending |
