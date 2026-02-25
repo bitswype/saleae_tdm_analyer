@@ -139,6 +139,8 @@ There is a bug in Logic 2 where the displayed export options are limited to `TXT
 
 # Building instructions
 
+This project uses CMake with FetchContent to automatically download the Saleae AnalyzerSDK from GitHub during the configure step — no manual SDK installation is needed. The first `cmake` configure command handles the download (requires an internet connection on first run). The build produces a shared library (`libtdm_analyzer.so` on Linux, `libtdm_analyzer.dylib` on macOS, `tdm_analyzer.dll` on Windows) in the `Analyzers/` subdirectory of your build directory.
+
 ### MacOS
 
 Dependencies:
@@ -166,8 +168,8 @@ Building the analyzer:
 ```
 mkdir build
 cd build
-cmake ..
-cmake --build .
+cmake ..           # Configures the project: downloads AnalyzerSDK via FetchContent, generates build files
+cmake --build .    # Compiles the analyzer shared library into the Analyzers/ subdirectory
 ```
 
 ### Ubuntu 16.04
@@ -186,29 +188,31 @@ Building the analyzer (original instructions):
 ```
 mkdir build
 cd build
-cmake ..
-cmake --build .
+cmake ..           # Configures the project: downloads AnalyzerSDK via FetchContent, generates build files
+cmake --build .    # Compiles the analyzer shared library into the Analyzers/ subdirectory
 # and to clean
-cmake --build . --target clean
+cmake --build . --target clean  # Removes compiled artifacts (leaves the downloaded SDK intact)
 ```
 
 Building the analyzer (release):
 ```
-cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release # setup for a release build
-cmake --build build-release # build a release version
+# Configures for an optimized release build and downloads AnalyzerSDK via FetchContent
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release    # Compiles the release analyzer shared library
 ```
 
 Building the analyzer (debug):
 ```
-cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug # setup for a debug build
-cmake --build build-debug # build a debug version
+# Configures for a debug build with debug symbols and downloads AnalyzerSDK via FetchContent
+cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug      # Compiles the debug analyzer shared library
 ```
 
 Cleaning:
 ```
-cmake --build build-debug --target clean
+cmake --build build-debug --target clean    # Removes debug build artifacts
 # -or-
-cmake --build build-release --target clean
+cmake --build build-release --target clean  # Removes release build artifacts
 ```
 
 Debugging on linux with the app image:
@@ -262,7 +266,7 @@ Building the analyzer:
 ```
 mkdir build
 cd build
-cmake .. -A x64
+cmake .. -A x64    # Configures the project for 64-bit: downloads AnalyzerSDK via FetchContent, generates a Visual Studio solution
 ```
 
 Then, open the newly created solution file located here: `build\tdm_analyzer.sln`
