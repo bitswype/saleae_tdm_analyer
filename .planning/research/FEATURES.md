@@ -1,141 +1,268 @@
 # Feature Research
 
-**Domain:** Saleae Logic 2 C++ Protocol Analyzer Plugin (TDM audio)
-**Researched:** 2026-02-23
-**Confidence:** HIGH (official Saleae SDK docs + official I2S analyzer source + confirmed bug status)
+**Domain:** Saleae Logic 2 C++ Protocol Analyzer Plugin (TDM audio) — v1.4 Milestone
+**Researched:** 2026-02-24
+**Confidence:** HIGH (official Saleae SDK docs + official I2S analyzer source + confirmed bug status + RF64 EBU spec)
 
 ---
 
-## Custom Export Type Bug: Status Assessment
+## Scope of This File
 
-### Verdict: NOT FIXED — Workaround Still Required
+This file covers the **four new features** targeted for v1.4:
 
-**Confidence:** HIGH
+1. SDK audit and update to latest AnalyzerSDK commit
+2. FrameV2 data enrichment (additional structured fields)
+3. RF64 WAV support for captures exceeding 4 GiB
+4. Sample rate sanity check / warning
 
-The bug where `AddExportOption` / `AddExportExtension` in C++ analyzer plugins produce no visible menu items in Logic 2's export UI has **not been fixed** as of Logic 2.4.40 (December 2025 — the latest version found in the changelog).
-
-Evidence:
-- Logic 2.4.22 still broken: community reports confirm `AddExportOption` / `AddExportExtension` do not work (verified in search results, 2024)
-- The feature request at `ideas.saleae.com/b/feature-requests/custom-export-options-via-extensions/` remains **Open** with no planned implementation
-- Saleae's official stance (as of October 2021, the most recent statement): they intend to **pare back** the C++ SDK's export functionality, not restore it. The intended path is Python HLA extensions
-- The official Saleae I2S analyzer source still uses only one export type (txt/csv) — no custom binary types
-- The Logic 2 changelog (versions 2.3.x through 2.4.40) contains no entry restoring custom export types
-
-**Implication for TDM analyzer:** The current WAV export workaround (hijacking the TXT/CSV export callback, selecting format via a settings dropdown) is the correct and only viable approach. This is not a temporary workaround — it is the permanent solution for as long as Logic 2's C++ SDK export API remains broken.
+Features already shipped in v1.0 (core decoding, existing FrameV2 fields, CSV export, WAV export, advanced error detection, simulation generator, cross-platform CI) are documented in the prior research cycle and are treated here as stable dependencies.
 
 ---
 
-## Feature Landscape
+## State of FrameV2 (Already Partially Implemented)
+
+The codebase already calls `UseFrameV2()` and emits structured data. Current fields per slot:
+
+| Field | Type | Value |
+|-------|------|-------|
+| `channel` | integer | slot number (0-based, from `mResultsFrame.mType`) |
+| `data` | integer | signed or unsigned sample value (sign-extended if `mSigned` is set) |
+| `errors` | string | space-separated error tags (`E: Short Slot`, `E: Data Error`, `E: Frame Sync Missed`, `E: Bitclock Error`) or empty |
+| `warnings` | string | `W: Extra Slot` or empty |
+| `frame #` | integer | TDM frame counter (increments per frame sync pulse) |
+
+Frame type tag passed to `AddFrameV2()` is `"slot"`.
+
+**Implication:** FrameV2 enrichment for v1.4 means adding new fields to make the table more useful for analysis, not rebuilding the foundation.
+
+---
+
+## State of Sample Rate Check (Already Partially Implemented)
+
+`GetMinimumSampleRateHz()` already returns:
+
+```cpp
+return mSettings->mSlotsPerFrame * mSettings->mBitsPerSlot * mSettings->mTdmFrameRate * 4;
+```
+
+This enforces a **4x oversampling floor** relative to the bit clock rate. Logic 2 uses this value to warn users when the capture sample rate is too low, but only at capture time — not in the settings dialog. The 4x multiplier is the correct engineering choice.
+
+**Formula correctness:** The bit clock frequency for a TDM stream is `frame_rate × slots_per_frame × bits_per_slot`. Sampling at 4x that rate gives at least 2 samples per clock half-period, which is the practical minimum for reliable edge detection. The Saleae documentation recommends "as fast as possible, 256x or more" for ideal results, but 4x is the hard floor for a clock-synchronous protocol where the data channel is stable between edges. The official I2S analyzer uses the same 4x pattern (returns a fixed 4 MHz, which is approximately 4x a typical I2S bit clock).
+
+**What's missing:** No user-visible warning inside the analyzer settings dialog. The SDK minimum rate is enforced silently at capture time — users who configure high frame rates and many slots may not realize their stored capture was taken at too low a sample rate. A non-blocking textual warning in the settings panel would surface this.
+
+---
+
+## Feature Landscape: v1.4 Features
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist. Missing these = product feels incomplete.
+Features that are table stakes for the v1.4 scope — missing them makes the milestone incomplete.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Bubble text on signal waveform | Core SDK capability; every analyzer has it; zero use without it | LOW | TDM has this. Multiple levels of detail (short/medium/long) are expected |
-| Correct decoding of all configured variants | The only reason to use the plugin at all | HIGH | TDM has I2S, LJ, RJ, DSP modes via settings; this is the core value |
-| Configurable channel assignments | Users may probe any physical pins | LOW | TDM has clock/frame/data channel selection |
-| Signed/unsigned integer display | Audio samples are signed two's complement; raw hex is useless for debugging audio | LOW | TDM has this; official I2S analyzer has it too |
-| CSV export with timing and values | Engineers want to post-process data in Excel/Python | LOW | TDM has this with Time[s], Channel, Value, Flags columns |
-| Error markers on waveform | Visual indication of protocol violations at the sample level | LOW | TDM has arrow markers; errors flagged as DISPLAY_AS_ERROR_FLAG |
-| Simulation data generator | Without it, the plugin is untestable without hardware | MEDIUM | TDM has it (sine wave + counter + static generators) |
-| FrameV2 / Data Table support | Required for Logic 2's data table panel and HLA chaining since Logic 2.3.43 | LOW | TDM has this (`UseFrameV2()` in constructor, `AddFrameV2()` per slot) |
-| GenerateFrameTabularText() implementation | Drives the legacy tabular text view; expected to be non-empty | LOW | TDM has this with channel, value, error, warning strings |
-| Settings persist across sessions | Logic 2 serializes settings automatically — but analyzer must expose all settings via interfaces | LOW | TDM has this via `LoadSettings`/`SaveSettings` and interface objects |
-| Cross-platform builds | Saleae runs on Windows, macOS, Linux — a plugin only on one platform is half-broken | MEDIUM | TDM has CI/CD for all three via GitHub Actions |
+| RF64 WAV for large captures | The existing 4 GiB guard writes a text error file — any capture with many channels or high sample rates will hit this. Users expect the file to just work, not to find a text error message in a .wav file | MEDIUM | RF64 is the right format: EBU standard, supported by Audacity/FFmpeg/SoX/Python soundfile/SciPy. Implementation: replace `WavePCMHeader` with an RF64 header struct that uses JUNK→ds64 upgrade pattern |
+| Sample rate warning in settings | Engineers configuring TDM frame rate + slots per frame need to know if their capture sample rate is insufficient. The SDK minimum is already computed; surfacing it as a human-readable check is expected | LOW | Not possible to show in-dialog warnings via the Saleae SDK UI directly — best approach is to expose the required minimum via `GenerateFrameTabularText` or `GetAnalyzerName` suffix; see Anti-Features for the right scope |
+| SDK pinned to a current commit | Reproducible builds require a pinned SHA. Moving from `114a3b8` to a more recent SHA incorporates any bug fixes or ARM64 improvements from 2022-2023 | LOW | The SDK changelog shows the last meaningful changes were July 2023 (macOS ARM64 support) and January 2022 (FrameV2 API made official). No breaking API changes since then |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set the product apart. Not required, but valued.
+Features for v1.4 that go beyond what competing community analyzers do.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| WAV export of decoded audio | Lets engineers listen to what the bus is carrying — unique to audio-domain analyzers | HIGH | TDM has this via workaround (settings dropdown selects WAV vs CSV); handles 1-256 channels, 8-64 bit depth |
-| TDM multi-slot support (1-256 slots/frame) | I2S is always 2-channel; TDM encoders can have 32+ channels; no other community analyzer covers this | HIGH | TDM's primary differentiator; official I2S analyzer is hard-coded to 1-4 subframes |
-| Advanced error detection (bitclock jitter, missed data, missed frame sync) | Helps identify marginal hardware quickly; most analyzers stop at "too few bits" | MEDIUM | TDM has this behind `mEnableAdvancedAnalysis` flag; optional to avoid false positives |
-| Configurable slot size separate from data width | Real TDM hardware often sends 32-bit slots with 24-bit audio; most tools don't handle this cleanly | LOW | TDM has `mBitsPerSlot` vs `mDataBitsPerSlot` as separate settings |
-| Multiple simulation data patterns | Sine wave tests audio correctness; counter tests slot boundaries; static tests known values | MEDIUM | TDM has all three in the simulation generator |
-| Extra slot / short slot detection | Flags frame sync misalignment issues visible only at protocol level, not at hardware level | LOW | TDM has both with dedicated flag bits |
-| FrameV2 with structured error fields | Downstream HLA or Python analysis can filter on error type without string parsing | LOW | TDM adds "errors", "warnings", "frame #", "channel", "data" as named FrameV2 fields |
+| RF64 with JUNK→ds64 on-the-fly upgrade | Production-quality WAV export that handles any capture size without pre-export size checks or error fallback files | MEDIUM | The JUNK chunk is written at file open; if total data exceeds 4 GiB, the header is rewritten with `RF64` RIFF ID and `ds64` chunk. If under 4 GiB, the file is a valid standard WAV with a harmless JUNK chunk |
+| Structured error boolean fields in FrameV2 | Python HLAs can filter `frame.data["short_slot"] == True` instead of string-parsing `frame.data["errors"]`. This is strictly better ergonomics for downstream analysis | LOW | Add boolean fields for each error flag: `short_slot`, `extra_slot`, `bitclock_error`, `missed_data`, `missed_frame_sync`. Keep existing string fields for human readability |
+| Sample rate requirement surfaced per-analysis | After analysis completes, a marker or bubble can show the minimum required sample rate vs actual — engineers see immediately if their capture was marginal | LOW | This is achievable by adding an `AnalyzerResults::AddAnalyzerResult()` annotation on the first frame, or by noting it in tabular text |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem good but create problems.
-
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Custom export type via AddExportOption | Cleaner UX — WAV and CSV as distinct menu items | Logic 2 C++ SDK does not render these menu items at all; implementing it produces invisible options; Saleae has stated intent to deprecate this capability further | Use settings dropdown (current approach): ExportFileType enum selects WAV vs CSV at export time |
-| Real-time streaming WAV (pipe to player) | Audio engineers want instant playback | Requires OS-level IPC, not possible within the analyzer plugin sandbox; export is file-based only | Export WAV file, open in any audio player |
-| Named protocol presets (I2S, TDM-32, etc.) | Reduces configuration steps for common formats | Requires UI changes Saleae doesn't expose; also couples settings to preset names that don't have universal definitions | Document the settings for each common format in the README; user saves Logic 2 project files as presets |
-| Sample rate sanity check / warning | Prevents silent under-sampling errors | Logic 2 doesn't provide a mechanism to show warnings in the settings UI without blocking the analyzer from starting; would require invasive workaround | `GetMinimumSampleRateHz()` already enforces minimum via SDK; add a README note about required sample rates |
-| Multiple data channels per analyzer instance | Some TDM hardware has multi-wire data buses | SDK architecture assigns one data channel per analyzer; users can add multiple analyzer instances | Document multi-instance approach in README |
-| Python HLA companion for post-processing | Extends analysis to application-layer | Separate project; adds maintenance burden; users who need HLA can write their own against TDM's FrameV2 output | The FrameV2 fields ("channel", "data", "errors", "warnings", "frame #") are named cleanly for HLA consumption |
+| Settings dialog inline warning for sample rate | Engineers want to see a red warning label while configuring the analyzer | The Saleae C++ SDK `AnalyzerSettingInterface` classes do not support custom warning text or conditional coloring. The only text in the dialog is the label string passed to `SetTitleAndTooltip()`. Injecting dynamic warnings (e.g., appending required rate to the label string at settings save time) is possible but fragile — the label only updates when settings are saved | Compute the minimum required rate and show it in the title of the frame rate setting: `"TDM Frame Rate (Hz) [min capture: Xk sps]"` — acceptable scope |
+| Dual-header WAV (write RF64 only when needed) | Avoid the JUNK chunk in small captures | This adds branching logic and two code paths. The JUNK chunk is 28 bytes on a potentially gigabyte-sized file — the overhead is irrelevant. The correct tradeoff is: always write RF64 header with JUNK chunk, upgrade to ds64 if needed | Always use RF64 header format; standard-compliant players ignore the JUNK chunk |
+| W64 (Sony Wave64) instead of RF64 | W64 also solves the 4 GiB limit | W64 has worse tool support. FFmpeg supports it, but Audacity, Python soundfile, SciPy, and most DAWs do NOT natively open W64. RF64 is the EBU standard and is what Audacity, Sox, Pro Tools, Nuendo, and Cubase all use. W64 is a Sony-origin format with narrow adoption | RF64 is the correct choice |
+| Adding `raw_bits` ByteArray field to FrameV2 | Complete bit-level data for forensic analysis | The raw bits are already in the `data` integer field. Adding a byte array of the individual bits multiplies storage per frame with no practical benefit — any HLA can extract individual bits from the integer | The `data` field is sufficient; document bit ordering in README |
+| Changing the frame type tag from `"slot"` to something else | Better semantics | The frame type tag is a breaking change for any existing HLA written against the current output. The tag `"slot"` is correct and semantically accurate | Leave `"slot"` as-is |
+
+---
+
+## RF64 vs W64: Compatibility Matrix
+
+**Recommendation: Use RF64.**
+
+| Tool | RF64 | W64 | Notes |
+|------|------|-----|-------|
+| Audacity | YES (native) | NO | Audacity explicitly outputs RF64 for large files |
+| FFmpeg | YES | YES | FFmpeg supports both |
+| SoX | YES | NO | SoX outputs RF64 for files over 4 GiB |
+| Python soundfile | YES | NO | soundfile (libsndfile) supports RF64 natively |
+| SciPy wavfile | YES (v1.14+) | NO | SciPy 1.14.0+ auto-handles RF64 |
+| Reaper (DAW) | YES | YES | Best DAW support for both |
+| Pro Tools | YES | NO | EBU RF64 is the broadcast standard |
+| Cubase / Nuendo | YES | NO | Steinberg uses RF64 for large session files |
+| Windows Media Foundation | YES | NO | Microsoft added RF64 support |
+| pydub | YES (via FFmpeg) | REQUIRES FFmpeg | pydub delegates to FFmpeg |
+
+**Confidence:** HIGH — verified via Audacity docs, FFmpeg source, SciPy changelog, community forum thread (Cockos forum, 2016 archive), EBU TECH 3306 spec.
+
+**RF64 JUNK→ds64 upgrade pattern:**
+
+```
+File header layout (RF64 with pre-allocated JUNK chunk):
+  Bytes 0-3:    "RIFF" (standard) or "RF64" (when > 4 GiB)
+  Bytes 4-7:    file_size - 8 (32-bit, set to 0xFFFFFFFF when > 4 GiB)
+  Bytes 8-11:   "WAVE"
+  Bytes 12-15:  "JUNK" (pre-allocated) → becomes "ds64" on upgrade
+  Bytes 16-19:  chunk size = 28
+  Bytes 20-27:  RIFF 64-bit size (filled in on upgrade)
+  Bytes 28-35:  data chunk 64-bit size (filled in on upgrade)
+  Bytes 36-43:  sample count 64-bit (filled in on upgrade)
+  Bytes 44-47:  table entry count = 0
+  Bytes 48-...: fmt chunk, data chunk (unchanged from standard WAV)
+```
+
+Implementation: Add a new `RF64WaveFileHandler` class (or modify `PCMWaveFileHandler`) that:
+1. Writes `RIFF` + `JUNK` header on open
+2. Writes audio data normally via `addSample()`
+3. On `close()`: if total bytes > 4 GiB, seek to byte 0, overwrite `RIFF` with `RF64`, overwrite 32-bit sizes with `0xFFFFFFFF`, write 64-bit sizes into the JUNK/ds64 chunk
+
+This replaces the current 4 GiB pre-export overflow guard (which writes a plain-text error to the .wav path).
+
+---
+
+## FrameV2 Enrichment: Recommended Fields
+
+### Current fields (keep all):
+- `channel` (integer) — slot number
+- `data` (integer) — sample value, sign-extended if signed mode
+- `errors` (string) — human-readable error list
+- `warnings` (string) — human-readable warning list
+- `frame #` (integer) — TDM frame counter
+
+### Add for v1.4:
+
+| Field | Type | Value | Rationale |
+|-------|------|-------|-----------|
+| `short_slot` | boolean | true if `SHORT_SLOT` flag set | HLA can filter `frame.data["short_slot"]` without string parsing |
+| `extra_slot` | boolean | true if `UNEXPECTED_BITS` flag set | Same rationale |
+| `bitclock_error` | boolean | true if `BITCLOCK_ERROR` flag set | Same rationale |
+| `missed_data` | boolean | true if `MISSED_DATA` flag set | Same rationale |
+| `missed_frame_sync` | boolean | true if `MISSED_FRAME_SYNC` flag set | Same rationale |
+
+**Rationale for boolean fields:** The official Saleae I2S analyzer exposes an `"error"` string field. The TDM analyzer already does this with the `"errors"` string. Adding per-flag booleans is strictly additive and enables HLA authors to write clean `if frame.data["short_slot"]:` logic instead of `if "Short Slot" in frame.data["errors"]:` string matching. This follows what the async-rgb-led-analyzer example does (named fields per data component).
+
+**What NOT to add:**
+- `raw_bits` byte array — redundant with `data` integer
+- `bit_clock_period_samples` — too implementation-internal, not useful for HLA
+- `start_sample` / `end_sample` — already available via the FrameV2 time range; HLA gets this from the frame bounds
+
+**Confidence:** MEDIUM — based on FrameV2 API documentation (official Saleae docs), I2S analyzer field patterns, and the existing codebase structure. No official guidance on "correct" FrameV2 field design exists beyond the rgb-led example.
+
+---
+
+## Sample Rate Check: Formula and Scope
+
+**Formula (already implemented in GetMinimumSampleRateHz):**
+
+```
+minimum_sample_rate = slots_per_frame × bits_per_slot × frame_rate_hz × 4
+```
+
+Where:
+- `slots_per_frame × bits_per_slot × frame_rate_hz` = bit clock frequency in Hz
+- `× 4` = 4x oversampling floor for reliable edge detection on a synchronous clock
+
+**Is 4x correct?** Yes. For a clock-synchronous protocol, the data channel is guaranteed stable between clock edges. The analyzer only needs to reliably detect clock edges, which requires sampling at least 2x the clock frequency (Nyquist). The 4x multiplier provides a 2x safety margin. The Saleae recommendation of "256x or more" is aspirational for noisy or borderline signals; 4x is the hard engineering minimum for clean digital signals. Saleae's own I2S analyzer uses approximately 4x (returns a fixed 4 MHz).
+
+**v1.4 scope for sample rate check:**
+
+The `GetMinimumSampleRateHz()` value is already computed and returned to Logic 2. Logic 2 uses it to set the minimum sample rate in the capture settings — this is the primary enforcement mechanism.
+
+The missing piece is surfacing the requirement in a human-readable form *after the fact* for captures already taken. Best approach: add the required minimum rate as an annotation on the first frame via `AddAnalyzerResultString()` or as a note in the tabular text for the first row. This does not require any new SDK capability.
+
+**What the sample rate check is NOT:**
+- It is not a blocking error that prevents analysis — the analyzer must continue even if the sample rate is insufficient (Logic 2 may have already taken the capture)
+- It is not a settings dialog widget — the SDK does not support dynamic label updates based on other settings values in a clean way
+
+**Recommended implementation:**
+
+In `WorkerThread()`, after `GetSampleRate()` is called and `mDesiredBitClockPeriod` is computed, compare actual vs minimum:
+
+```cpp
+U64 actual_rate = GetSampleRate();
+U32 min_rate = GetMinimumSampleRateHz();
+if (actual_rate < min_rate) {
+    // Add a result annotation on the first frame, or emit via mResults->AddAnalyzerResult()
+    // to surface in the UI that sample rate may be insufficient
+}
+```
+
+**Confidence:** HIGH for the formula. MEDIUM for the implementation approach (the Saleae SDK's mechanism for surfacing non-blocking warnings is not well-documented; the safest path is text in tabular output).
+
+---
+
+## SDK Update: Scope and Risk
+
+**What changed in AnalyzerSDK since commit `114a3b8`:**
+
+The AnalyzerSDK repository shows two meaningful changes since the pinned commit:
+1. **January 2022**: FrameV2 API made official (merged from alpha branch, PR #26 "LOG-1488"). The TDM analyzer already uses FrameV2, so this is already accounted for.
+2. **July 2023**: macOS ARM64 support improved (PR #31, reorganized library loading for cross-compiled builds). This is a build system change, not an API change.
+
+No new API methods, no breaking changes, no bug fixes to the analysis pipeline were found in the commits between the pinned SHA and July 2023.
+
+**Risk of updating:** LOW. The API surface has not changed. The update primarily picks up:
+- Correct macOS ARM64 library loading (`CMAKE_OSX_ARCHITECTURES` detection)
+- Any minor build system improvements
+
+**Process:** Update the FetchContent SHA in `CMakeLists.txt` from `114a3b8` to the latest commit SHA. Run all three platform builds via CI. Verify no compilation warnings or errors. No code changes expected.
+
+**Confidence:** MEDIUM — the commit history summary comes from a WebFetch that truncated after July 2023. The SDK repository last updated July 12, 2025 per WebSearch. There may be commits between July 2023 and July 2025 not surfaced. A direct review of the GitHub commit log is needed before updating.
 
 ---
 
 ## Feature Dependencies
 
 ```
-[FrameV2 support]
-    └──enables──> [Data Table display in Logic 2 UI]
-    └──enables──> [HLA chaining (Python post-processing)]
-    └──requires──> [UseFrameV2() in Analyzer constructor]
+[RF64 WAV support]
+    └──replaces──> [4 GiB overflow guard (plain text fallback)]
+    └──requires──> [new RF64WaveFileHandler class OR modification to PCMWaveFileHandler]
+    └──requires──> [JUNK chunk pre-allocation at file open]
+    └──enables──> [WAV export of any size capture without pre-check]
 
-[WAV export]
-    └──requires──> [Correct slot data in Frame.mData1]
-    └──requires──> [ExportFileType setting in TdmAnalyzerSettings]
-    └──depends on──> [WAV export workaround (not SDK custom export types)]
-    └──constrains──> [mTdmFrameRate setting must be provided by user — SDK cannot derive it from capture]
+[FrameV2 boolean error fields]
+    └──enhances──> [existing FrameV2 "errors" string field]
+    └──requires──> [AddBoolean() calls in AnalyzeTdmSlot()]
+    └──enables──> [clean HLA filtering without string parsing]
 
-[Advanced error detection]
-    └──requires──> [mEnableAdvancedAnalysis setting]
-    └──produces──> [MISSED_DATA, MISSED_FRAME_SYNC, BITCLOCK_ERROR flags in Frame]
-    └──enhances──> [FrameV2 "errors" field]
+[Sample rate check warning]
+    └──depends on──> [GetMinimumSampleRateHz() — already correct]
+    └──depends on──> [GetSampleRate() — already called in WorkerThread()]
+    └──produces──> [annotation on first frame or tabular row]
+    └──does NOT block──> [analysis proceeding regardless]
 
-[Multi-slot TDM (>2 slots)]
-    └──requires──> [mSlotsPerFrame setting]
-    └──enables──> [WAV export with >2 channels]
-    └──complicates──> [Bubble text (slot numbers, not channel names like "L"/"R")]
-
-[Signed integer display]
-    └──requires──> [mSigned setting]
-    └──affects──> [GenerateBubbleText, GenerateCSV, GenerateFrameTabularText, FrameV2 "data" field]
+[SDK update]
+    └──independent of──> [all feature work above]
+    └──should precede──> [all feature work] (build on known-good foundation)
+    └──requires──> [CI verification on all three platforms]
 ```
-
-### Dependency Notes
-
-- **FrameV2 requires UseFrameV2():** If `UseFrameV2()` is not called in the constructor, Logic 2 v2.3.43+ ignores `AddFrameV2()` calls silently. The data table and HLA chaining will not work.
-- **WAV export depends on user-provided sample rate:** Unlike CSV, WAV requires a known `mTdmFrameRate` (audio sample rate in Hz) embedded in the file header. The analyzer cannot derive this from the logic capture alone — it's a protocol parameter the user must configure correctly. This is a known limitation.
-- **Advanced analysis conflicts with noisy hardware:** Enabling `mEnableAdvancedAnalysis` on signals with clock jitter will produce false-positive `BITCLOCK_ERROR` flags. The feature is correctly guarded behind a settings bool.
 
 ---
 
-## MVP Definition (Audit Milestone Context)
+## MVP Definition (v1.4 Milestone)
 
-This is not a greenfield MVP — the plugin is already feature-complete for its stated scope. The audit milestone is about raising confidence in correctness, not adding features.
+### Launch With (v1.4 release)
 
-### Already Shipped (v1 — current state)
+- [ ] RF64 WAV support — replaces the 4 GiB overflow guard with proper large-file export. This is the highest user-visible impact change: a user with a 6 GiB capture currently gets a text error file; after v1.4 they get a valid WAV file.
+- [ ] FrameV2 boolean error fields — additive, low risk, materially improves HLA ergonomics
+- [ ] Sample rate warning annotation — additive, non-blocking, surfaces important diagnostic information
+- [ ] SDK update to latest commit SHA — foundation; do this first
 
-- [x] Core TDM decoding (I2S, LJ, RJ, DSP variants) — existing
-- [x] FrameV2 with named fields — existing
-- [x] CSV export with timing, flags, signed/unsigned values — existing
-- [x] WAV export via TXT/CSV workaround — existing, confirmed permanent
-- [x] Advanced error detection (bitclock, missed data, missed frame sync) — existing
-- [x] Multi-slot support (1-256 slots) — existing
-- [x] Simulation data generator — existing
-- [x] Cross-platform CI/CD — existing
+### Defer to Later Milestone
 
-### Potentially Add After Audit (v1.x — out of current scope)
-
-- [ ] Sample rate sanity check warning — deferred to future milestone
-- [ ] Named preset configurations (I2S, RJ, LJ, DSP) — deferred to future milestone
-
-### Confirmed Out of Scope (v2+)
-
-- [ ] Custom export type via SDK (AddExportOption) — blocked by Logic 2 bug, no fix in sight
-- [ ] Real-time audio streaming — architecturally impossible in plugin sandbox
-- [ ] Multi-data-channel support within one analyzer instance — requires SDK architectural changes
+- Named protocol presets (I2S, LJ, RJ, DSP) — settings dialog work, separate concern
+- Python HLA companion — separate project, out of plugin scope
 
 ---
 
@@ -143,50 +270,26 @@ This is not a greenfield MVP — the plugin is already feature-complete for its 
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Correct core decoding | HIGH | Already done | P1 (done) |
-| FrameV2 data table support | HIGH | Already done | P1 (done) |
-| WAV export via workaround | HIGH | Already done | P1 (done) |
-| Signed integer display | HIGH | Already done | P1 (done) |
-| CSV export | HIGH | Already done | P1 (done) |
-| Advanced error detection | MEDIUM | Already done | P2 (done) |
-| Simulation data generator | MEDIUM | Already done | P2 (done) |
-| Sample rate sanity check | MEDIUM | LOW | P2 (future milestone) |
-| Named presets | LOW | MEDIUM | P3 (future milestone) |
-| Custom export type (AddExportOption) | LOW | HIGH + blocked by SDK bug | P3 / never |
-
----
-
-## Comparison with Official Saleae I2S Analyzer
-
-The official Saleae I2S analyzer is the closest reference point.
-
-| Feature | Official I2S Analyzer | TDM Analyzer | Notes |
-|---------|----------------------|--------------|-------|
-| FrameV2 | Yes (`UseFrameV2()`) | Yes (`UseFrameV2()`) | Both correct |
-| Channel count | Fixed: 1-4 subframes via `PcmFrameType` enum | Configurable: 1-256 via `mSlotsPerFrame` | TDM is strictly more capable |
-| Signed integer display | Yes | Yes | Both correct |
-| Export types | CSV only | CSV + WAV (via workaround) | TDM adds unique value |
-| Error detection | Too-few-bits, doesn't-divide-evenly | Short slot, extra slot, bitclock error, missed data, missed frame sync | TDM is strictly more capable |
-| FrameV2 fields | "channel", "data" | "channel", "data", "errors", "warnings", "frame #" | TDM richer for HLA use |
-| GenerateFrameTabularText | Yes | Yes | Both correct |
-| Simulation generator | Yes | Yes (sine + counter + static) | TDM more patterns |
-| Settings count | 9 settings | 12 settings | TDM covers more protocol variants |
-| Slot size vs data width separation | No (bits_per_word is both) | Yes (`mBitsPerSlot` vs `mDataBitsPerSlot`) | TDM handles real hardware better |
-
-**Assessment:** The TDM analyzer is at least as capable as the official I2S reference implementation in every dimension, and substantially more capable in the dimensions that matter for TDM (multi-slot, WAV export, fine-grained error detection, slot size separation).
+| RF64 WAV export | HIGH — removes 4 GiB hard limit | MEDIUM — new header struct + upgrade logic | P1 |
+| FrameV2 boolean error fields | MEDIUM — ergonomic improvement for HLA authors | LOW — 5 `AddBoolean()` calls per frame | P1 |
+| Sample rate warning annotation | MEDIUM — prevents silent misconfiguration | LOW — one comparison + one annotation | P1 |
+| SDK update to latest SHA | LOW (no new API) but correctness hygiene | LOW — update one CMakeLists.txt line + CI run | P1 (do first) |
 
 ---
 
 ## Sources
 
-- Saleae Changelog (verified up to v2.4.40, Dec 2025): [https://ideas.saleae.com/f/changelog/](https://ideas.saleae.com/f/changelog/)
-- Custom Export Options Feature Request (status: Open, no planned implementation): [https://ideas.saleae.com/b/feature-requests/custom-export-options-via-extensions/](https://ideas.saleae.com/b/feature-requests/custom-export-options-via-extensions/)
-- Export formats for low-level analyzers discussion (confirmed not implemented in Logic 2): [https://discuss.saleae.com/t/export-formats-for-low-level-analyzers/1040](https://discuss.saleae.com/t/export-formats-for-low-level-analyzers/1040)
-- Missing V1 SDK features thread (Saleae intent: pare back C++ SDK, push to Python HLAs): [https://discuss.saleae.com/t/missing-v1-analyzer-sdk-plugin-features-and-ideas/684](https://discuss.saleae.com/t/missing-v1-analyzer-sdk-plugin-features-and-ideas/684)
-- FrameV2 / HLA Support - Analyzer SDK (official): [https://support.saleae.com/saleae-api-and-sdk/protocol-analyzer-sdk/framev2-hla-support-analyzer-sdk](https://support.saleae.com/saleae-api-and-sdk/protocol-analyzer-sdk/framev2-hla-support-analyzer-sdk)
-- Official Saleae I2S Analyzer source (reference implementation): [https://github.com/saleae/i2s-analyzer](https://github.com/saleae/i2s-analyzer)
-- Saleae Analyzer API documentation: [https://github.com/saleae/SampleAnalyzer/blob/master/docs/Analyzer_API.md](https://github.com/saleae/SampleAnalyzer/blob/master/docs/Analyzer_API.md)
+- EBU TECH 3306 RF64 specification (authoritative): [https://tech.ebu.ch/docs/tech/tech3306v1_1.pdf](https://tech.ebu.ch/docs/tech/tech3306v1_1.pdf)
+- NAudio RF64/BWF implementation guide (implementation pattern reference): [https://markheath.net/post/naudio-rf64-bwf](https://markheath.net/post/naudio-rf64-bwf)
+- FrameV2 / HLA Support — Analyzer SDK (official): [https://support.saleae.com/saleae-api-and-sdk/protocol-analyzer-sdk/framev2-hla-support-analyzer-sdk](https://support.saleae.com/saleae-api-and-sdk/protocol-analyzer-sdk/framev2-hla-support-analyzer-sdk)
+- AnalyzerSDK AnalyzerResults.h — FrameV2 class declaration: [https://github.com/saleae/AnalyzerSDK/blob/master/include/AnalyzerResults.h](https://github.com/saleae/AnalyzerSDK/blob/master/include/AnalyzerResults.h)
+- AnalyzerSDK commit history (last major change: July 2023, macOS ARM64): [https://github.com/saleae/AnalyzerSDK/commits/master](https://github.com/saleae/AnalyzerSDK/commits/master)
+- Saleae sample rate guidance ("256x or more ideal"): [https://support.saleae.com/faq/technical-faq/what-sample-rate-is-required](https://support.saleae.com/faq/technical-faq/what-sample-rate-is-required)
+- Audacity RF64 export docs: [https://manual.audacityteam.org/man/export_formats_supported_by_audacity.html](https://manual.audacityteam.org/man/export_formats_supported_by_audacity.html)
+- W64 vs RF64 community discussion (RF64 wins on compatibility): [https://forum.cockos.com/archive/index.php/t-191986.html](https://forum.cockos.com/archive/index.php/t-191986.html)
+- Official I2S analyzer source (FrameV2 field reference): [https://github.com/saleae/i2s-analyzer](https://github.com/saleae/i2s-analyzer)
 
 ---
-*Feature research for: Saleae Logic 2 TDM Protocol Analyzer Plugin*
-*Researched: 2026-02-23*
+
+*Feature research for: Saleae Logic 2 TDM Protocol Analyzer Plugin — v1.4 SDK & Export Modernization*
+*Researched: 2026-02-24*

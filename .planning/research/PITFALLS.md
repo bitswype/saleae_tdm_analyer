@@ -1,250 +1,294 @@
 # Pitfalls Research
 
-**Domain:** Saleae Logic 2 Protocol Analyzer Plugin — TDM/I2S Audio Decoding
-**Researched:** 2026-02-23
-**Confidence:** HIGH (grounded in direct source code inspection + verified against WAV spec, GCC/Clang docs, and Saleae documentation)
+**Domain:** Saleae Logic 2 C++ Protocol Analyzer Plugin — TDM/I2S Audio — v1.4 SDK & Export Modernization
+**Researched:** 2026-02-24
+**Confidence:** HIGH (direct source inspection + official SDK headers + RF64 spec + Audacity bug report + Saleae forum discussions)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Fixed-Size Error String Buffer Overflow via sprintf Concatenation
+### Pitfall 1: RF64 ds64 Chunk Packed in the Wrong Position
 
 **What goes wrong:**
-Multiple error flags (SHORT_SLOT, MISSED_DATA, MISSED_FRAME_SYNC, BITCLOCK_ERROR) are each appended to a fixed `char error_str[80]` buffer using `sprintf(error_str + strlen(error_str), ...)`. If all four errors trigger on the same slot, the combined string exceeds the buffer:
-- "E: Short Slot " = 14 chars
-- "E: Data Error " = 14 chars
-- "E: Frame Sync Missed " = 21 chars
-- "E: Bitclock Error " = 18 chars
-- Total = 67 chars + null = 68 chars — fits barely today, but any change to error text or addition of a new error type overflows silently.
+RF64 inserts a `ds64` chunk between the RIFF/WAVE header and the `fmt` chunk. The correct byte layout is:
 
-This pattern repeats in three separate locations: `TdmAnalyzer.cpp` lines 311–329, `TdmAnalyzerResults.cpp` lines 51–71, and lines 490–510.
-
-**Why it happens:**
-The author suppressed the MSVC C4996 warning that would have flagged `sprintf` as unsafe (pragma at line 8 of `TdmAnalyzerResults.cpp`, line 8 of `TdmAnalyzerSettings.cpp`), silencing the compiler's early warning signal. Without that warning, the unsafe sprintf pattern spread across the codebase.
-
-**How to avoid:**
-Replace all `sprintf` with `snprintf`, passing the remaining buffer size explicitly at each call site:
-```cpp
-// Before
-sprintf(error_str + strlen(error_str), "E: Data Error ");
-
-// After
-size_t used = strlen(error_str);
-snprintf(error_str + used, sizeof(error_str) - used, "E: Data Error ");
 ```
-Or eliminate fixed buffers entirely by building error strings with `std::string` concatenation. Remove the `#pragma warning(disable: 4996)` suppressions and fix the underlying root cause rather than hiding the warning.
-
-**Warning signs:**
-- `#pragma warning(disable: 4996)` at the top of a source file
-- `sprintf(buf + strlen(buf), ...)` chaining pattern
-- Multiple error flag checks that all write to the same fixed buffer
-
-**Phase to address:** Audit phase — this is a known bug (documented in CONCERNS.md) that must be fixed before adding any new error conditions.
-
----
-
-### Pitfall 2: Export File Type Interface Initialized with Wrong Variable
-
-**What goes wrong:**
-In `TdmAnalyzerSettings.cpp` line 136, the export file type dropdown is initialized with the wrong variable:
-```cpp
-mExportFileTypeInterface->SetNumber( mEnableAdvancedAnalysis ); // BUG: should be mExportFileType
+[0]  "RF64"        (4 bytes)   — replaces "RIFF"
+[4]  0xFFFFFFFF   (U32)       — RIFF size sentinel (not real size)
+[8]  "WAVE"        (4 bytes)
+[12] "ds64"        (4 bytes)   — MUST come immediately after "WAVE"
+[16] 28            (U32)       — ds64 chunk data size (always 28 bytes for PCM)
+[20] riff_size_64  (U64)       — total file size minus 8
+[28] data_size_64  (U64)       — true data chunk byte count
+[36] sample_count  (U64)       — total sample frames written
+[44] 0             (U32)       — table entry count (always 0 for PCM)
+[48] "fmt "        (4 bytes)   — standard fmt chunk follows
+...
+[92] "data"        (4 bytes)
+[96] 0xFFFFFFFF   (U32)       — data size sentinel (not real size)
+[100] <sample data>
 ```
-`mEnableAdvancedAnalysis` is a `bool` (defaults to `false` = 0). `mExportFileType` is an `ExportFileType` enum. The constructor sets both to 0 by coincidence, so the initial state appears correct — but this is accidental. If default values ever change, or if a user relies on the UI default reflecting the saved setting, the wrong variable being used means the export type display will reflect the advanced analysis state, not the actual export file type choice.
 
-Note that `UpdateInterfacesFromSettings()` (line 191) does use the correct variable, so the bug only manifests during initial construction, not after loading saved settings.
+If the `ds64` chunk is placed after `fmt` or `data`, compliant readers will not find it because they expect it immediately after `WAVE`. If `#pragma pack(1)` is not active for the ds64 struct, the struct will be padded and the written bytes will be wrong.
 
 **Why it happens:**
-Copy-paste error when adding the export type interface; the pattern for each interface uses `SetNumber(m<SettingName>)` but the variable names were not updated carefully.
+Developers copying from WAV code assume the chunk ordering is flexible (RIFF allows arbitrary chunk ordering within the WAVE container). It is not — RF64 readers scan for `ds64` at a fixed expected offset and will skip it if out of position. Also, the JUNK-to-ds64 migration approach adds code paths that can place the ds64 chunk in the wrong location if the byte-level offset tracking is off by even one byte.
 
 **How to avoid:**
-Verify every `SetNumber` / `SetInteger` / `SetValue` / `SetChannel` call in the constructor maps to the correct member variable. Add a static assertion or review pass that checks constructor init against `UpdateInterfacesFromSettings()` for consistency.
+Write the RF64 header as a single packed struct or write each field explicitly in the correct sequence using the existing `writeLittleEndianData()` pattern already in `PCMWaveFileHandler`. Add a `static_assert` on the RF64 header struct size (expected: 100 bytes for the full header through the `data` chunk ID and sentinel, before sample data). Do NOT use the JUNK-to-ds64 approach; instead, always write RF64 headers directly when RF64 mode is selected (the TDM analyzer knows its data size before writing — it has `num_frames` and `mFrameSizeBytes` computed in `GenerateWAV()`).
 
 **Warning signs:**
-- UI shows wrong initial state after fresh installation
-- Constructor `SetNumber` and `UpdateInterfacesFromSettings` `SetNumber` use different variable names for the same interface
-- Type mismatch between interface value type and variable passed in (bool vs enum)
+- Audacity opens the file but reports 0 samples or an incorrect duration
+- VLC or ffprobe reports "invalid data found when processing input" or "Could not find codec parameters"
+- File plays at wrong speed (reader used fmt sample rate but calculated wrong sample count)
 
-**Phase to address:** Audit phase — straightforward one-line fix; verify the correct variable name, then test that the UI reflects the correct default export type on fresh load.
+**Phase to address:** RF64 implementation phase — design the struct layout and verify with a hex dump against the EBU Tech 3306 spec before writing any sample data.
 
 ---
 
-### Pitfall 3: `#pragma scalar_storage_order` Is GCC-Only — Silent Silencing on Clang/MSVC
+### Pitfall 2: Both RIFF Size and Data Chunk Size Sentinel Values Must Be 0xFFFFFFFF — Not Zero
 
 **What goes wrong:**
-The WAV header structs in `TdmAnalyzerResults.h` (lines 45–65 and 67–94) use `#pragma scalar_storage_order little-endian` to enforce little-endian byte ordering. This pragma is a GCC extension. It is **not supported by Clang** (see LLVM issue #34641, open since 2017 with no implementation). On macOS, Apple uses Clang, not GCC. When Clang silently ignores this pragma, struct fields are written in the platform's native byte order — which on x86_64 and ARM64 is little-endian anyway, so the bug is masked in practice. However:
+RF64 requires two 32-bit size fields to be set to the sentinel value `0xFFFFFFFF` (not 0, not the real size) to signal to readers that the true size is in the `ds64` chunk:
+1. The RIFF chunk size at offset 4 (always `0xFFFFFFFF`)
+2. The data chunk size at offset 96 (assuming standard PCM header layout, always `0xFFFFFFFF`)
 
-1. On a hypothetical big-endian host, the header would be written in the wrong byte order.
-2. The intent of the code is not enforced by the compiler on macOS or Windows (MSVC also ignores it).
-3. There are no `static_assert` checks to verify the struct is 44 bytes (standard PCM) or 80 bytes (extended) — so any accidental padding goes undetected.
-
-**Why it happens:**
-The pragma was added to document intent and potentially enforce it on GCC (Linux CI uses GCC-14). The author may not have known the pragma was non-portable.
-
-**How to avoid:**
-Add `static_assert(sizeof(WavePCMHeader) == 44, "WavePCMHeader must be 44 bytes")` and `static_assert(sizeof(WavePCMExtendedHeader) == 80, "WavePCMExtendedHeader must be 80 bytes")` immediately after each struct definition. These catch packing issues on all compilers regardless of pragma support. Document in a comment that `scalar_storage_order` is for GCC only and that the implementation relies on all supported targets being little-endian.
-
-**Warning signs:**
-- Struct definition uses `#pragma scalar_storage_order` without a corresponding `static_assert` on struct size
-- No comment acknowledging the GCC-only nature of the pragma
-- WAV files produced on macOS or Windows have subtly wrong headers (byte-swapped fields in specific metadata fields only)
-
-**Phase to address:** Audit phase — add `static_assert` guards; this prevents silent regressions on any future cross-platform porting work.
-
----
-
-### Pitfall 4: WAV File Size Silently Corrupts Beyond 4 GB (U32 Overflow)
-
-**What goes wrong:**
-The RIFF and data chunk size fields in `WavePCMHeader` are `U32` (32-bit unsigned), capping WAV file content at 4,294,967,295 bytes (~4 GB). Long captures at high sample rates and many channels will silently overflow these fields without any error. For example:
-- 48 kHz, 256 channels, 32-bit depth = 48000 × 256 × 4 = ~47 MB/second
-- 4 GB is exhausted in approximately 90 seconds of capture at this configuration
-
-`updateFileSize()` in `TdmAnalyzerResults.cpp` (line 311) computes `data_size_bytes` as `U32` before passing it to `writeLittleEndianData`. If `mTotalFrames * mFrameSizeBytes > UINT32_MAX`, the computed size silently wraps to a small value, corrupting the header while leaving all audio data intact in the file (making it unreadable by standard players).
+If either field is written as 0, or as the truncated 32-bit real size, readers will either reject the file as corrupt or compute an incorrect size, stopping playback early.
 
 **Why it happens:**
-The RIFF/WAV specification itself uses 32-bit chunk sizes. The code faithfully implements the spec without detecting when the spec's limits are exceeded. There is no early warning or pre-flight calculation before export begins.
+Code that computes chunk sizes and then clamps to UINT32_MAX is a common but wrong "fix." Clamping produces a valid 32-bit number; the sentinel `0xFFFFFFFF` is specifically -1 cast to U32, which most implementations treat as "use the 64-bit value in ds64 instead." An implementation that writes `min(real_size, 0xFFFFFFFF)` for a file exactly at 4GB will write the sentinel by accident, which works — but for files slightly over 4GB it will write the wrong truncated value.
 
 **How to avoid:**
-Before beginning WAV export, calculate the expected file size:
+For RF64 files: always write `0xFFFFFFFF` for both the RIFF size field and the data chunk size field in the primary header. Write the true 64-bit sizes only in the `ds64` chunk. Use named constants:
 ```cpp
-U64 expected_bytes = U64(num_frames) * U64(mFrameSizeBytes);
-if (expected_bytes > 0xFFFFFFFFULL) {
-    // warn user or limit export
+constexpr U32 RF64_SIZE_SENTINEL = 0xFFFFFFFFu;
+```
+Cross-reference: EBU Tech 3306 Section 3.1 — "The value of the 'size' field of the 'RIFF' chunk shall be set to -1."
+
+**Warning signs:**
+- `ffprobe` reports "Invalid data found" or "data size 4294967295" (that is 0xFFFFFFFF, which means it read the sentinel from the primary header rather than the ds64)
+- File plays but duration shown is "4 hours 46 minutes" regardless of actual content (reader computed duration from `0xFFFFFFFF / sample_rate`)
+
+**Phase to address:** RF64 implementation phase — enforce sentinel constants at the time the RF64 header struct is defined, not in the write path.
+
+---
+
+### Pitfall 3: RF64 ds64 Sizes Must Be Updated at File Close — Forgetting the Seek-Back
+
+**What goes wrong:**
+The `ds64` chunk contains three 64-bit fields (RIFF size, data size, sample count) that are not known until after all samples have been written. The ds64 chunk is written at the beginning of the file (bytes 12–47), but the correct values can only be determined at the end. This requires:
+1. Writing placeholder zeros for these fields at open time
+2. After writing all sample data, seeking back to byte 20 and overwriting with the final values
+
+If the seek-back is omitted or seeks to the wrong offset, the ds64 chunk will contain zeros, and the reader will compute 0-byte data and 0 samples — the file will appear empty.
+
+The existing `PCMWaveFileHandler::updateFileSize()` uses U32 arithmetic (`mTotalFrames * mFrameSizeBytes`) for the size computation. This cannot be directly reused for RF64 — the same multiplication must use U64.
+
+**Why it happens:**
+The existing WAV code's `updateFileSize()` pattern is familiar to copy from. Developers copy the seek positions from the existing `RIFF_CKSIZE_POS = 4` and `DATA_CKSIZE_POS = 40` constants and forget that RF64 shifts these offsets (data chunk ID is at byte 92 in RF64, not byte 36). Also, the existing update uses U32 types throughout; silently using U32 for the ds64 fields defeats the entire purpose of RF64.
+
+**How to avoid:**
+Define explicit constants for the RF64 ds64 field offsets:
+```cpp
+// RF64 header layout (PCM, standard format, no extra chunks)
+constexpr U64 RF64_DS64_RIFF_SIZE_OFFSET   = 20;  // within ds64 chunk data
+constexpr U64 RF64_DS64_DATA_SIZE_OFFSET   = 28;
+constexpr U64 RF64_DS64_SAMPLE_COUNT_OFFSET = 36;
+```
+In `close()`, seek to each offset and write the U64 value using the existing `writeLittleEndianData()` with `num_bytes = 8`. Verify with: after close, reopen the file and read back these fields — confirm they match the expected sizes.
+
+**Warning signs:**
+- File has correct size on disk but plays as silence for zero duration
+- `ffprobe` reports `size=0` in the ds64 chunk
+- The existing `updateFileSize()` implementation uses `U32` for any size variable
+
+**Phase to address:** RF64 implementation phase — the `close()` method is the critical path; test with a known-size synthetic write before attempting a real capture.
+
+---
+
+### Pitfall 4: FrameV2 `AddFrameV2` Requires `UseFrameV2()` in the Analyzer Constructor — Already Done, but Must Not Be Removed
+
+**What goes wrong:**
+The current `TdmAnalyzer` constructor calls `UseFrameV2()` at line 13 of `TdmAnalyzer.cpp`. This registers the analyzer as a FrameV2 producer. If this call is removed during an SDK update (e.g., by overwriting the constructor when migrating to a newer SDK template), FrameV2 data submitted via `AddFrameV2()` will be silently ignored — no error, no crash, just an empty data table.
+
+Separately: the SDK documentation notes that analyzers using FrameV2 cannot be loaded in Logic 2 versions older than 2.3.43. This is already the case; do not regress it by removing `UseFrameV2()`.
+
+**Why it happens:**
+When updating the SDK, developers sometimes regenerate boilerplate from a template or copy from a reference analyzer that predates `UseFrameV2()`. The call is in the constructor body, not a header, so it is easy to miss in a diff.
+
+**How to avoid:**
+In any SDK update commit, explicitly verify `UseFrameV2()` is still present in `TdmAnalyzer::TdmAnalyzer()`. Add a comment above it:
+```cpp
+// Required: registers this analyzer as a FrameV2 producer.
+// Without this, AddFrameV2() data is silently dropped and the data table will be empty.
+// Requires Logic 2.3.43+. Do not remove without understanding the implications.
+UseFrameV2();
+```
+
+**Warning signs:**
+- After SDK update, the data table in Logic 2 shows no rows despite analyzer running successfully
+- `GenerateFrameTabularText()` is never called (Logic 2 only calls it for FrameV2 analyzers)
+
+**Phase to address:** SDK update phase — add this comment as part of the SDK audit commit.
+
+---
+
+### Pitfall 5: FrameV2 Field Keys With Spaces or Special Characters Are Silently Accepted but May Break HLA Access
+
+**What goes wrong:**
+The current FrameV2 implementation uses `"frame #"` as a field key (with a space and special character). FrameV2 stores arbitrary string keys, and the SDK does not validate or reject keys at write time — so `frame_v2.AddInteger("frame #", mFrameNum)` compiles and runs. However, Python HLA scripts access FrameV2 fields via `frame.data["frame #"]` dictionary syntax. The space and hash make this key work as a Python string literal, but it breaks if HLA authors use attribute-style access or if any future Saleae tooling normalizes field names (replacing spaces with underscores).
+
+More critically: field keys must be consistent across all calls to `AddFrameV2()` for the same frame type. If any code path adds a key for some frames but not others, the data table column for that key will show empty cells intermittently, which is confusing but not a crash.
+
+**Why it happens:**
+The existing `"frame #"` key was written without checking HLA access patterns. The hash character is legal in a C string but unusual as a dictionary key. Similarly, adding conditional fields (only adding "errors" when there are errors) creates inconsistent column presence across frames.
+
+**How to avoid:**
+Rename `"frame #"` to `"frame_num"` — no spaces, no special characters, consistent with Saleae's own analyzer examples which use all-lowercase underscore-separated keys (`"identifier"`, `"num_data_bytes"`, `"remote_frame"`). Always add all FrameV2 fields for every frame, even if the value is empty string or 0:
+```cpp
+frame_v2.AddString("errors", error_str);    // always add, even if ""
+frame_v2.AddString("warnings", warning_str); // always add, even if ""
+frame_v2.AddInteger("frame_num", mFrameNum);
+```
+
+**Warning signs:**
+- HLA script raises `KeyError` when accessing `frame.data["frame #"]`
+- Some rows in the data table show empty cells in the "frame #" column when errors occur (because error frames used a different code path)
+
+**Phase to address:** FrameV2 enrichment phase — fix key naming when implementing any new FrameV2 fields.
+
+---
+
+### Pitfall 6: Settings SimpleArchive Append-Only Rule — New Fields Added in Wrong Order Break Old Projects
+
+**What goes wrong:**
+`LoadSettings()` reads `SimpleArchive` fields in strict sequential order. The current end-of-archive fields are:
+```
+... mFrameSyncInverted → mExportFileType → mEnableAdvancedAnalysis
+```
+Adding a new field (e.g., `mShowSampleRateWarning`) requires appending it after `mEnableAdvancedAnalysis` in both `LoadSettings()` and `SaveSettings()`. If it is inserted in the middle — before `mEnableAdvancedAnalysis` — then all projects saved by an older build will load the `bool mEnableAdvancedAnalysis` value into `mShowSampleRateWarning`, and `mEnableAdvancedAnalysis` will be read from end-of-stream (defaulting to whatever the member variable was initialized to).
+
+This is a silent data corruption — no error is thrown, the plugin loads successfully, but settings are wrong.
+
+**Why it happens:**
+Settings fields are often grouped logically in code (all "analysis" settings together, all "export" settings together). A developer adding a sample-rate warning toggle might insert it near the other analysis settings for clarity. The SimpleArchive read order must follow the exact write order, not the logical grouping.
+
+**How to avoid:**
+The current codebase does not have a version number in the archive (confirmed: `LoadSettings` checks magic string only, then reads fields without a version gate). Before adding any new field, add a `U32 version` field immediately after the magic string check:
+```cpp
+// SaveSettings: write version 2 with new field
+text_archive << "SaleaeTdmAnalyzer";
+text_archive << U32(2); // settings format version
+
+// LoadSettings: read version, gate new fields
+U32 settings_version = 1; // default: assume old format
+text_archive >> settings_version;
+// ... existing field reads ...
+if (settings_version >= 2) {
+    // read new field
 }
 ```
-Add a hard check in `updateFileSize()` that asserts or truncates cleanly when the limit is reached. For very large exports, the WAV format should be replaced with RF64/BW64 which uses 64-bit chunk sizes.
+Document the version→fields mapping with a comment block at the top of `LoadSettings()`.
 
 **Warning signs:**
-- Data chunk size in a produced WAV header is much smaller than actual file size
-- WAV file reports "invalid header" in audio players despite file size being large
-- No pre-export size validation in `GenerateWAV()`
-- `U32 data_size_bytes` computed from potentially large `mTotalFrames * mFrameSizeBytes`
+- `SaveSettings()` and `LoadSettings()` field order diverges even by one position
+- A new field is added to SaveSettings in alphabetical or logical order rather than at the end
+- No `U32 version` field in the archive after the magic string
 
-**Phase to address:** Audit phase — add pre-export validation; note this is LOW probability for typical embedded system captures but HIGH impact when it occurs.
+**Phase to address:** Sample rate validation phase — any new settings field triggers this risk. Add the version field before adding `mShowSampleRateWarning` or any other new setting.
 
 ---
 
-## Moderate Pitfalls
-
-### Pitfall 5: WAV Header Update Every 10 ms Creates Excessive Disk Seeks
+### Pitfall 7: Sample Rate Warning in `SetSettingsFromInterfaces()` Cannot Be Non-Blocking — Only `SetErrorText()` Exists
 
 **What goes wrong:**
-`PCMWaveFileHandler::addSample()` calls `updateFileSize()` every `(mSampleRate / 100)` frames, i.e., every 10 ms of audio. `updateFileSize()` performs three `seekp()` + `write()` operations followed by a `seekp()` back. At 48 kHz this is 480 frames per update — manageable. At high sample rates (192 kHz) with many channels (256), the effective I/O rate becomes:
-- Seek frequency: 100× per second
-- Each seek: 3 file position changes + writes + restore
+The SDK's `AnalyzerSettings` base class provides `SetErrorText(const char* error_text)` which, when called in `SetSettingsFromInterfaces()`, causes Logic 2 to display a red error message. The method requires `SetSettingsFromInterfaces()` to return `false` to indicate rejection. There is no `SetWarningText()` method and no way to return `true` (accept settings) while also displaying a visible warning message to the user in the settings panel.
 
-For a 10-minute capture this is 60,000 header rewrites. On spinning media or network storage, this causes measurable slowdowns. On SSDs, it contributes unnecessary write amplification.
-
-**How to avoid:**
-The defensive rationale (preserve data if export is cancelled) can be satisfied with less frequency. Increase the update interval to every 1000 ms (`mSampleRate * 1`) rather than 100 ms. Alternatively, only update `updateFileSize()` in the `close()` function and handle cancellation separately by calling it in the cancellation path of `GenerateWAV()`.
-
-**Warning signs:**
-- Export of long captures is noticeably slower than import
-- Profiling shows `seekp` as a hot path during WAV export
-- `mSampleRate / 100` magic number in `addSample()` — the divisor controls update frequency
-
-**Phase to address:** Audit phase — easy improvement with clear benefit; the check at line 277 of `TdmAnalyzerResults.cpp`.
-
----
-
-### Pitfall 6: Incomplete Frame Handling Produces Undefined WAV Audio for Short Slots
-
-**What goes wrong:**
-When a TDM frame ends before all expected slots are received (e.g., hardware glitch causes a truncated frame), the `SHORT_SLOT` flag is set on the incomplete slot, and `AnalyzeTdmSlot()` returns early with `result = 0`. This means the partial slot contributes a zero sample to the WAV file — silence for that slot in that frame. However, `mSampleData[]` in `PCMWaveFileHandler` accumulates samples per-channel sequentially. If a `SHORT_SLOT` occurs in the middle of a multi-channel frame, subsequent channel samples for that incomplete audio frame are misaligned by one slot position — writing the wrong channel's data to the wrong WAV channel for all subsequent frames.
+If the sample rate check calls `SetErrorText()` and returns `false`, the user cannot start analysis — the settings panel stays open. This is wrong for a "non-blocking warning" about potentially-insufficient sample rate: the user should be allowed to proceed with their analysis even if the sample rate is low.
 
 **Why it happens:**
-`GenerateWAV()` iterates by frame index and calls `addSample()` for each frame whose `mType < num_slots_per_frame`. When a short slot is encountered, `addSample()` is not called for that slot, but the `mSampleIndex` state in `PCMWaveFileHandler` loses track of which channel it's accumulating. The WAV handler has no notion of "skip this slot but preserve channel alignment".
+Developers see `SetErrorText()` and assume it is the right tool for any feedback. It is not — it is specifically a validation rejection mechanism.
 
 **How to avoid:**
-In `GenerateWAV()`, when a frame has the `SHORT_SLOT` flag set, call `addSample(0)` as a placeholder to preserve channel alignment. Alternatively, track frame number and slot number separately, and explicitly zero-fill any missing slots before writing. Add a comment documenting the alignment dependency.
+Do not use `SetErrorText()` for the sample rate warning. The correct approach is to surface the warning through the analysis itself:
+1. Call `SetErrorText()` and return `false` **only** for hard configuration errors (impossible bit clock period, zero frame rate, etc.)
+2. For the sample rate sanity check: compute `GetMinimumSampleRateHz()` in `SetSettingsFromInterfaces()` and if `mSampleRate < minimum`, add a warning marker or annotation during `WorkerThread()` when the first frame is processed — or surface it as an info-level string in the first FrameV2 result
+3. Alternatively, display a short informational string in the title of one of the settings interfaces using `SetToolTipText()` on `mTdmFrameRateInterface` if the SDK supports it
+
+The cleanest approach: add a `mSampleRateWarning` boolean computed during `WorkerThread()` initialization (after `mSampleRate = GetSampleRate()`) and emit a FrameV2 with type `"warning"` as the first result if the sample rate is insufficient. This is visible in the data table without blocking analysis.
 
 **Warning signs:**
-- WAV files from captures with any `SHORT_SLOT` error flags have audio that "shifts" — channels swap identity partway through
-- Exported WAV sounds correct at the start but drifts to incorrect channel mapping after any error frame
-- `GenerateWAV()` has no special handling for `SHORT_SLOT` flags — it simply skips those frames
+- Sample rate check calls `SetErrorText()` and returns `false` — user is blocked from running the analyzer
+- Sample rate check is in `WorkerThread()` but produces no visible user-facing output (just silently produces bad frames)
 
-**Phase to address:** Audit phase — this is a correctness bug in WAV export that directly affects output validity when the signal under test has any anomalies.
+**Phase to address:** Sample rate validation phase — decide the UX approach before implementation, not during.
 
 ---
 
-### Pitfall 7: `GIT_TAG master` in FetchContent Pins to an Unstable Branch
+### Pitfall 8: Nyquist Threshold for TDM Is Bit Clock Frequency, Not Frame Rate — Off-by-Frame-Size Factor
 
 **What goes wrong:**
-`cmake/ExternalAnalyzerSDK.cmake` line 17 fetches the Saleae AnalyzerSDK with `GIT_TAG master`. This means every fresh build fetches whatever is currently on the SDK's `master` branch. If Saleae pushes a breaking change to the SDK API (changed virtual function signatures, renamed types, removed exports), the plugin build will silently break on any machine that hasn't cached the SDK. CI builds are stable only because GitHub Actions runner caches are consistent — a developer starting fresh will get a different SDK version.
+The minimum sample rate for a logic analyzer to correctly capture a TDM bit clock is determined by Nyquist for the bit clock frequency, not the audio frame rate. The bit clock frequency is:
 
-**Why it happens:**
-Using `master` was a pragmatic shortcut — it always gets the "latest" SDK without requiring manual version bumps. The Saleae documentation mentions that tags are available for version pinning but does not enforce it.
-
-**How to avoid:**
-Pin to a specific SDK commit hash or tag:
-```cmake
-GIT_TAG  v2.3.58  # or the specific commit hash known to work
 ```
-Document the pinned version in the repo CLAUDE.md and the CMakeLists.txt comment. When upgrading the SDK, do it deliberately with a dedicated commit and changelog entry. This also makes the `SDK API update check` work item in PROJECT.md actionable — first pin the current version, then evaluate what a version bump would change.
+bit_clock_hz = mTdmFrameRate * mSlotsPerFrame * mBitsPerSlot
+```
 
-**Warning signs:**
-- `GIT_TAG master` or `GIT_TAG main` in any FetchContent declaration for a third-party dependency
-- Build failures that appear on CI after a period of no source changes
-- SDK-related compile errors that cannot be reproduced consistently
+The Saleae minimum sample rate requirement (`GetMinimumSampleRateHz()`) already computes this correctly. However, Nyquist requires the sample rate to be at least twice the bit clock frequency — in practice, for clean digital capture, 4× is the minimum useful oversampling ratio (Saleae's own documentation recommends 4× the data rate). If the check uses `2×` instead of `4×`, it will pass configurations that produce unreliable capture at the logic analyzer's limits.
 
-**Phase to address:** Audit phase — a one-line change with large build reproducibility benefit.
-
----
-
-### Pitfall 8: Settings Binary Format Has No Version — Future Field Additions Break Saved Projects
-
-**What goes wrong:**
-`TdmAnalyzerSettings::LoadSettings()` reads fields in a strict sequential order from `SimpleArchive`. The only version identifier is the magic string `"SaleaeTdmAnalyzer"`. If a new setting field is added (e.g., a sample rate validation warning threshold), it is appended at the end of the archive in `SaveSettings()`. A user who loads an old project file will get the new field's default value (because `text_archive >> new_field` will fail and fall through to the default). This is by design and documented — but there is no way to distinguish between "old format without this field" and "new format with a corrupt field". If a field is ever removed or reordered, LoadSettings will silently assign wrong values to subsequent fields with no error.
+For example: 48 kHz audio, 2 slots, 32 bits per slot → bit clock = 48000 × 2 × 32 = 3.072 MHz → minimum useful capture rate = 12.288 MHz. Most Logic 8 and Logic 16 devices support 12 MHz but not exactly 12.288 MHz — the check will issue a false positive warning even when the user selects the closest available rate.
 
 **Why it happens:**
-`SimpleArchive` is a sequential stream — it does not support named fields or schema versioning. The Saleae SDK provides no higher-level settings persistence mechanism.
+The check is written as `sample_rate < 2 * bit_clock_hz` (Nyquist) rather than `sample_rate < 4 * bit_clock_hz` (practical minimum for digital capture). The Saleae `GetMinimumSampleRateHz()` already returns 4× the bit clock frequency, so the check should compare against `GetMinimumSampleRateHz()` rather than recomputing its own threshold.
 
 **How to avoid:**
-Add a numeric version field immediately after the magic string:
+Use the existing `GetMinimumSampleRateHz()` return value as the threshold:
 ```cpp
-// SaveSettings
-text_archive << "SaleaeTdmAnalyzer";
-text_archive << U32(2); // settings version
-
-// LoadSettings
-U32 version = 1;
-text_archive >> version;
-if (version >= 2) { text_archive >> new_field; }
+U32 min_rate = GetMinimumSampleRateHz();
+U32 current_rate = GetSampleRate();  // only available in WorkerThread(), not SetSettingsFromInterfaces()
+if (current_rate < min_rate) {
+    // warn user
+}
 ```
-This is a minimal change that gives explicit control over migration behavior. Never reorder existing fields; only append. Document the versioning scheme in a comment block above `LoadSettings`.
+Note: `GetSampleRate()` is only callable from `WorkerThread()`, not from `SetSettingsFromInterfaces()`. The check must go in `WorkerThread()`. `mSettings->mTdmFrameRate` is the user-configured value but `GetSampleRate()` is the actual hardware sample rate — they are independent.
 
 **Warning signs:**
-- `LoadSettings` has no version check after the magic string
-- Fields are loaded without any documentation of their addition order or version
-- Any future PR adding a new setting will silently break existing user projects if it ever reorders fields
+- Warning fires for every capture where the user has selected a reasonable but not-quite-4× sample rate
+- Warning uses `mTdmFrameRate` as the threshold without accounting for `mSlotsPerFrame * mBitsPerSlot`
+- Warning check is in `SetSettingsFromInterfaces()` where `GetSampleRate()` is not available
 
-**Phase to address:** Audit phase — add version identifier now before any new settings fields are introduced.
+**Phase to address:** Sample rate validation phase — derive the threshold from `GetMinimumSampleRateHz()` rather than recomputing independently.
 
 ---
 
-### Pitfall 9: `TdmBitAlignment` Enum Name Is Misleading — BITS_SHIFTED_RIGHT_1 Is DSP Mode A
+### Pitfall 9: SDK Update May Expose New Header-Only Methods That Are Compile-Errors Under C++11
 
 **What goes wrong:**
-The enum value `BITS_SHIFTED_RIGHT_1` in `TdmAnalyzerSettings.h` line 14 is described in the UI as "Right-shifted by one (TDM typical, DSP mode A)". The implementation comment at `TdmAnalyzerSettings.cpp` line 104 and the internal variable name `BITS_SHIFTED_RIGHT_1` disagree with common industry terminology. New maintainers reading the code will mentally associate "shifted right by one" with bit-level shifting operations rather than frame sync timing — causing confusion when modifying the frame alignment logic in `GetTdmFrame()` and `SetupForGettingFirstTdmFrame()`.
+The AnalyzerSDK has been stable at commit `114a3b8` since July 2023. Updating to a newer commit (if one exists) may introduce C++ standard library features or syntax that requires C++14 or C++17. The project's `CMakeLists.txt` locks to C++11 via `set(CMAKE_CXX_STANDARD 11)`. Header-only SDK changes that use `auto` deduction, `std::make_unique`, `constexpr if`, or structured bindings will fail to compile under C++11, but only if those headers are included (which they will be — the SDK headers are the core include).
+
+Additionally: the SDK ships precompiled binaries (`.so`/`.dll`) with fixed ABI. If a new SDK commit changes the ABI (virtual function table layout, class member layout), the plugin will load and immediately crash or produce undefined behavior — no compile error will warn you.
+
+**Why it happens:**
+The SDK is a Saleae-internal project with no formal SemVer. Commit messages do not always announce ABI changes. The precompiled binary is built by Saleae with their toolchain settings; there is no guarantee it is C++11 compatible at the header level.
 
 **How to avoid:**
-Rename the enum values to match industry terminology:
-```cpp
-enum TdmBitAlignment {
-    DSP_MODE_A = 0,   // was BITS_SHIFTED_RIGHT_1: first bit after FS pulse belongs to current frame
-    DSP_MODE_B = 1,   // was NO_SHIFT: first bit of FS pulse belongs to current frame
-};
-```
-Update all call sites. Add a comment documenting the physical behavior (where the first data bit appears relative to the frame sync edge) alongside the enum definition.
+Before updating the pinned SDK commit, inspect the diff between `114a3b8` and the new commit for:
+1. New include directives (especially `<optional>`, `<variant>`, `<any>` which are C++17)
+2. `auto` return type deduction in headers
+3. Changed virtual function signatures (ABI break)
+4. New or removed methods in `Analyzer2`, `AnalyzerResults`, `AnalyzerSettings` base classes
+
+If an ABI break is found: update the GIT_TAG only after verifying on all three platforms in CI. Do not change `CMAKE_CXX_STANDARD` to a newer value without a full rebuild and test cycle on all platforms.
+
+Based on the current GitHub commit history of `saleae/AnalyzerSDK`, `114a3b8` is the HEAD of master as of July 2023 — there are no later commits visible. The SDK audit should verify this (no update needed) before treating the SDK pin as requiring a change.
 
 **Warning signs:**
-- Comments alongside enum values explain what the name doesn't convey
-- Multiple places in the codebase add clarifying comments about `BITS_SHIFTED_RIGHT_1`
-- New contributors ask "which mode is which?" in code review
+- Build fails with `error: 'auto' not allowed in function prototype` or `error: 'std::make_unique' was not declared` after updating GIT_TAG
+- Logic 2 crashes immediately after loading the plugin (no error dialog — hard crash indicates ABI mismatch)
+- `ldd` / `otool -L` shows the plugin links against a different SDK binary than the one in the build output directory
 
-**Phase to address:** Audit phase — rename before adding any new alignment modes to avoid compounding the confusion.
+**Phase to address:** SDK audit phase — diff first, update second, test on all three platforms before merging.
 
 ---
 
@@ -254,26 +298,27 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `GIT_TAG master` for SDK FetchContent | Always gets latest SDK without manual version bumps | Build non-reproducibility; CI breaks on SDK API changes | Never — always pin to a specific tag or commit |
-| `sprintf` with fixed 80-char buffer for error strings | Simple to write, no allocation overhead | Buffer overflow risk if error messages grow; warning suppressed with pragma | Never — replace with `snprintf` or `std::string` |
-| `#pragma scalar_storage_order` without `static_assert` on struct size | Expresses endianness intent | Silently ignored by Clang/MSVC; no compile-time verification that struct is correctly packed | Acceptable only if paired with `static_assert(sizeof(struct) == N)` |
-| Header update every 10ms in WAV export | Defensive: preserves data on cancel | Excessive seeks degrade performance on long captures | Acceptable only during early development; should be tuned |
-| Export type routing via settings field instead of `file_type` parameter | Works around Logic 2 bug | Fragile: export behavior depends on internal settings state, not the export request | Acceptable as a documented workaround while the SDK bug exists |
+| JUNK-to-ds64 RF64 migration approach | Allows graceful fallback for files under 4GB | Complex code paths, difficult to test, known source of offset bugs | Never in this codebase — always write RF64 headers directly when RF64 is selected |
+| Periodic `updateFileSize()` every 10ms carried into RF64 | Copy of existing WAV pattern | RF64 requires U64 seek back to `ds64`; copying U32 pattern silently truncates | Not acceptable — RF64 update must use U64 arithmetic throughout |
+| `"frame #"` field key with space and hash | Existed since FrameV2 introduction | Breaks HLA scripts using attribute access; fragile if Saleae normalizes keys | Fix it now before HLA ecosystem builds on the broken key |
+| Using `SetErrorText()` for non-blocking sample rate advisory | Only warning mechanism visible in the settings UI | Blocks user from running analysis; the warning becomes a hard error | Never — use FrameV2 or WorkerThread marker for non-blocking feedback |
+| Computing sample rate threshold independently of `GetMinimumSampleRateHz()` | Looks cleaner in SetSettingsFromInterfaces() | Creates divergence between two places computing the same threshold | Never — delegate to `GetMinimumSampleRateHz()` |
 
 ---
 
 ## Integration Gotchas
 
-Common mistakes when connecting to the Saleae SDK.
+Common mistakes when connecting to the Saleae SDK and RF64 spec.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| AnalyzerSDK FetchContent | `GIT_TAG master` causes non-reproducible builds | Pin to a specific release tag; bump intentionally |
-| `GenerateExportFile` callback | Using `file_type` parameter to dispatch export type — but Logic 2 passes the same value for all export options in the current bug state | Read export intent from `mSettings->mExportFileType` rather than `file_type` parameter until the SDK bug is confirmed fixed |
-| `AddExportOption` / `AddExportExtension` | Assuming these populate the Logic 2 export UI — they do not in current Logic 2 releases | Treat these as documentation only; implement the workaround via the settings-based dispatch |
-| `FrameV2::AddString` for error messages | Strings are limited in length; very long error strings may be silently truncated | Keep error strings short; use codes rather than prose |
-| `mResults->CommitResults()` in hot loop | Calling after every single slot adds overhead; no batching | Current code calls once per slot which is correct — do not move into the bit processing inner loop |
-| `CheckIfThreadShouldExit()` | Not calling frequently enough causes slow plugin shutdown | Current code calls once per TDM frame which is correct for normal frame rates |
+| RF64 header write | Using JUNK chunk approach ("write WAV, convert to RF64 if > 4GB") | Write RF64 header from the start when RF64 mode is selected; the data size is computed before export in `GenerateWAV()` |
+| FrameV2 field keys | Using `"frame #"` (space + hash) or other non-identifier characters | Use underscore-separated lowercase: `"frame_num"`, consistent with Saleae reference analyzers |
+| FrameV2 conditional fields | Only adding `"errors"` key when errors exist | Always emit every field for every frame; missing keys cause sparse columns in the data table |
+| `GetSampleRate()` in settings | Calling from `SetSettingsFromInterfaces()` — not available there | Only callable from `WorkerThread()` context; store in `mSampleRate` during `WorkerThread()` init |
+| `SetErrorText()` for advisory | Using it for non-blocking warnings about sample rate | Returns false → blocks analysis; advisory goes in first FrameV2 result or WorkerThread output |
+| RF64 `mTotalFrames` counter | Using `U32 mTotalFrames` inherited from PCMWaveFileHandler | RF64 sample count in ds64 is U64; a U32 wraps at ~4 billion frames |
+| SimpleArchive append-only | Inserting new settings field in logical position in the file | Always append new fields at the end of the archive sequence |
 
 ---
 
@@ -283,10 +328,10 @@ Patterns that work at small scale but fail as usage grows.
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| `sprintf` in per-frame FrameV2 generation | CPU time in string formatting proportional to captured frames | Build error strings lazily or cache by flag bitmask | Noticeable at >100k frames (~2 seconds at 48kHz/256ch) |
-| WAV header seek every 10ms | Slow export for long captures | Increase interval to 1000ms or update only at close | Noticeable on captures > 30 seconds |
-| `new U64[mNumChannels]` in PCMWaveFileHandler constructor | Heap allocation for every export | Already heap-allocated once — acceptable; but `mSampleData` not RAII-managed, manual `delete[]` | Risk is delete on null if constructor fails after new; currently safe because file check precedes new |
-| Linear frame iteration in `GenerateWAV()` | Export time scales with total frame count | Already linear — O(n) over frames is unavoidable | No performance trap here; already optimal |
+| RF64 ds64 update on every flush (inherited from WAV pattern) | Excessive seeks for long exports; each seek writes 24 bytes at offset 20-43 | Update ds64 only in `close()` for RF64 — the cancel-recovery rationale for periodic updates still applies, but increase interval to 1000ms | Noticeable on captures > 60 seconds at high channel count |
+| `mTotalFrames` as U32 in RF64 handler | Frame counter wraps at 4,294,967,295; ds64 sample count shows wrong value | Define a separate `RF64WaveFileHandler` with U64 frame/sample counters throughout | Breaks at ~4 billion TDM frames (approximately 25 hours at 48kHz/256ch) |
+| FrameV2 string formatting per slot with fixed buffer | CPU proportional to frame count; unchanged from current code | Current `snprintf` into `char[80]` is acceptable; do not replace with heap-allocating `std::string` per frame | Acceptable at all expected capture sizes |
+| Writing RF64 sample data as individual `writeLittleEndianData()` byte-by-byte calls | Very slow for large exports due to per-byte `ofstream::write()` | Already the current pattern; acceptable unless profiling shows I/O as hot path; could batch with a write buffer | Acceptable at current scale; revisit if export of >1 GiB is slow |
 
 ---
 
@@ -294,12 +339,14 @@ Patterns that work at small scale but fail as usage grows.
 
 Things that appear complete but are missing critical pieces.
 
-- [ ] **WAV export:** Export completes without error, but verify channel alignment is preserved across frames that contain `SHORT_SLOT` errors — the current code does not guarantee this.
-- [ ] **Error string formatting:** All four error conditions display correctly in the UI, but verify that simultaneous multi-error slots do not silently truncate the error string in the bubble text or FrameV2 output.
-- [ ] **Cross-platform build:** All three platforms build and produce `.dll`/`.so`, but verify that the WAV header structs are the correct byte size on each platform by adding `static_assert` guards.
-- [ ] **Settings round-trip:** Settings save and load correctly for all current fields, but verify that a project saved with the current version loads correctly after any future field addition (version number is missing).
-- [ ] **Export file type selection:** The export type dropdown displays correctly when settings are loaded, but the constructor initializes the interface with `mEnableAdvancedAnalysis` instead of `mExportFileType` — verify initial default state is correct on fresh installation.
-- [ ] **Simulation mode:** The simulation generator produces valid TDM frames, but `BITS_SHIFTED_RIGHT_1` mode inserts one leading zero bit (`BIT_LOW`) before the first data bit — verify this correctly simulates DSP Mode A timing as understood by the decoder.
+- [ ] **RF64 header:** File opens in Audacity without error — verify `ffprobe -v error -show_entries stream=nb_samples,duration` matches expected sample count and duration, not just that the file opens.
+- [ ] **RF64 ds64 fields:** File size on disk is correct — verify the `ds64` chunk at byte offset 20 contains the correct 64-bit values by examining the file with a hex editor or `xxd | head`.
+- [ ] **RF64 data chunk sentinel:** Data chunk size field reads 0xFFFFFFFF — verify at byte offset 96 (standard PCM RF64 header layout) the four bytes are `FF FF FF FF`.
+- [ ] **FrameV2 field presence:** Every row in the Logic 2 data table has all columns populated — open a capture with error frames and verify "errors" and "warnings" columns are not blank for any row.
+- [ ] **Settings round-trip with new field:** After adding `mShowSampleRateWarning` (or any new field) with version gate, verify that: (a) a project saved by the old build loads correctly (new field gets default value), and (b) a project saved by the new build loads correctly in the new build.
+- [ ] **Sample rate warning fires at right threshold:** Warning fires for a 3.072 MHz bit clock with a 6 MHz sample rate (below 4× minimum), but does NOT fire when sample rate is 12 MHz (at 4× minimum) — check both cases.
+- [ ] **SDK update does not break existing builds:** After changing GIT_TAG, confirm all three platform builds pass in CI before merging.
+- [ ] **RF64 `static_assert` on header struct size:** The RF64 header struct must have a `static_assert` for its size (100 bytes for PCM RF64 through the data chunk ID and sentinel) on all three platforms.
 
 ---
 
@@ -309,45 +356,50 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| sprintf buffer overflow | MEDIUM | Replace with snprintf at all call sites; remove warning suppression pragma; retest on all platforms |
-| WAV export channel alignment drift | MEDIUM | Add zero-fill for SHORT_SLOT frames in GenerateWAV(); re-export affected captures |
-| SDK master branch breaks build | LOW | `cmake --fresh` build, pin GIT_TAG to last known good commit hash from git log of the AnalyzerSDK repo |
-| Settings format incompatibility | HIGH | Must decide: add migration logic or reset user settings; no recovery path without version identifier |
-| WAV 4GB overflow | LOW | Re-export in segments; or implement pre-export size warning |
-| Wrong export type on fresh install | LOW | User manually selects correct export type; one-line constructor fix |
+| RF64 ds64 at wrong byte offset | MEDIUM | Identify correct offset with `xxd` on a known-good RF64 file; fix struct layout; re-export |
+| RIFF/data sentinel not 0xFFFFFFFF | LOW | Add `RF64_SIZE_SENTINEL` constant; verify in test harness with known-size write |
+| ds64 not updated at close | LOW | Verify `close()` calls `seekp()` to ds64 offsets; add hex-dump assertion in test |
+| `UseFrameV2()` removed during SDK update | LOW | Add it back to constructor; no data migration needed |
+| `"frame #"` key breaks HLA | MEDIUM | Rename key to `"frame_num"`; any existing HLA scripts must update their key lookup |
+| Settings field insertion breaks old projects | HIGH | Add version field; implement migration; bump version; document in changelog |
+| Sample rate check blocks analysis | LOW | Move from `SetSettingsFromInterfaces()` to `WorkerThread()` with FrameV2 output |
+| SDK ABI break on update | HIGH | Revert GIT_TAG to `114a3b8`; wait for SDK release with documented compatibility |
+| U32 frame counter overflow in RF64 | MEDIUM | Change RF64 handler to use U64 for frame/sample counts throughout |
 
 ---
 
 ## Pitfall-to-Phase Mapping
 
-How audit/improvement phases should address these pitfalls.
+How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| sprintf buffer overflow (Pitfall 1) | Audit — correctness pass | snprintf replaces all sprintf; pragma warning suppression removed; build with warnings-as-errors |
-| Wrong variable in constructor (Pitfall 2) | Audit — code quality pass | Confirm constructor and UpdateInterfacesFromSettings use same variable for each interface |
-| scalar_storage_order portability (Pitfall 3) | Audit — correctness pass | `static_assert` added for both WAV header struct sizes; confirmed builds pass on all three platforms |
-| WAV 4GB overflow (Pitfall 4) | Audit — edge case pass | Pre-export size check added; documented in code |
-| WAV header seek frequency (Pitfall 5) | Audit — performance pass | Update interval increased; benchmark export time on long synthetic captures |
-| SHORT_SLOT channel alignment (Pitfall 6) | Audit — correctness pass | GenerateWAV() zero-fills missing slots; verify channel mapping across error frames with known test capture |
-| GIT_TAG master instability (Pitfall 7) | Audit — build hygiene pass | ExternalAnalyzerSDK.cmake pins to specific tag; documented in CLAUDE.md |
-| Settings version missing (Pitfall 8) | Audit — code quality pass | Version field added to archive; LoadSettings uses version-gated field reading |
-| Misleading enum names (Pitfall 9) | Audit — code quality pass | Enum renamed; all call sites updated; documentation added |
+| RF64 ds64 chunk wrong position (Pitfall 1) | RF64 implementation | `ffprobe` shows correct duration and sample count; `xxd` confirms ds64 at byte 12 |
+| RF64 sentinel values not 0xFFFFFFFF (Pitfall 2) | RF64 implementation | Hex dump confirms `FF FF FF FF` at RIFF size (offset 4) and data size (offset 96) |
+| RF64 ds64 not updated at close (Pitfall 3) | RF64 implementation | Write 1000 known samples, close, reopen, verify ds64 data_size_64 == expected |
+| UseFrameV2() removed during SDK update (Pitfall 4) | SDK audit | Data table shows rows after SDK update; add comment in constructor |
+| FrameV2 field keys with spaces (Pitfall 5) | FrameV2 enrichment | Data table columns present for all rows including error frames; no KeyError in HLA |
+| Settings archive order broken by new field (Pitfall 6) | Any phase adding new settings field | Old-build .sal file loads in new build with correct values; new-build .sal round-trips cleanly |
+| Sample rate warning blocks analysis (Pitfall 7) | Sample rate validation | Warning appears in data table as FrameV2 row, not as settings rejection; user can run analysis |
+| Wrong Nyquist threshold (Pitfall 8) | Sample rate validation | Warning fires at < 4× bit clock frequency; does not fire at exactly 4× |
+| SDK update C++11 breakage or ABI mismatch (Pitfall 9) | SDK audit | Full CI build on all three platforms passes after changing GIT_TAG |
 
 ---
 
 ## Sources
 
-- Source code inspection: `/home/chris/gitrepos/saleae_tdm_analyer/src/` (direct, HIGH confidence)
-- Codebase concerns audit: `.planning/codebase/CONCERNS.md` (direct, HIGH confidence)
-- LLVM issue tracker: [Implement 'scalar_storage_order' attribute · Issue #34641 · llvm/llvm-project](https://github.com/llvm/llvm-project/issues/34641) — confirms Clang does not support this pragma (HIGH confidence)
-- GCC documentation: [Structure-Layout Pragmas](https://gcc.gnu.org/onlinedocs/gcc/Structure-Layout-Pragmas.html) — confirms GCC-only support (HIGH confidence)
-- WAV specification: [WAVE PCM soundfile format](http://soundfile.sapp.org/doc/WaveFormat/) — confirms 32-bit chunk size limit (HIGH confidence)
-- RF64 spec: [EBU TECH 3306](https://tech.ebu.ch/docs/tech/tech3306v1_0.pdf) — confirms 4GB limit and RF64 as the remedy (HIGH confidence)
-- Saleae discussion: [Export formats for low-level analyzers](https://discuss.saleae.com/t/export-formats-for-low-level-analyzers/1040) — confirms export type UI bug in Logic 2 (MEDIUM confidence)
-- WAV 8-bit offset encoding: [The ABCs of PCM digital audio](http://blog.bjornroche.com/2013/05/the-abcs-of-pcm-uncompressed-digital.html) — confirms 8-bit WAV must be unsigned offset binary (HIGH confidence)
-- sprintf safety: [snprintf vs sprintf](https://dev.to/ashok83/snprintf-vs-sprintf-a-deep-dive-into-buffer-overflows-prevention-59hg) — confirms snprintf as the correct replacement (HIGH confidence)
+- Direct source inspection: `/home/chris/gitrepos/saleae_tdm_analyer/src/` — all pitfalls grounded in actual code at specific lines (HIGH confidence)
+- EBU Tech 3306 v1.0 RF64 specification — confirms ds64 chunk structure, sentinel value requirements, chunk ordering (HIGH confidence via search result excerpts)
+- PlayPcmWin RF64 documentation: https://sourceforge.net/p/playpcmwin/wiki/RF64%20WAVE/ — confirms sentinel values and chunk layout (MEDIUM confidence)
+- NAudio RF64 implementation article: https://markheath.net/post/naudio-rf64-bwf — confirms JUNK-to-ds64 approach complexity and testing difficulty (MEDIUM confidence)
+- libsndfile RF64 spec problems blog (Erik de Castro Lopo): http://www.mega-nerd.com/erikd/Blog/CodeHacking/libsndfile/rf64_specs.html — confirms ds64 RIFFSize update pitfall and on-the-fly conversion complexity (HIGH confidence)
+- Audacity RF64 bug report: https://forum.audacityteam.org/t/rf64-with-4gb-size-is-mistaken-as-wav/54380 — confirms Audacity had a bug where RF64 was mistaken for WAV; demonstrates fragility of tool-side RF64 support (MEDIUM confidence)
+- Saleae AnalyzerSDK AnalyzerResults.h on GitHub: https://github.com/saleae/AnalyzerSDK/blob/master/include/AnalyzerResults.h — confirms FrameV2 class definition, method signatures, #ifdef LOGIC2 guard (HIGH confidence)
+- Saleae AnalyzerSDK AnalyzerSettings.h on GitHub: https://github.com/saleae/AnalyzerSDK/blob/master/include/AnalyzerSettings.h — confirms SetErrorText() is the only user-visible message mechanism (HIGH confidence)
+- Saleae CAN analyzer reference implementation: https://github.com/saleae/can-analyzer/blob/master/src/CanAnalyzer.cpp — confirms field naming conventions (lowercase underscore, no special characters) (HIGH confidence)
+- Saleae FrameV2 community discussion: https://discuss.saleae.com/t/framev2-api/1320 — confirms non-overlapping frame requirement, single track output constraint (MEDIUM confidence)
+- AnalyzerSDK commit history fetch: confirms 114a3b8 is master HEAD as of July 2023; no newer commits visible (MEDIUM confidence — fetched via WebFetch)
 
 ---
-*Pitfalls research for: Saleae Logic 2 TDM Protocol Analyzer Plugin*
-*Researched: 2026-02-23*
+*Pitfalls research for: Saleae Logic 2 TDM Protocol Analyzer Plugin — v1.4 SDK & Export Modernization*
+*Researched: 2026-02-24*
