@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-23)
 
 **Core value:** Correctly decode TDM audio data from logic analyzer captures with confidence that the results are accurate and the code is trustworthy.
-**Current focus:** Phase 2 — Build Hygiene
+**Current focus:** Phase 3 — Code Quality and Documentation
 
 ## Current Position
 
-Phase: 2 of 3 (Build Hygiene)
-Plan: 1 of 1 in current phase (completed)
-Status: Phase 2 complete
-Last activity: 2026-02-25 — Completed plan 02-01 (BILD-01 SDK hash pin, BILD-02 WAV struct size guards)
+Phase: 3 of 3 (Code Quality and Documentation)
+Plan: 2 of 2 in current phase
+Status: Phase 3 plan 02 complete (03-01 also completed this session)
+Last activity: 2026-02-25 — Completed plan 03-02 (DOCS-01 build instructions, DOCS-02 WAV export framing)
 
-Progress: [██░░░░░░░░] ~20%
+Progress: [██████████] ~100%
 
 ## Performance Metrics
 
@@ -29,9 +29,10 @@ Progress: [██░░░░░░░░] ~20%
 |-------|-------|-------|----------|
 | 01-correctness | 1 | 2 min | 2 min |
 | 02-build-hygiene | 1 | 2 min | 2 min |
+| 03-code-quality-and-documentation | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2 min), 02-01 (2 min)
+- Last 5 plans: 01-01 (2 min), 02-01 (2 min), 03-01 (2 min), 03-02 (2 min)
 - Trend: Consistent
 
 *Updated after each plan completion*
@@ -51,6 +52,11 @@ Recent decisions affecting current work:
 - [02-01]: Pin AnalyzerSDK to 114a3b8306e6a5008453546eda003db15b002027 — last known-good July 2023 commit, full SHA for reproducible builds
 - [02-01]: static_assert placed after pragma pack(pop) and scalar_storage_order default — catches Clang/MSVC packing errors that GCC-only scalar_storage_order misses
 - [02-01]: GIT_SHALLOW True retained — compatible with commit hash pinning in CMake 3.11+
+- [03-01]: DSP_MODE_A=0 and DSP_MODE_B=1 order preserved — serialized settings files (SimpleArchive integers) remain backward compatible
+- [03-01]: WAV size guard uses num_frames as conservative upper bound — may warn when output would just fit; safe default preferred over silent corruption
+- [03-01]: Warning written as plain text to .wav output path so user sees it regardless of how they open the file
+- [03-02]: WAV export TXT/CSV workaround documented as permanent Saleae design decision — no "bug" language remains
+- [03-02]: Build instructions use inline # comments within code blocks to explain cmake command semantics
 
 ### Pending Todos
 
@@ -63,5 +69,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-25
-Stopped at: Completed 02-01-PLAN.md (BILD-01 SDK hash pin, BILD-02 WAV struct size guards)
+Stopped at: Completed 03-01-PLAN.md (QUAL-01 auto_ptr verification, QUAL-02 enum rename, QUAL-03 WAV overflow guard)
 Resume file: None

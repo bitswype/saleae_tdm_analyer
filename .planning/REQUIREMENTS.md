@@ -21,8 +21,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Documentation
 
-- [ ] **DOCS-01**: Clean up README build instructions — explain what each build step does, not just the commands, so the build process is understandable
-- [ ] **DOCS-02**: Update WAV export documentation — reflect that the TXT/CSV export workaround is permanent (Saleae confirmed custom export types will not be implemented in Logic 2)
+- [x] **DOCS-01**: Clean up README build instructions — explain what each build step does, not just the commands, so the build process is understandable
+- [x] **DOCS-02**: Update WAV export documentation — reflect that the TXT/CSV export workaround is permanent (Saleae confirmed custom export types will not be implemented in Logic 2)
 
 ### Code Quality
 
@@ -67,8 +67,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORR-04 | Phase 1 | Complete |
 | BILD-01 | Phase 2 | Complete |
 | BILD-02 | Phase 2 | Complete |
-| DOCS-01 | Phase 3 | Pending |
-| DOCS-02 | Phase 3 | Pending |
+| DOCS-01 | Phase 3 | Complete |
+| DOCS-02 | Phase 3 | Complete |
 | QUAL-01 | Phase 3 | Pending |
 | QUAL-02 | Phase 3 | Pending |
 | QUAL-03 | Phase 3 | Pending |

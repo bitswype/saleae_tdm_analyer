@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Correctness** - Fix all known defects that produce incorrect or undefined behavior (completed 2026-02-25)
 - [x] **Phase 2: Build Hygiene** - Ensure reproducible builds and compile-time portability guards (completed 2026-02-25)
-- [ ] **Phase 3: Code Quality and Documentation** - Remove deprecated constructs, clarify names, and document the codebase
+- [x] **Phase 3: Code Quality and Documentation** - Remove deprecated constructs, clarify names, and document the codebase (completed 2026-02-25)
 
 ## Phase Details
 
@@ -40,7 +40,7 @@ Plans:
   2. The build fails at compile time with a descriptive error if `WavePCMHeader` or `WavePCMExtendedHeader` are not the expected byte sizes on any supported compiler
 **Plans:** 1/1 plans complete
 Plans:
-- [ ] 02-01-PLAN.md — Pin SDK to commit hash and add static_assert guards for WAV header struct sizes
+- [x] 02-01-PLAN.md — Pin SDK to commit hash and add static_assert guards for WAV header struct sizes
 
 ### Phase 3: Code Quality and Documentation
 **Goal**: The codebase is free of deprecated constructs and misleading names, limits are communicated to the user, and documentation reflects the current permanent architecture
@@ -52,10 +52,10 @@ Plans:
   3. Attempting to export a WAV file that would exceed 4GB produces a user-visible warning before the export begins
   4. The README build section explains what each step does, not just the commands; a developer unfamiliar with CMake FetchContent can follow it
   5. WAV export documentation states the TXT/CSV workaround is the permanent architecture; no investigation note or "may be resolved" language remains
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 Plans:
-- [ ] 03-01-PLAN.md — Verify auto_ptr absence, rename TdmBitAlignment enum values to DSP_MODE_A/DSP_MODE_B, add WAV 4GB overflow pre-export warning
-- [ ] 03-02-PLAN.md — Rewrite README build instructions with explanatory prose, update WAV export docs to state permanent architecture
+- [x] 03-01-PLAN.md — Verify auto_ptr absence, rename TdmBitAlignment enum values to DSP_MODE_A/DSP_MODE_B, add WAV 4GB overflow pre-export warning
+- [x] 03-02-PLAN.md — Rewrite README build instructions with explanatory prose, update WAV export docs to state permanent architecture
 
 ## Progress
 
@@ -66,4 +66,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Correctness | 1/1 | Complete   | 2026-02-25 |
 | 2. Build Hygiene | 1/1 | Complete   | 2026-02-25 |
-| 3. Code Quality and Documentation | 0/2 | Not started | - |
+| 3. Code Quality and Documentation | 2/2 | Complete   | 2026-02-25 |
