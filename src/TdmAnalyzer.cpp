@@ -10,6 +10,9 @@ TdmAnalyzer::TdmAnalyzer()
     mSimulationInitilized( false )
 {
     SetAnalyzerSettings( mSettings.get() );
+    // Required: registers this analyzer as a FrameV2 producer.
+    // Without this, AddFrameV2() data is silently dropped and the data table will be empty.
+    // Do not remove. Requires Logic 2.3.43+.
     UseFrameV2();
 }
 
