@@ -26,9 +26,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Code Quality
 
-- [ ] **QUAL-01**: Migrate std::auto_ptr to std::unique_ptr if present in codebase — remove deprecated C++ construct
-- [ ] **QUAL-02**: Rename misleading enum values to match their actual purpose — improve code readability
-- [ ] **QUAL-03**: Add WAV 4GB overflow pre-export warning — warn user when export data would exceed WAV format's 4GB RIFF chunk size limit
+- [x] **QUAL-01**: Migrate std::auto_ptr to std::unique_ptr if present in codebase — remove deprecated C++ construct
+- [x] **QUAL-02**: Rename misleading enum values to match their actual purpose — improve code readability
+- [x] **QUAL-03**: Add WAV 4GB overflow pre-export warning — warn user when export data would exceed WAV format's 4GB RIFF chunk size limit
 
 ## v2 Requirements
 
@@ -69,9 +69,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BILD-02 | Phase 2 | Complete |
 | DOCS-01 | Phase 3 | Complete |
 | DOCS-02 | Phase 3 | Complete |
-| QUAL-01 | Phase 3 | Pending |
-| QUAL-02 | Phase 3 | Pending |
-| QUAL-03 | Phase 3 | Pending |
+| QUAL-01 | Phase 3 | Complete |
+| QUAL-02 | Phase 3 | Complete |
+| QUAL-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 11 total
