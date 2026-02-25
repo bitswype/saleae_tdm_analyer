@@ -164,9 +164,45 @@ void TdmAnalyzerResults::GenerateCSV( const char* file, DisplayBase display_base
 
 void TdmAnalyzerResults::GenerateWAV( const char* file )
 {
+    U64 num_frames = GetNumFrames();
+
+    // Pre-export 4 GiB size guard (QUAL-03)
+    // Compute bytes per channel using the same bit-depth mapping as PCMWaveFileHandler.
+    U32 bits = mSettings->mDataBitsPerSlot;
+    U32 bytes_per_channel;
+    if      ( bits <=  8 ) bytes_per_channel = 1;
+    else if ( bits <= 16 ) bytes_per_channel = 2;
+    else if ( bits <= 32 ) bytes_per_channel = 4;
+    else if ( bits <= 40 ) bytes_per_channel = 5;
+    else if ( bits <= 48 ) bytes_per_channel = 6;
+    else                   bytes_per_channel = 8;
+
+    U64 frame_size_bytes = ( U64 )bytes_per_channel * mSettings->mSlotsPerFrame;
+
+    // WAV RIFF data chunk size is a U32; max data payload is 0xFFFFFFFF - 36 bytes
+    // (36 = fixed PCM header overhead before the data chunk).
+    // num_frames is a conservative upper bound — actual output may be smaller.
+    constexpr U64 WAV_MAX_DATA_BYTES = ( U64 )0xFFFFFFFF - 36ULL;
+    U64 estimated_data_bytes = num_frames * frame_size_bytes;
+
+    if ( estimated_data_bytes > WAV_MAX_DATA_BYTES )
+    {
+        std::ofstream warning_file;
+        warning_file.open( file, std::ios::out );
+        if ( warning_file.is_open() )
+        {
+            warning_file << "WAV export aborted: estimated output ("
+                         << ( estimated_data_bytes / ( 1024ULL * 1024 * 1024 ) )
+                         << " GiB) exceeds the 4 GiB WAV RIFF format limit.\n"
+                         << "Export as TXT/CSV instead and convert to WAV with an external tool.\n";
+            warning_file.close();
+        }
+        UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
+        return;
+    }
+
     std::ofstream f;
     f.open( file , std::ios::out | std::ios::binary );
-    U64 num_frames = GetNumFrames();
 
     if( f.is_open() )
     {
