@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. `GenerateFrameTabularText()` calls `ClearTabularText()` before any `AddTabularText()` call; Logic 2 does not crash on tabular data display
 **Plans:** 1/1 plans complete
 Plans:
-- [ ] 01-01-PLAN.md — Fix all four correctness defects: sprintf safety, settings variable, WAV alignment, ClearTabularText compliance
+- [x] 01-01-PLAN.md — Fix all four correctness defects: sprintf safety, settings variable, WAV alignment, ClearTabularText compliance
 
 ### Phase 2: Build Hygiene
 **Goal**: Builds are reproducible and WAV struct layout is verified at compile time across all supported compilers
@@ -38,7 +38,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. `ExternalAnalyzerSDK.cmake` specifies a pinned commit hash, not `master`; a fresh clone builds the same SDK regardless of when it runs
   2. The build fails at compile time with a descriptive error if `WavePCMHeader` or `WavePCMExtendedHeader` are not the expected byte sizes on any supported compiler
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 02-01-PLAN.md — Pin SDK to commit hash and add static_assert guards for WAV header struct sizes
 
 ### Phase 3: Code Quality and Documentation
 **Goal**: The codebase is free of deprecated constructs and misleading names, limits are communicated to the user, and documentation reflects the current permanent architecture
@@ -60,5 +62,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Correctness | 1/1 | Complete   | 2026-02-25 |
-| 2. Build Hygiene | 0/? | Not started | - |
+| 2. Build Hygiene | 0/1 | Not started | - |
 | 3. Code Quality and Documentation | 0/? | Not started | - |
