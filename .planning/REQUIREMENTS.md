@@ -16,8 +16,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Build & Portability
 
-- [ ] **BILD-01**: Pin AnalyzerSDK to commit hash 114a3b8 instead of master branch — ensure reproducible builds that don't break silently
-- [ ] **BILD-02**: Add static_assert guards for WAV header struct sizes — compile-time verification replacing reliance on non-portable pragma scalar_storage_order
+- [x] **BILD-01**: Pin AnalyzerSDK to commit hash 114a3b8 instead of master branch — ensure reproducible builds that don't break silently
+- [x] **BILD-02**: Add static_assert guards for WAV header struct sizes — compile-time verification replacing reliance on non-portable pragma scalar_storage_order
 
 ### Documentation
 
@@ -65,8 +65,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORR-02 | Phase 1 | Complete |
 | CORR-03 | Phase 1 | Complete |
 | CORR-04 | Phase 1 | Complete |
-| BILD-01 | Phase 2 | Pending |
-| BILD-02 | Phase 2 | Pending |
+| BILD-01 | Phase 2 | Complete |
+| BILD-02 | Phase 2 | Complete |
 | DOCS-01 | Phase 3 | Pending |
 | DOCS-02 | Phase 3 | Pending |
 | QUAL-01 | Phase 3 | Pending |

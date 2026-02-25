@@ -13,7 +13,7 @@ This is an audit milestone for a feature-complete plugin. All TDM decoding capab
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Correctness** - Fix all known defects that produce incorrect or undefined behavior (completed 2026-02-25)
-- [ ] **Phase 2: Build Hygiene** - Ensure reproducible builds and compile-time portability guards
+- [x] **Phase 2: Build Hygiene** - Ensure reproducible builds and compile-time portability guards (completed 2026-02-25)
 - [ ] **Phase 3: Code Quality and Documentation** - Remove deprecated constructs, clarify names, and document the codebase
 
 ## Phase Details
@@ -38,7 +38,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. `ExternalAnalyzerSDK.cmake` specifies a pinned commit hash, not `master`; a fresh clone builds the same SDK regardless of when it runs
   2. The build fails at compile time with a descriptive error if `WavePCMHeader` or `WavePCMExtendedHeader` are not the expected byte sizes on any supported compiler
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 02-01-PLAN.md — Pin SDK to commit hash and add static_assert guards for WAV header struct sizes
 
@@ -62,5 +62,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Correctness | 1/1 | Complete   | 2026-02-25 |
-| 2. Build Hygiene | 0/1 | Not started | - |
+| 2. Build Hygiene | 1/1 | Complete   | 2026-02-25 |
 | 3. Code Quality and Documentation | 0/? | Not started | - |
