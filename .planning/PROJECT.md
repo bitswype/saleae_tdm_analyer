@@ -37,15 +37,26 @@ Correctly decode TDM audio data from logic analyzer captures with confidence tha
 
 ### Active
 
-- [ ] SDK API update check — verify no breaking changes or new capabilities since v2.3.58
+- [ ] SDK audit and update — check what changed since 114a3b8, update to latest commit, adopt useful new APIs
+- [ ] FrameV2 data enrichment — add structured fields to decoded frames for Logic 2 HLA/table display
+- [ ] RF64 WAV support — replace 4 GiB guard with proper RF64 headers for large exports
+- [ ] Sample rate sanity check — non-blocking warning when Logic analyzer sample rate is insufficient for TDM parameters
+
+## Current Milestone: v1.4 SDK & Export Modernization
+
+**Goal:** Update the AnalyzerSDK to latest, enrich decoded data with FrameV2 structured fields, add RF64 support for large WAV exports, and warn users about insufficient sample rates.
+
+**Target features:**
+- SDK audit + update to latest AnalyzerSDK commit
+- FrameV2 enrichment for Logic 2 HLA/table display
+- RF64 WAV export for captures exceeding 4 GiB
+- Sample rate sanity check in settings dialog
 
 ### Out of Scope
 
-- Sample rate sanity check in settings dialog — future milestone, non-blocking warning when rate is insufficient
 - Named standard presets (I2S, LJ, RJ, DSP Mode A/B) — future milestone, auto-fill settings from protocol name
 - Settings dialog improvements — future milestone, scope TBD
 - New TDM format support — current options believed to cover all known I2S/TDM configurations
-- RF64 support for WAV exports exceeding 4 GiB — considered for future; current guard warns user to export as TXT/CSV instead
 
 ## Context
 
@@ -80,4 +91,4 @@ Correctly decode TDM audio data from logic analyzer captures with confidence tha
 | WAV size guard writes plain text to .wav path | User sees warning regardless of how they open the file | ✓ Good — prevents silent corruption |
 
 ---
-*Last updated: 2026-02-25 after v1.0 milestone*
+*Last updated: 2026-02-25 after v1.4 milestone start*
