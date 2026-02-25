@@ -92,7 +92,7 @@ ERROR                   ( 1 << 7 ) // 0x80
 
 # Exporting data as a wave file
 
-There is a bug in Logic 2 where the displayed export options are limited to `TXT/CSV`.  This bug is still present in Logic v2.3.58 (when this analyzer was authored).  The way to work around this is to add a setting into the analyzer to select what "export to TXT/CSV" will _actually_ do.  To export the captured data as a wave file, follow these steps:
+Logic 2 does not support custom export types for Low Level Analyzers — the only export mechanism available to analyzer plugins is the `TXT/CSV` export path. This is a confirmed Saleae design decision, not a temporary limitation. This analyzer works around this by adding an export format selector in the analyzer settings: the "Export to TXT/CSV" action produces either CSV or WAV output based on that setting. To export the captured data as a wave file, follow these steps:
 
 1. Open the analyzer settings, click on the "Select export file type" dropdown and select "WAV" from the list. ![Analyzer setting to select the output of the TXT/CSV export option](pictures/select_export_option.PNG)
 1. Save the settings
