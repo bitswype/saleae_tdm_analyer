@@ -61,23 +61,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORR-01 | — | Pending |
-| CORR-02 | — | Pending |
-| CORR-03 | — | Pending |
-| CORR-04 | — | Pending |
-| BILD-01 | — | Pending |
-| BILD-02 | — | Pending |
-| DOCS-01 | — | Pending |
-| DOCS-02 | — | Pending |
-| QUAL-01 | — | Pending |
-| QUAL-02 | — | Pending |
-| QUAL-03 | — | Pending |
+| CORR-01 | Phase 1 | Pending |
+| CORR-02 | Phase 1 | Pending |
+| CORR-03 | Phase 1 | Pending |
+| CORR-04 | Phase 1 | Pending |
+| BILD-01 | Phase 2 | Pending |
+| BILD-02 | Phase 2 | Pending |
+| DOCS-01 | Phase 3 | Pending |
+| DOCS-02 | Phase 3 | Pending |
+| QUAL-01 | Phase 3 | Pending |
+| QUAL-02 | Phase 3 | Pending |
+| QUAL-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 ⚠️
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-23*
-*Last updated: 2026-02-23 after initial definition*
+*Last updated: 2026-02-24 — traceability filled after roadmap creation*
