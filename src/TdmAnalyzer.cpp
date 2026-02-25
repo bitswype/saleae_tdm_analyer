@@ -1,6 +1,8 @@
 #include "TdmAnalyzer.h"
 #include "TdmAnalyzerSettings.h"
 #include <AnalyzerChannelData.h>
+#include <stdio.h>
+#include <cstring>
 
 TdmAnalyzer::TdmAnalyzer() 
   : Analyzer2(), 
@@ -306,26 +308,27 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     }
     frame_v2.AddInteger( "data", adjusted_value );
     
+    size_t used = 0;
     if(mResultsFrame.mFlags & SHORT_SLOT)
     {
-        sprintf(error_str, "E: Short Slot ");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Short Slot " );
     }
     if(mResultsFrame.mFlags & MISSED_DATA)
     {
-        sprintf(error_str + strlen(error_str), "E: Data Error ");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Data Error " );
     }
     if(mResultsFrame.mFlags & MISSED_FRAME_SYNC)
     {
-        sprintf(error_str + strlen(error_str), "E: Frame Sync Missed ");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Frame Sync Missed " );
     }
     if(mResultsFrame.mFlags & BITCLOCK_ERROR)
     {
-        sprintf(error_str + strlen(error_str), "E: Bitclock Error ");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Bitclock Error " );
     }
 
     if(mResultsFrame.mFlags & UNEXPECTED_BITS)
     {
-        sprintf(warning_str, "W: Extra Slot ");
+        snprintf( warning_str, sizeof( warning_str ), "W: Extra Slot " );
     }
 
     frame_v2.AddString("errors", error_str);

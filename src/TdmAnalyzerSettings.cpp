@@ -5,8 +5,6 @@
 #include <cstring>
 #include <stdio.h>
 
-#pragma warning( disable : 4996 ) // warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead.
-
 TdmAnalyzerSettings::TdmAnalyzerSettings()
     : mClockChannel( UNDEFINED_CHANNEL ),
       mFrameChannel( UNDEFINED_CHANNEL ),
@@ -49,7 +47,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     for( U32 i = 1; i <= 256; i++ )
     {
         char str[ 256 ];
-        sprintf( str, "%d Slot%s/TDM Frame", i , i == 1 ? "" : "s");
+        snprintf( str, sizeof( str ), "%d Slot%s/TDM Frame", i, i == 1 ? "" : "s" );
         mSlotsPerFrameInterface->AddNumber( i, str, "" );
     }
     mSlotsPerFrameInterface->SetNumber( mSlotsPerFrame );
@@ -60,7 +58,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     for( U32 i = 2; i <= 64; i++ )
     {
         char str[ 256 ];
-        sprintf( str, "%d bits/slot", i );
+        snprintf( str, sizeof( str ), "%d bits/slot", i );
         mBitsPerSlotInterface->AddNumber( i, str, "" );
     }
     mBitsPerSlotInterface->SetNumber( mBitsPerSlot );
@@ -71,7 +69,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     for( U32 i = 2; i <= 64; i++ )
     {
         char str[ 256 ];
-        sprintf( str, "%d Data bits/slot", i );
+        snprintf( str, sizeof( str ), "%d Data bits/slot", i );
         mDataBitsPerSlotInterface->AddNumber( i, str, "" );
     }
     mDataBitsPerSlotInterface->SetNumber( mDataBitsPerSlot );

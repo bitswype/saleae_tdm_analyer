@@ -8,9 +8,6 @@
 #include <stdio.h>
 #include <cstring>
 
-#pragma warning( disable : 4996 ) // warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead.
-
-
 TdmAnalyzerResults::TdmAnalyzerResults( TdmAnalyzer* analyzer, TdmAnalyzerSettings* settings )
     : AnalyzerResults(), mSettings( settings ), mAnalyzer( analyzer )
 {
@@ -45,48 +42,52 @@ void TdmAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& /*channel
 
     if(frame.mFlags & (DISPLAY_AS_ERROR_FLAG | DISPLAY_AS_WARNING_FLAG))
     {
-        sprintf( channel_num_str, "%s%s", (frame.mFlags & DISPLAY_AS_ERROR_FLAG) > 0 ? "E" : "",
-                                          (frame.mFlags & DISPLAY_AS_WARNING_FLAG) > 0 ? "W" : "");
+        snprintf( channel_num_str, sizeof( channel_num_str ), "%s%s",
+                  (frame.mFlags & DISPLAY_AS_ERROR_FLAG) > 0 ? "E" : "",
+                  (frame.mFlags & DISPLAY_AS_WARNING_FLAG) > 0 ? "W" : "" );
 
+        size_t used = 0;
         if(frame.mFlags & SHORT_SLOT)
         {
-            sprintf(error_str, "Short Slot ");
+            used += snprintf( error_str + used, sizeof( error_str ) - used, "Short Slot " );
         }
         if(frame.mFlags & MISSED_DATA)
         {
-            sprintf(error_str + strlen(error_str), "Data Error ");
+            used += snprintf( error_str + used, sizeof( error_str ) - used, "Data Error " );
         }
         if(frame.mFlags & MISSED_FRAME_SYNC)
         {
-            sprintf(error_str + strlen(error_str), "Frame Sync Missed ");
+            used += snprintf( error_str + used, sizeof( error_str ) - used, "Frame Sync Missed " );
         }
         if(frame.mFlags & BITCLOCK_ERROR)
         {
-            sprintf(error_str + strlen(error_str), "Bitclock Error ");
+            used += snprintf( error_str + used, sizeof( error_str ) - used, "Bitclock Error " );
         }
 
         if(frame.mFlags & UNEXPECTED_BITS)
         {
-            sprintf(warning_str, "Extra Slot ");
+            snprintf( warning_str, sizeof( warning_str ), "Extra Slot " );
         }
     }
     else
     {
-        sprintf( channel_num_str, "%d", frame.mType + 1 );
+        snprintf( channel_num_str, sizeof( channel_num_str ), "%d", frame.mType + 1 );
     }
     AddResultString( channel_num_str );
 
 
-    sprintf( channel_num_str, "%s%s Ch %d", (frame.mFlags & DISPLAY_AS_ERROR_FLAG) > 0 ? "E" : "",
-                                            (frame.mFlags & DISPLAY_AS_WARNING_FLAG) > 0 ? "W" : "",
-                                            frame.mType + 1 );
+    snprintf( channel_num_str, sizeof( channel_num_str ), "%s%s Ch %d",
+              (frame.mFlags & DISPLAY_AS_ERROR_FLAG) > 0 ? "E" : "",
+              (frame.mFlags & DISPLAY_AS_WARNING_FLAG) > 0 ? "W" : "",
+              frame.mType + 1 );
     AddResultString( channel_num_str );
 
-    sprintf( channel_num_str, "%s%s%s%sCh %d ", (frame.mFlags & DISPLAY_AS_ERROR_FLAG) > 0 ? "E:" : "",
-                                                error_str,
-                                                (frame.mFlags & DISPLAY_AS_WARNING_FLAG) > 0 ? "W:" : "",
-                                                warning_str,
-                                                frame.mType + 1 );
+    snprintf( channel_num_str, sizeof( channel_num_str ), "%s%s%s%sCh %d ",
+              (frame.mFlags & DISPLAY_AS_ERROR_FLAG) > 0 ? "E:" : "",
+              error_str,
+              (frame.mFlags & DISPLAY_AS_WARNING_FLAG) > 0 ? "W:" : "",
+              warning_str,
+              frame.mType + 1 );
     AddResultString( channel_num_str, number_str );
 }
 
@@ -143,8 +144,8 @@ void TdmAnalyzerResults::GenerateCSV( const char* file, DisplayBase display_base
             AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
         }
 
-        sprintf( channel_num_str, "%d", frame.mType  + 1);
-        sprintf( flag_str, "0x%02X", frame.mFlags);
+        snprintf( channel_num_str, sizeof( channel_num_str ), "%d", frame.mType + 1 );
+        snprintf( flag_str, sizeof( flag_str ), "0x%02X", frame.mFlags );
         ss << time_str << "," << channel_num_str << "," << number_str << "," << flag_str << std::endl;
 
         AnalyzerHelpers::AppendToFile( ( U8* )ss.str().c_str(), ss.str().length(), f );
@@ -487,29 +488,30 @@ void TdmAnalyzerResults::GenerateFrameTabularText( U64 frame_index, DisplayBase 
         AnalyzerHelpers::GetNumberString( frame.mData1, display_base, mSettings->mDataBitsPerSlot, number_str, 128 );
     }
 
+    size_t used = 0;
     if(frame.mFlags & SHORT_SLOT)
     {
-        sprintf(error_str, " Short Slot");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, " Short Slot" );
     }
     if(frame.mFlags & MISSED_DATA)
     {
-        sprintf(error_str + strlen(error_str), " Data Error");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, " Data Error" );
     }
     if(frame.mFlags & MISSED_FRAME_SYNC)
     {
-        sprintf(error_str + strlen(error_str), " Frame Sync Missed");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, " Frame Sync Missed" );
     }
     if(frame.mFlags & BITCLOCK_ERROR)
     {
-        sprintf(error_str + strlen(error_str), " Bitclock Error");
+        used += snprintf( error_str + used, sizeof( error_str ) - used, " Bitclock Error" );
     }
 
     if(frame.mFlags & UNEXPECTED_BITS)
     {
-        sprintf(warning_str, " Extra Slot");
+        snprintf( warning_str, sizeof( warning_str ), " Extra Slot" );
     }
 
-    sprintf( channel_num_str, "ch %d: ", frame.mType + 1 );
+    snprintf( channel_num_str, sizeof( channel_num_str ), "ch %d: ", frame.mType + 1 );
     AddTabularText( channel_num_str, number_str, error_str, warning_str, "\n" );
 }
 
