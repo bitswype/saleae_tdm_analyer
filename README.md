@@ -5,6 +5,23 @@
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
 
+# Migration Guide
+
+## v2.0.0 — FrameV2 key rename
+
+The `"frame #"` FrameV2 field has been renamed to `"frame_number"`.
+Update any HLA scripts that access this field:
+
+```python
+# Before (v1.x)
+frame_number = frame.data["frame #"]
+
+# After (v2.0+)
+frame_number = frame.data["frame_number"]
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
+
 # Features
 
 - 1 to 256 slots per frame
