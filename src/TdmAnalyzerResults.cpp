@@ -181,7 +181,11 @@ void TdmAnalyzerResults::GenerateWAV( const char* file )
             // only populate slots we expect, extra slots are not stored in the wave file
             if(frame.mType < num_slots_per_frame)
             {
-                wave_file_handler.addSample( frame.mData1 );
+                // SHORT_SLOT frames contribute silence (0) to preserve WAV channel alignment.
+                // Skipping addSample() entirely would cause all subsequent channels to drift
+                // by one slot position in the output file.
+                U64 sample_value = (frame.mFlags & SHORT_SLOT) ? 0 : frame.mData1;
+                wave_file_handler.addSample( sample_value );
                 if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
                 {
                     wave_file_handler.close();
