@@ -32,10 +32,10 @@ Phase 3: Code Quality and Documentation — enum rename, README rewrite, WAV ove
   1. A commit message documents that 114a3b8 is confirmed as AnalyzerSDK HEAD with the date of verification
   2. TdmAnalyzer.h no longer contains a `mResultsFrameV2` member variable
   3. FrameV2 output uses the key `"frame_number"` (not `"frame #"`) — HLA Python can access it as `frame.data["frame_number"]` without error
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 04-01: SDK audit verification, dead member removal, and key rename
+- [ ] 04-01-PLAN.md — SDK audit, dead member removal, FrameV2 key rename, and v2.0.0 documentation
 
 ### Phase 5: FrameV2 Enrichment
 **Goal**: Every decoded slot in the Logic 2 data table carries structured boolean error fields and a human-readable 1-based slot number, enabling HLA scripts to filter error frames without string parsing
