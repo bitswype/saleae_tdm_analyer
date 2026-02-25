@@ -52,7 +52,10 @@ Plans:
   3. Attempting to export a WAV file that would exceed 4GB produces a user-visible warning before the export begins
   4. The README build section explains what each step does, not just the commands; a developer unfamiliar with CMake FetchContent can follow it
   5. WAV export documentation states the TXT/CSV workaround is the permanent architecture; no investigation note or "may be resolved" language remains
-**Plans**: TBD
+**Plans:** 0/2 plans complete
+Plans:
+- [ ] 03-01-PLAN.md — Verify auto_ptr absence, rename TdmBitAlignment enum values to DSP_MODE_A/DSP_MODE_B, add WAV 4GB overflow pre-export warning
+- [ ] 03-02-PLAN.md — Rewrite README build instructions with explanatory prose, update WAV export docs to state permanent architecture
 
 ## Progress
 
@@ -63,4 +66,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Correctness | 1/1 | Complete   | 2026-02-25 |
 | 2. Build Hygiene | 1/1 | Complete   | 2026-02-25 |
-| 3. Code Quality and Documentation | 0/? | Not started | - |
+| 3. Code Quality and Documentation | 0/2 | Not started | - |
