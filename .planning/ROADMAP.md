@@ -27,7 +27,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. WAV export of a capture containing SHORT_SLOT frames writes correct channel data with no channel-position drift
   3. A settings object loaded from disk initializes the export file type control with the user's saved selection, not with a mismatched variable
   4. `GenerateFrameTabularText()` calls `ClearTabularText()` before any `AddTabularText()` call; Logic 2 does not crash on tabular data display
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 01-01-PLAN.md — Fix all four correctness defects: sprintf safety, settings variable, WAV alignment, ClearTabularText compliance
 
 ### Phase 2: Build Hygiene
 **Goal**: Builds are reproducible and WAV struct layout is verified at compile time across all supported compilers
@@ -57,6 +59,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Correctness | 0/? | Not started | - |
+| 1. Correctness | 0/1 | Not started | - |
 | 2. Build Hygiene | 0/? | Not started | - |
 | 3. Code Quality and Documentation | 0/? | Not started | - |
