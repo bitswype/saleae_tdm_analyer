@@ -40,12 +40,13 @@ Plans:
 ### Phase 5: FrameV2 Enrichment
 **Goal**: Every decoded slot in the Logic 2 data table carries structured boolean error fields and a human-readable 1-based slot number, enabling HLA scripts to filter error frames without string parsing
 **Depends on**: Phase 4
-**Requirements**: FRM2-01, FRM2-02, FRM2-03, FRM2-04, FRM2-05, FRM2-06
+**Requirements**: FRM2-01, FRM2-02, FRM2-03, FRM2-04, FRM2-05, FRM2-06, FRM2-07
 **Success Criteria** (what must be TRUE):
-  1. The Logic 2 data table shows `short_slot`, `extra_slot`, `bitclock_error`, `missed_data`, and `missed_frame_sync` columns for every decoded slot row — including error-free rows (which show false)
-  2. The data table shows a `slot` column with 1-based values (slot 1, slot 2, ...) alongside the existing 0-based `channel` column
-  3. An HLA script can filter for error frames using `frame.data["short_slot"] == True` without AttributeError or KeyError
-  4. All five boolean fields are emitted on every slot frame regardless of whether the frame contains errors
+  1. The Logic 2 data table shows `short_slot`, `extra_slot`, `bitclock_error`, `missed_data`, and `missed_frame_sync` boolean columns for every decoded slot row — including error-free rows (which show false)
+  2. The data table shows a `slot` column with 0-based values replacing the former `channel` column — no `channel` column exists
+  3. The data table shows a `severity` column with values `error`, `warning`, or `ok` — replacing the former `errors` and `warnings` string columns
+  4. An HLA script can filter for error frames using `frame.data["short_slot"] == True` without AttributeError or KeyError
+  5. All boolean and severity fields are emitted on every slot frame regardless of whether the frame contains errors
 **Plans**: TBD
 
 Plans:

@@ -20,7 +20,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **FRM2-03**: Add boolean `bitclock_error` field to FrameV2 output for each decoded slot
 - [ ] **FRM2-04**: Add boolean `missed_data` field to FrameV2 output for each decoded slot
 - [ ] **FRM2-05**: Add boolean `missed_frame_sync` field to FrameV2 output for each decoded slot
-- [ ] **FRM2-06**: Add 1-based `slot` field alongside existing 0-based `channel` field — human-readable in data table
+- [ ] **FRM2-06**: Replace `channel` field with 0-based `slot` field — cleaner key name, no redundant column
+- [ ] **FRM2-07**: Replace `errors`/`warnings` string fields with `severity` enum field (`error`/`warning`/`ok`) — structured severity without string parsing
 
 ### RF64 WAV Export
 
@@ -75,6 +76,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FRM2-04 | Phase 5 | Pending |
 | FRM2-05 | Phase 5 | Pending |
 | FRM2-06 | Phase 5 | Pending |
+| FRM2-07 | Phase 5 | Pending |
 | RF64-01 | Phase 7 | Pending |
 | RF64-02 | Phase 7 | Pending |
 | RF64-03 | Phase 7 | Pending |
@@ -83,10 +85,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SRAT-02 | Phase 6 | Pending |
 
 **Coverage:**
-- v1.4 requirements: 15 total
-- Mapped to phases: 15
+- v1.4 requirements: 16 total
+- Mapped to phases: 16
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after roadmap creation*
+*Last updated: 2026-02-25 after Phase 5 context discussion*
