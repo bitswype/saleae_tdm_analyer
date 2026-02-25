@@ -336,7 +336,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
 
     frame_v2.AddString("errors", error_str);
     frame_v2.AddString("warnings", warning_str);
-    frame_v2.AddInteger("frame #", mFrameNum);
+    frame_v2.AddInteger("frame_number", mFrameNum);
     mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     
     mResults->CommitResults();
