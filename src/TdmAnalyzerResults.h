@@ -64,6 +64,13 @@ typedef struct
 #pragma pack(pop)
 #pragma scalar_storage_order default
 
+// Verify WavePCMHeader is the correct size for WAV PCM format.
+// Note: #pragma scalar_storage_order is GCC-only and ignored by Clang/MSVC.
+// This assert catches packing errors on all supported compilers.
+static_assert(sizeof(WavePCMHeader) == 44,
+    "WavePCMHeader must be 44 bytes per WAV PCM spec. "
+    "Check #pragma pack(1) is in effect and all field types are correct.");
+
 #pragma scalar_storage_order little-endian
 #pragma pack(push, 1)
 typedef struct
@@ -92,6 +99,13 @@ typedef struct
 } WavePCMExtendedHeader;
 #pragma pack(pop)
 #pragma scalar_storage_order default
+
+// Verify WavePCMExtendedHeader is the correct size for WAV EXTENSIBLE format.
+// Note: #pragma scalar_storage_order is GCC-only and ignored by Clang/MSVC.
+// This assert catches packing errors on all supported compilers.
+static_assert(sizeof(WavePCMExtendedHeader) == 80,
+    "WavePCMExtendedHeader must be 80 bytes per WAV EXTENSIBLE spec. "
+    "Check #pragma pack(1) is in effect and all field types are correct.");
 
 class PCMWaveFileHandler
 {
