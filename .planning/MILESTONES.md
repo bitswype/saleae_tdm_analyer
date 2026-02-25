@@ -1,6 +1,6 @@
 # Milestones
 
-## v1.0 TDM Analyzer Audit (Shipped: 2026-02-25)
+## v1.3 TDM Analyzer Audit (Shipped: 2026-02-25)
 
 **Phases completed:** 3 phases, 4 plans, 8 tasks
 **Files modified:** 8 (source + cmake + README)
