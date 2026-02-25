@@ -9,10 +9,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Correctness
 
-- [ ] **CORR-01**: Fix sprintf buffer overflow risk in results formatting — use safe string formatting to prevent buffer overruns
-- [ ] **CORR-02**: Fix settings initialization using wrong variable (mEnableAdvancedAnalysis instead of mExportFileType) — ensure export file type interface is initialized with the correct setting
-- [ ] **CORR-03**: Fix WAV channel alignment drift after SHORT_SLOT error frames — ensure error frames don't corrupt channel mapping in exported WAV files
-- [ ] **CORR-04**: Audit and fix ClearTabularText() compliance — ensure GenerateFrameTabularText() calls ClearTabularText() first to prevent Logic 2 crashes
+- [x] **CORR-01**: Fix sprintf buffer overflow risk in results formatting — use safe string formatting to prevent buffer overruns
+- [x] **CORR-02**: Fix settings initialization using wrong variable (mEnableAdvancedAnalysis instead of mExportFileType) — ensure export file type interface is initialized with the correct setting
+- [x] **CORR-03**: Fix WAV channel alignment drift after SHORT_SLOT error frames — ensure error frames don't corrupt channel mapping in exported WAV files
+- [x] **CORR-04**: Audit and fix ClearTabularText() compliance — ensure GenerateFrameTabularText() calls ClearTabularText() first to prevent Logic 2 crashes
 
 ### Build & Portability
 
@@ -61,10 +61,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CORR-01 | Phase 1 | Pending |
-| CORR-02 | Phase 1 | Pending |
-| CORR-03 | Phase 1 | Pending |
-| CORR-04 | Phase 1 | Pending |
+| CORR-01 | Phase 1 | Complete |
+| CORR-02 | Phase 1 | Complete |
+| CORR-03 | Phase 1 | Complete |
+| CORR-04 | Phase 1 | Complete |
 | BILD-01 | Phase 2 | Pending |
 | BILD-02 | Phase 2 | Pending |
 | DOCS-01 | Phase 3 | Pending |

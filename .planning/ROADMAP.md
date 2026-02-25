@@ -12,7 +12,7 @@ This is an audit milestone for a feature-complete plugin. All TDM decoding capab
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Correctness** - Fix all known defects that produce incorrect or undefined behavior
+- [x] **Phase 1: Correctness** - Fix all known defects that produce incorrect or undefined behavior (completed 2026-02-25)
 - [ ] **Phase 2: Build Hygiene** - Ensure reproducible builds and compile-time portability guards
 - [ ] **Phase 3: Code Quality and Documentation** - Remove deprecated constructs, clarify names, and document the codebase
 
@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. WAV export of a capture containing SHORT_SLOT frames writes correct channel data with no channel-position drift
   3. A settings object loaded from disk initializes the export file type control with the user's saved selection, not with a mismatched variable
   4. `GenerateFrameTabularText()` calls `ClearTabularText()` before any `AddTabularText()` call; Logic 2 does not crash on tabular data display
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 01-01-PLAN.md — Fix all four correctness defects: sprintf safety, settings variable, WAV alignment, ClearTabularText compliance
 
@@ -59,6 +59,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Correctness | 0/1 | Not started | - |
+| 1. Correctness | 1/1 | Complete   | 2026-02-25 |
 | 2. Build Hygiene | 0/? | Not started | - |
 | 3. Code Quality and Documentation | 0/? | Not started | - |

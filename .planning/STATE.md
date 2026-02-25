@@ -10,27 +10,27 @@ See: .planning/PROJECT.md (updated 2026-02-23)
 ## Current Position
 
 Phase: 1 of 3 (Correctness)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-02-24 — Roadmap created; phases derived from audit requirements
+Plan: 1 of ? in current phase
+Status: In progress
+Last activity: 2026-02-25 — Completed plan 01-01 (CORR-01 through CORR-04 bug fixes)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] ~10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 2 min
+- Total execution time: 0.03 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-correctness | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: —
+- Last 5 plans: 01-01 (2 min)
 - Trend: —
 
 *Updated after each plan completion*
@@ -44,6 +44,9 @@ Recent decisions affecting current work:
 
 - [Pre-phase]: Audit before new features — establish correctness confidence before adding complexity
 - [Pre-phase]: WAV export via TXT/CSV workaround is the permanent architecture — Saleae confirmed custom export types will not be implemented in Logic 2
+- [01-01]: Use snprintf with explicit offset tracking over std::string — minimal surgical fix, preserves existing code structure
+- [01-01]: Constructor and UpdateInterfacesFromSettings must use identical member variables in SetNumber calls (parity pattern)
+- [01-01]: SHORT_SLOT frames in WAV export write addSample(0), not skip — preserves mSampleIndex channel alignment invariant
 
 ### Pending Todos
 
@@ -55,6 +58,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-24
-Stopped at: Roadmap created; ready to plan Phase 1
+Last session: 2026-02-25
+Stopped at: Completed 01-01-PLAN.md (CORR-01 through CORR-04 all fixed and committed)
 Resume file: None
