@@ -18,7 +18,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mDataValidEdge( AnalyzerEnums::PosEdge ),
 
       mDataAlignment( LEFT_ALIGNED ),
-      mBitAlignment( BITS_SHIFTED_RIGHT_1 ),
+      mBitAlignment( DSP_MODE_A ),
       mSigned( AnalyzerEnums::UnsignedInteger ),
       mFrameSyncInverted( FS_NOT_INVERTED ),
       mExportFileType( CSV ),
@@ -96,11 +96,12 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mWordAlignmentInterface->AddNumber( RIGHT_ALIGNED, "Right aligned", "" );
     mWordAlignmentInterface->SetNumber( mDataAlignment );
 
-    // enum TdmBitAlignment { FIRST_FRAME_BIT_BELONGS_TO_PREVIOUS_WORD, FIRST_FRAME_BIT_BELONGS_TO_CURRENT_WORD };
+    // DSP Mode A: data is shifted right 1 bit from frame sync (TDM typical, I2S left-justified)
+    // DSP Mode B: data starts on the same clock edge as frame sync (no shift)
     mBitAlignmentInterface.reset( new AnalyzerSettingInterfaceNumberList() );
     mBitAlignmentInterface->SetTitleAndTooltip( "DATA Bits Shift relative to Frame Sync", "Specify the bit shift with respect to the FRAME edges" );
-    mBitAlignmentInterface->AddNumber( BITS_SHIFTED_RIGHT_1, "Right-shifted by one (TDM typical, DSP mode A)", "" );
-    mBitAlignmentInterface->AddNumber( NO_SHIFT, "No shift (DSP mode B)", "" );
+    mBitAlignmentInterface->AddNumber( DSP_MODE_A, "Right-shifted by one (TDM typical, DSP mode A)", "" );
+    mBitAlignmentInterface->AddNumber( DSP_MODE_B, "No shift (DSP mode B)", "" );
     mBitAlignmentInterface->SetNumber( mBitAlignment );
 
     mSignedInterface.reset( new AnalyzerSettingInterfaceNumberList() );

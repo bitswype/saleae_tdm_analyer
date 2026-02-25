@@ -11,8 +11,8 @@ enum TdmDataAlignment
 };
 enum TdmBitAlignment
 {
-    BITS_SHIFTED_RIGHT_1,
-    NO_SHIFT
+    DSP_MODE_A,  // data shifted right 1 bit from frame sync (TDM typical / I2S left-justified)
+    DSP_MODE_B   // data starts on same clock edge as frame sync (no shift)
 };
 enum TdmFrameSelectInverted
 {

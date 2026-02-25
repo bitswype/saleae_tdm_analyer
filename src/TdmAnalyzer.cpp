@@ -78,7 +78,7 @@ void TdmAnalyzer::SetupForGettingFirstTdmFrame()
         if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrameState == BIT_HIGH) && (mLastFrameState == BIT_LOW)) ||
             ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrameState == BIT_LOW) && (mLastFrameState == BIT_HIGH)))
         {
-            if( mSettings->mBitAlignment == BITS_SHIFTED_RIGHT_1 )
+            if( mSettings->mBitAlignment == DSP_MODE_A )
             {
                 // we need to advance to the next bit past the frame.
                 mLastFrameState = mCurrentFrameState;
@@ -130,7 +130,7 @@ void TdmAnalyzer::GetTdmFrame()
             ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrameState == BIT_LOW) && (mLastFrameState == BIT_HIGH)))
         {
 
-            if( mSettings->mBitAlignment == BITS_SHIFTED_RIGHT_1 )
+            if( mSettings->mBitAlignment == DSP_MODE_A )
             {
                 // this bit belongs to us:
                 mDataBits.push_back( mCurrentDataState );

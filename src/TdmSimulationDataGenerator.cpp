@@ -124,7 +124,7 @@ BitState TdmSimulationDataGenerator::GetNextAudioBit()
     switch( mBitGenerationState )
     {
     case Init:
-        if( mBitAlignment == BITS_SHIFTED_RIGHT_1 )
+        if( mBitAlignment == DSP_MODE_A )
         {
             mBitGenerationState = LeftPadding;
             return BIT_LOW; // just once, we'll insert a 1-bit offset.
