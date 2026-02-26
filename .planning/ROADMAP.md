@@ -74,11 +74,11 @@ Plans:
   2. Exporting a capture under 4 GiB produces a standard PCM WAV file (no RF64 overhead) — existing tooling compatibility is preserved
   3. The 4 GiB text-error guard is gone — no code path writes a plain-text message to the .wav file path
   4. The exported RF64 file opens and plays correctly in Audacity with the correct channel count, sample rate, and duration
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: WaveRF64Header struct and RF64WaveFileHandler class
-- [ ] 07-02: GenerateWAV conditional dispatch and 4 GiB guard removal
+- [ ] 07-01-PLAN.md — WaveRF64Header packed struct (80 bytes, EBU TECH 3306) and RF64WaveFileHandler class with U64 counters
+- [ ] 07-02-PLAN.md — GenerateWAV conditional dispatch (RF64 for >4 GiB, PCM otherwise) and 4 GiB text-error guard removal
 
 ## Progress
 
