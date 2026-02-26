@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** Correctly decode TDM audio data from logic analyzer captures with confidence that the results are accurate and the code is trustworthy.
-**Current focus:** Phase 6 — Sample Rate Validation (plan 01 complete)
+**Current focus:** Phase 7 — RF64 WAV Export (plan 01 complete)
 
 ## Current Position
 
-Phase: 6 of 7 (Sample Rate Validation) — Plan 01 complete
-Plan: 1 of 1 in current phase — Complete
-Status: Phase 6 complete — ready for Phase 7
-Last activity: 2026-02-26 — Phase 6 plan 01 executed
+Phase: 7 of 7 (RF64 WAV Export) — Plan 01 of 2 complete
+Plan: 1 of 2 in current phase — In Progress
+Status: Phase 7 in progress — RF64 class built, GenerateWAV dispatch pending (Plan 02)
+Last activity: 2026-02-26 — Phase 7 plan 01 executed
 
-Progress: [██████░░░░] 71% (6/7 phases complete)
+Progress: [███████░░░] 79% (plan 1/2 in phase 7 complete)
 
 ## Performance Metrics
 
@@ -40,6 +40,7 @@ Progress: [██████░░░░] 71% (6/7 phases complete)
 
 *Updated after each plan completion*
 | Phase 06-sample-rate-validation P01 | 2min | 2 tasks | 5 files |
+| Phase 07-rf64-wav-export P01 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Decisions for upcoming phases:
 - [Phase 06-sample-rate-validation]: FormatHzString duplicated in both .cpp files rather than adding shared header — small function, cleaner than new header
 - [Phase 06-sample-rate-validation]: Advisory FrameV2 at sample (0,0) — zero-duration point frame precedes all slot data safely
 - [Phase 06-sample-rate-validation]: Exactly 500 MHz allowed (strict >) and exactly 4x = no warning (strict <) — per CONTEXT.md decisions
+- [Phase 07-rf64-wav-export]: WaveRF64Header field ordering places ds64 U64 fields at offsets 20/28/36 matching RF64_DS64_* constants — no magic numbers needed in implementation
+- [Phase 07-rf64-wav-export]: RF64 sentinels at offsets 4 and 76 never overwritten — only ds64 U64 fields updated at close() per EBU TECH 3306
 
 ### Pending Todos
 
@@ -83,5 +86,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 06-01-PLAN.md (Phase 6 plan 01 complete)
-Resume file: .planning/phases/06-sample-rate-validation/06-01-SUMMARY.md
+Stopped at: Completed 07-01-PLAN.md (Phase 7 plan 01 complete)
+Resume file: .planning/phases/07-rf64-wav-export/07-01-SUMMARY.md
