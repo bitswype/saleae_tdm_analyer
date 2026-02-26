@@ -17,9 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **RF64 WAV export for captures exceeding 4 GiB** — produces valid RF64 files (EBU TECH 3306) that open in Audacity, FFmpeg, and other standard tools [RF64-03]
 - **FrameV2 schema:** Added boolean fields `short_slot`, `extra_slot`, `bitclock_error`, `missed_data`, `missed_frame_sync` to every decoded slot row [FRM2-01 through FRM2-05]
 - **FrameV2 schema:** Added boolean `low_sample_rate` field to every decoded slot row — true when capture rate < 4x bit clock [SRAT-01]
 - **FrameV2 advisory:** New "advisory" frame type emitted as row 0 when sample rate is below 4x bit clock, with human-readable message showing the math [SRAT-01]
+
+### Removed
+
+- **4 GiB text-error guard in WAV export** — replaced by conditional RF64 path; exports that exceed 4 GiB now produce a valid RF64 file instead of a text message explaining the abort [RF64-04]
 
 ### Migration
 
