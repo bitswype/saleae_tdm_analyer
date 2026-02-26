@@ -60,10 +60,10 @@ Plans:
   1. When the Logic analyzer sample rate is below 4x the configured bit clock rate, the first frame in the analysis output contains a warning annotation visible in the Logic 2 data table — and analysis completes normally (not blocked)
   2. When configured TDM parameters require a sample rate above 500 MSPS, the settings dialog shows an error message and prevents analysis from running
   3. The sample rate advisory does not prevent the user from running analysis — it is informational only
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 06-01: Non-blocking advisory annotation and hard-block for impossible configurations
+- [ ] 06-01-PLAN.md — Settings validation (zero-param guards + 500 MHz hard block) and non-blocking advisory annotation with per-slot low_sample_rate boolean
 
 ### Phase 7: RF64 WAV Export
 **Goal**: WAV exports larger than 4 GiB produce a valid RF64 file that opens in Audacity, FFmpeg, and other standard tools — rather than a plain-text error file at the .wav path
