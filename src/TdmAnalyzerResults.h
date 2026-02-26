@@ -172,4 +172,82 @@ class PCMExtendedWaveFileHandler
     constexpr static U64 EXT_DATA_CKSIZE_POS = 76;
 };
 
+// Source: EBU TECH 3306 v1.1; byte offsets verified against FFmpeg libavformat/wavenc.c
+#pragma scalar_storage_order little-endian
+#pragma pack(push, 1)
+typedef struct
+{
+    // RF64 root chunk (12 bytes, offsets 0-11)
+    char  mRF64CkId[4]    = {'R', 'F', '6', '4'};  // @ 0
+    U32   mRiffCkSize     = 0xFFFFFFFF;             // @ 4  sentinel (never updated)
+    char  mWaveId[4]      = {'W', 'A', 'V', 'E'};  // @ 8
+
+    // ds64 chunk (36 bytes, offsets 12-47)
+    char  mDs64CkId[4]    = {'d', 's', '6', '4'};  // @ 12
+    U32   mDs64CkSize     = 28;                     // @ 16  payload size (3xU64 + 1xU32 = 28)
+    U64   mRiffSize       = 0;                      // @ 20  written at close()
+    U64   mDataSize       = 0;                      // @ 28  written at close()
+    U64   mSampleCount    = 0;                      // @ 36  written at close()
+    U32   mTableLength    = 0;                      // @ 44  no extra chunk table entries
+
+    // fmt chunk (24 bytes, offsets 48-71)
+    char  mFmtCkId[4]     = {'f', 'm', 't', ' '};  // @ 48
+    U32   mFmtCkSize      = 16;                     // @ 52  standard PCM
+    U16   mFormatTag      = 0x0001;                 // @ 56  PCM
+    U16   mNumChannels    = 1;                      // @ 58
+    U32   mSamplesPerSec  = 8000;                   // @ 60
+    U32   mBytesPerSec    = 16000;                  // @ 64
+    U16   mBlockSizeBytes = 2;                      // @ 68
+    U16   mBitsPerSample  = 16;                     // @ 70
+
+    // data chunk header (8 bytes, offsets 72-79)
+    char  mDataCkId[4]    = {'d', 'a', 't', 'a'};  // @ 72
+    U32   mDataCkSize     = 0xFFFFFFFF;             // @ 76  sentinel (never updated)
+    /* audio data starts @ 80 */
+} WaveRF64Header;
+#pragma pack(pop)
+#pragma scalar_storage_order default
+
+// Verify WaveRF64Header is exactly 80 bytes per EBU TECH 3306 RF64 spec.
+// Note: #pragma scalar_storage_order is GCC-only and ignored by Clang/MSVC.
+// This assert catches packing errors on all supported compilers.
+static_assert(sizeof(WaveRF64Header) == 80,
+    "WaveRF64Header must be exactly 80 bytes per RF64 spec. "
+    "Check #pragma pack(1) is in effect and all field types are correct.");
+
+class RF64WaveFileHandler
+{
+  public:
+    RF64WaveFileHandler(std::ofstream & file, U32 sample_rate = 48000, U32 num_channels = 2, U32 bits_per_channel = 32);
+    ~RF64WaveFileHandler();
+
+    void addSample(U64 sample);
+    void close(void);
+
+  private:
+    void writeLittleEndianData(U64 value, U8 num_bytes);
+    void updateFileSize();
+
+  private:
+    WaveRF64Header mRF64Header;
+    U32  mNumChannels;
+    U32  mBitsPerChannel;
+    U8   mBitShift;
+    U32  mBytesPerChannel;
+    U32  mSampleRate;
+    U32  mFrameSizeBytes;
+    U64  mTotalFrames;   // U64 — prevents U32 overflow for >4 GiB exports
+    U64  mSampleCount;   // U64 — prevents U32 overflow for >4 GiB exports
+    std::ofstream & mFile;
+    std::streampos mWtPosSaved;
+    U64* mSampleData;
+    U32  mSampleIndex;
+
+    // Byte offsets for seekback into ds64 chunk (verified from WaveRF64Header layout)
+    constexpr static U64 RF64_DS64_RIFFSIZE_POS  = 20;  // U64 riffSize in ds64
+    constexpr static U64 RF64_DS64_DATASIZE_POS  = 28;  // U64 dataSize in ds64
+    constexpr static U64 RF64_DS64_SAMPLECNT_POS = 36;  // U64 sampleCount in ds64
+    // data ckSize at offset 76 stays 0xFFFFFFFF — sentinel, not updated
+};
+
 #endif // TDM_ANALYZER_RESULTS
