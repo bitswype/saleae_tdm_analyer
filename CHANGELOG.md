@@ -11,10 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **FrameV2 schema:** Replaced `channel` (integer) field with `slot` (integer, same 0-based value) [FRM2-06]
 - **FrameV2 schema:** Replaced `errors` and `warnings` string fields with `severity` string field (`error`/`warning`/`ok`) [FRM2-07]
+- **Settings validation:** Zero-parameter guards reject frame_rate=0, slots_per_frame=0, or bits_per_slot=0 before analysis [SRAT-02]
+- **Settings validation:** Configurations requiring bit clock >500 MHz are rejected with detailed error message showing the math [SRAT-02]
+- **FrameV2 schema:** Slot severity elevated from "ok" to "warning" when capture sample rate is below 4x bit clock and no decode errors present [SRAT-01]
 
 ### Added
 
 - **FrameV2 schema:** Added boolean fields `short_slot`, `extra_slot`, `bitclock_error`, `missed_data`, `missed_frame_sync` to every decoded slot row [FRM2-01 through FRM2-05]
+- **FrameV2 schema:** Added boolean `low_sample_rate` field to every decoded slot row — true when capture rate < 4x bit clock [SRAT-01]
+- **FrameV2 advisory:** New "advisory" frame type emitted as row 0 when sample rate is below 4x bit clock, with human-readable message showing the math [SRAT-01]
 
 ### Migration
 
@@ -29,6 +34,8 @@ slot = frame.data["slot"]           # same 0-based integer value
 severity = frame.data["severity"]   # "error", "warning", or "ok"
 is_short = frame.data["short_slot"] # True or False
 is_extra = frame.data["extra_slot"] # True or False
+low_rate = frame.data["low_sample_rate"]  # True or False
+# Advisory frames have type "advisory" (not "slot")
 ```
 
 ## [2.0.0] - 2026-02-25

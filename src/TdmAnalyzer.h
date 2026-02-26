@@ -38,6 +38,7 @@ class TdmAnalyzer : public Analyzer2
     double mDesiredBitClockPeriod;
     Frame mResultsFrame;
     bool mSimulationInitilized;
+    bool mLowSampleRate;
     TdmSimulationDataGenerator mSimulationDataGenerator;
 
     AnalyzerChannelData* mClock;

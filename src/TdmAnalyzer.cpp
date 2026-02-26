@@ -1,11 +1,13 @@
 #include "TdmAnalyzer.h"
 #include "TdmAnalyzerSettings.h"
 #include <AnalyzerChannelData.h>
+#include <stdio.h>
 
-TdmAnalyzer::TdmAnalyzer() 
-  : Analyzer2(), 
+TdmAnalyzer::TdmAnalyzer()
+  : Analyzer2(),
     mSettings( new TdmAnalyzerSettings() ),
-    mSimulationInitilized( false )
+    mSimulationInitilized( false ),
+    mLowSampleRate( false )
 {
     SetAnalyzerSettings( mSettings.get() );
     // Required: registers this analyzer as a FrameV2 producer.
@@ -26,6 +28,16 @@ void TdmAnalyzer::SetupResults()
     mResults->AddChannelBubblesWillAppearOn( mSettings->mDataChannel );
 }
 
+static void FormatHzString( char* buf, size_t buf_size, U64 hz )
+{
+    if( hz >= 1000000ULL )
+        snprintf( buf, buf_size, "%llu MHz", (unsigned long long)( hz / 1000000ULL ) );
+    else if( hz >= 1000ULL )
+        snprintf( buf, buf_size, "%llu kHz", (unsigned long long)( hz / 1000ULL ) );
+    else
+        snprintf( buf, buf_size, "%llu Hz", (unsigned long long)hz );
+}
+
 void TdmAnalyzer::WorkerThread()
 {
     // UpArrow, DownArrow
@@ -40,6 +52,31 @@ void TdmAnalyzer::WorkerThread()
 
     mSampleRate = GetSampleRate();
     mDesiredBitClockPeriod = double (mSampleRate) / double (mSettings->mSlotsPerFrame * mSettings->mBitsPerSlot * mSettings->mTdmFrameRate);
+
+    // Phase 6 SRAT-01: Sample rate advisory — emit before first decoded slot
+    U64 bit_clock_hz = U64( mSettings->mTdmFrameRate ) * U64( mSettings->mSlotsPerFrame ) * U64( mSettings->mBitsPerSlot );
+    U64 recommended_min = bit_clock_hz * kMinOversampleRatio;
+    mLowSampleRate = ( mSampleRate < recommended_min );
+
+    if( mLowSampleRate )
+    {
+        char capture_str[ 32 ];
+        char recommended_str[ 32 ];
+        FormatHzString( capture_str, sizeof( capture_str ), mSampleRate );
+        FormatHzString( recommended_str, sizeof( recommended_str ), recommended_min );
+
+        char msg[ 256 ];
+        snprintf( msg, sizeof( msg ),
+            "Capture rate: %s is below recommended 4x bit clock (%s). "
+            "4x oversampling is needed for reliable edge detection.",
+            capture_str, recommended_str );
+
+        FrameV2 advisory;
+        advisory.AddString( "severity", "warning" );
+        advisory.AddString( "message", msg );
+        mResults->AddFrameV2( advisory, "advisory", 0, 0 );
+        mResults->CommitResults();
+    }
 
     SetupForGettingFirstBit();
     SetupForGettingFirstTdmFrame();
@@ -317,7 +354,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     const char* severity;
     if( is_short_slot || is_bitclock_error || is_missed_data || is_missed_frame_sync )
         severity = "error";
-    else if( is_extra_slot )
+    else if( is_extra_slot || mLowSampleRate )
         severity = "warning";
     else
         severity = "ok";
@@ -328,6 +365,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     frame_v2.AddBoolean( "bitclock_error", is_bitclock_error );
     frame_v2.AddBoolean( "missed_data", is_missed_data );
     frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
+    frame_v2.AddBoolean( "low_sample_rate", mLowSampleRate );
     mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     
     mResults->CommitResults();
