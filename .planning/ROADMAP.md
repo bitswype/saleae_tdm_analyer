@@ -35,7 +35,7 @@ Phase 3: Code Quality and Documentation — enum rename, README rewrite, WAV ove
 **Plans**: 1 plan
 
 Plans:
-- [ ] 04-01-PLAN.md — SDK audit, dead member removal, FrameV2 key rename, and v2.0.0 documentation
+- [x] 04-01-PLAN.md — SDK audit, dead member removal, FrameV2 key rename, and v2.0.0 documentation
 
 ### Phase 5: FrameV2 Enrichment
 **Goal**: Every decoded slot in the Logic 2 data table carries structured boolean error fields and a severity enum, with the channel field renamed to slot, enabling HLA scripts to filter error frames without string parsing
@@ -50,7 +50,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 05-01-PLAN.md — Rewrite FrameV2 block with nine-field schema and document breaking changes
+- [x] 05-01-PLAN.md — Rewrite FrameV2 block with nine-field schema and document breaking changes
 
 ### Phase 6: Sample Rate Validation
 **Goal**: Users with inadequate capture sample rates receive an advisory warning during analysis, and users who configure physically impossible TDM parameters are blocked before analysis runs
@@ -90,7 +90,7 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 1. Correctness | v1.3 | 1/1 | Complete | 2026-02-25 |
 | 2. Build Hygiene | v1.3 | 1/1 | Complete | 2026-02-25 |
 | 3. Code Quality & Docs | v1.3 | 2/2 | Complete | 2026-02-25 |
-| 4. SDK Audit & Housekeeping | v1.4 | 0/1 | Not started | - |
-| 5. FrameV2 Enrichment | v1.4 | 0/1 | Not started | - |
+| 4. SDK Audit & Housekeeping | v1.4 | 1/1 | Complete | 2026-02-25 |
+| 5. FrameV2 Enrichment | v1.4 | 1/1 | Complete | 2026-02-26 |
 | 6. Sample Rate Validation | v1.4 | 0/1 | Not started | - |
 | 7. RF64 WAV Export | v1.4 | 0/2 | Not started | - |
