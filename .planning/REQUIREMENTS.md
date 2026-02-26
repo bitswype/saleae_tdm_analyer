@@ -27,8 +27,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [x] **RF64-01**: Create WaveRF64Header packed struct (80 bytes: RF64 root 12 + ds64 36 + fmt 20 + data header 8 + padding 4) with static_assert size guard
 - [x] **RF64-02**: Create RF64WaveFileHandler class with U64 frame/sample counters and ds64 seek-back-at-close to write true sizes
-- [ ] **RF64-03**: Modify GenerateWAV to use RF64WaveFileHandler when estimated data exceeds 4 GiB, standard PCMWaveFileHandler otherwise
-- [ ] **RF64-04**: Remove existing 4 GiB text-error guard from GenerateWAV — replaced by conditional RF64 path
+- [x] **RF64-03**: Modify GenerateWAV to use RF64WaveFileHandler when estimated data exceeds 4 GiB, standard PCMWaveFileHandler otherwise
+- [x] **RF64-04**: Remove existing 4 GiB text-error guard from GenerateWAV — replaced by conditional RF64 path
 
 ### Sample Rate Validation
 
@@ -79,8 +79,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FRM2-07 | Phase 5 | Pending |
 | RF64-01 | Phase 7 | Complete |
 | RF64-02 | Phase 7 | Complete |
-| RF64-03 | Phase 7 | Pending |
-| RF64-04 | Phase 7 | Pending |
+| RF64-03 | Phase 7 | Complete |
+| RF64-04 | Phase 7 | Complete |
 | SRAT-01 | Phase 6 | Complete |
 | SRAT-02 | Phase 6 | Complete |
 
