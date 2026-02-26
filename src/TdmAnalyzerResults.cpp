@@ -498,7 +498,152 @@ void PCMExtendedWaveFileHandler::updateFileSize(void)
 
     mFile.seekp(EXT_DATA_CKSIZE_POS);
     writeLittleEndianData( data_size_bytes, 4 );
-    
+
+    mFile.seekp(mWtPosSaved);
+    return;
+}
+
+RF64WaveFileHandler::RF64WaveFileHandler(std::ofstream & file, U32 sample_rate, U32 num_channels, U32 bits_per_channel) :
+  mFile( file ),
+  mSampleRate( sample_rate ),
+  mNumChannels( num_channels ),
+  mBitsPerChannel( bits_per_channel ),
+  mSampleCount( 0 ),
+  mTotalFrames( 0 ),
+  mWtPosSaved( 0 ),
+  mSampleData( nullptr ),
+  mSampleIndex( 0 )
+{
+    if(bits_per_channel <= 8){
+        mRF64Header.mBitsPerSample = 8;
+        mBytesPerChannel = 1;
+    }else if(bits_per_channel <= 16){
+        mRF64Header.mBitsPerSample = 16;
+        mBytesPerChannel = 2;
+    }else if(bits_per_channel <= 32){
+        mRF64Header.mBitsPerSample = 32;
+        mBytesPerChannel = 4;
+    // sizes above 32 bits might not work
+    }else if(bits_per_channel <= 40){
+        mRF64Header.mBitsPerSample = 40;
+        mBytesPerChannel = 5;
+    }else if(bits_per_channel <= 48){
+        mRF64Header.mBitsPerSample = 48;
+        mBytesPerChannel = 6;
+    }else if(bits_per_channel <= 64){
+        mRF64Header.mBitsPerSample = 64;
+        mBytesPerChannel = 8;
+    }
+
+    mRF64Header.mBlockSizeBytes = mBytesPerChannel * num_channels;
+    mFrameSizeBytes = mRF64Header.mBlockSizeBytes;
+    mBitShift = mRF64Header.mBitsPerSample - bits_per_channel;
+
+    mRF64Header.mNumChannels = num_channels;
+    mRF64Header.mSamplesPerSec = sample_rate;
+    mRF64Header.mBytesPerSec = mFrameSizeBytes * sample_rate;
+
+    if(mFile.is_open())
+    {
+        mFile.seekp(0);
+        mFile.write((const char*)(&mRF64Header), sizeof(mRF64Header));
+        mSampleData = new U64[mNumChannels];
+    }
+}
+
+RF64WaveFileHandler::~RF64WaveFileHandler()
+{
+    if(mFile.is_open())
+    {
+        close();
+    }
+}
+
+void RF64WaveFileHandler::addSample(U64 sample)
+{
+    if(mBytesPerChannel == 1)
+    {
+        // in a wave file, 8 bit data is stored as "offset" instead of 2's compliment
+        // for offset data, 0 = min value, 255 = max value which means for 8 data bits
+        // 0x80 -> -128 (min value), we need to add 128 to get 0
+        // for less than 8 bits, we have to do a little manipulation,
+        // 8 data bits, add 128 (1 << 7)
+        // 7 data bits, add 64 ( 1 << 6)
+        // ...
+        // 2 data bits, add 2 ( 1 << 1)
+
+        sample = sample + (1ULL << (7 - mBitShift));
+    }
+
+    mSampleData[mSampleIndex++] = sample;
+
+    if(mSampleIndex >= mNumChannels){ // we have another complete frame
+        mTotalFrames++;               // U64 — no overflow for >4 GiB exports
+        mSampleCount += mNumChannels; // U64 — no overflow for >4 GiB exports
+        mSampleIndex = 0;
+        for (U32 i = 0; i < mNumChannels; i++)
+            writeLittleEndianData(mSampleData[i] << mBitShift, mBytesPerChannel);
+
+        if((mTotalFrames % (mSampleRate / 100)) == 0){
+            updateFileSize();
+        }
+    }
+    return;
+}
+
+void RF64WaveFileHandler::writeLittleEndianData(U64 value, U8 num_bytes)
+{
+    char data_byte;
+
+    for(U8 i = 0; i < num_bytes; i++)
+    {
+        data_byte = value & 0xFF;
+        mFile.write(&data_byte, 1);
+        value >>= 8;
+    }
+}
+
+void RF64WaveFileHandler::close(void)
+{
+    updateFileSize();
+    // Use U64 multiplication to avoid overflow: mTotalFrames is U64, mFrameSizeBytes is U32
+    if(((mTotalFrames * (U64)mFrameSizeBytes) % 2) == 1){
+        char zero = 0;
+        mFile.write(&zero, 1);
+    }
+    mFile.close();
+    delete[] mSampleData;
+    mSampleData = nullptr;
+    return;
+}
+
+void RF64WaveFileHandler::updateFileSize(void)
+{
+    mWtPosSaved = mFile.tellp();
+
+    // Compute data payload size (U64 — prevents overflow for large exports)
+    U64 dataSizeBytes = mTotalFrames * (U64)mFrameSizeBytes;
+    // Pad to even byte boundary (WAV requirement)
+    if ((dataSizeBytes % 2) == 1) dataSizeBytes += 1;
+
+    // riffSize = total file bytes minus 8 (RF64 ckID + sentinel ckSize fields)
+    // File total = 80 (header) + dataSizeBytes; riffSize = 80 - 8 + dataSizeBytes = 72 + dataSizeBytes
+    // Source: EBU TECH 3306 §5 + FFmpeg wavenc.c ds64 write pattern
+    U64 riffSize    = 72ULL + dataSizeBytes;
+    U64 dataSize    = dataSizeBytes;
+    U64 sampleCount = mTotalFrames * (U64)mNumChannels;
+
+    // Seekback and write the three U64 ds64 fields (8 bytes each, little-endian)
+    // Offsets 4 (RIFF sentinel) and 76 (data sentinel) stay 0xFFFFFFFF — not updated
+    mFile.seekp(RF64_DS64_RIFFSIZE_POS);
+    writeLittleEndianData(riffSize,    8);
+
+    mFile.seekp(RF64_DS64_DATASIZE_POS);
+    writeLittleEndianData(dataSize,    8);
+
+    mFile.seekp(RF64_DS64_SAMPLECNT_POS);
+    writeLittleEndianData(sampleCount, 8);
+
     mFile.seekp(mWtPosSaved);
     return;
 }
