@@ -15,13 +15,13 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### FrameV2 Enrichment
 
-- [ ] **FRM2-01**: Add boolean `short_slot` field to FrameV2 output for each decoded slot — enables HLA filtering without string parsing
-- [ ] **FRM2-02**: Add boolean `extra_slot` field to FrameV2 output for each decoded slot
-- [ ] **FRM2-03**: Add boolean `bitclock_error` field to FrameV2 output for each decoded slot
-- [ ] **FRM2-04**: Add boolean `missed_data` field to FrameV2 output for each decoded slot
-- [ ] **FRM2-05**: Add boolean `missed_frame_sync` field to FrameV2 output for each decoded slot
-- [ ] **FRM2-06**: Replace `channel` field with 0-based `slot` field — cleaner key name, no redundant column
-- [ ] **FRM2-07**: Replace `errors`/`warnings` string fields with `severity` enum field (`error`/`warning`/`ok`) — structured severity without string parsing
+- [x] **FRM2-01**: Add boolean `short_slot` field to FrameV2 output for each decoded slot — enables HLA filtering without string parsing
+- [x] **FRM2-02**: Add boolean `extra_slot` field to FrameV2 output for each decoded slot
+- [x] **FRM2-03**: Add boolean `bitclock_error` field to FrameV2 output for each decoded slot
+- [x] **FRM2-04**: Add boolean `missed_data` field to FrameV2 output for each decoded slot
+- [x] **FRM2-05**: Add boolean `missed_frame_sync` field to FrameV2 output for each decoded slot
+- [x] **FRM2-06**: Replace `channel` field with 0-based `slot` field — cleaner key name, no redundant column
+- [x] **FRM2-07**: Replace `errors`/`warnings` string fields with `severity` enum field (`error`/`warning`/`ok`) — structured severity without string parsing
 
 ### RF64 WAV Export
 
@@ -70,13 +70,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SDKM-01 | Phase 4 | Complete |
 | SDKM-02 | Phase 4 | Complete |
 | SDKM-03 | Phase 4 | Complete |
-| FRM2-01 | Phase 5 | Pending |
-| FRM2-02 | Phase 5 | Pending |
-| FRM2-03 | Phase 5 | Pending |
-| FRM2-04 | Phase 5 | Pending |
-| FRM2-05 | Phase 5 | Pending |
-| FRM2-06 | Phase 5 | Pending |
-| FRM2-07 | Phase 5 | Pending |
+| FRM2-01 | Phase 5 | Complete |
+| FRM2-02 | Phase 5 | Complete |
+| FRM2-03 | Phase 5 | Complete |
+| FRM2-04 | Phase 5 | Complete |
+| FRM2-05 | Phase 5 | Complete |
+| FRM2-06 | Phase 5 | Complete |
+| FRM2-07 | Phase 5 | Complete |
 | RF64-01 | Phase 7 | Complete |
 | RF64-02 | Phase 7 | Complete |
 | RF64-03 | Phase 7 | Complete |
@@ -91,4 +91,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-25*
-*Last updated: 2026-02-25 after Phase 5 context discussion*
+*Last updated: 2026-02-26 after v1.4 milestone audit*

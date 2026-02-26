@@ -35,11 +35,14 @@ errors = frame.data["errors"]    # string like "E: Short Slot E: Data Error "
 warnings = frame.data["warnings"]  # string like "W: Extra Slot "
 
 # After (unreleased)
-slot = frame.data["slot"]           # same 0-based integer value
-severity = frame.data["severity"]   # "error", "warning", or "ok"
-is_short = frame.data["short_slot"] # True or False
-is_extra = frame.data["extra_slot"] # True or False
-low_rate = frame.data["low_sample_rate"]  # True or False
+slot = frame.data["slot"]                       # same 0-based integer value
+severity = frame.data["severity"]               # "error", "warning", or "ok"
+is_short = frame.data["short_slot"]             # True or False
+is_extra = frame.data["extra_slot"]             # True or False
+is_bitclock_err = frame.data["bitclock_error"]  # True or False
+is_missed_data = frame.data["missed_data"]      # True or False
+is_missed_sync = frame.data["missed_frame_sync"]  # True or False
+low_rate = frame.data["low_sample_rate"]        # True or False
 # Advisory frames have type "advisory" (not "slot")
 ```
 

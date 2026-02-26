@@ -63,7 +63,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 06-01-PLAN.md — Settings validation (zero-param guards + 500 MHz hard block) and non-blocking advisory annotation with per-slot low_sample_rate boolean
+- [x] 06-01-PLAN.md — Settings validation (zero-param guards + 500 MHz hard block) and non-blocking advisory annotation with per-slot low_sample_rate boolean
 
 ### Phase 7: RF64 WAV Export
 **Goal**: WAV exports larger than 4 GiB produce a valid RF64 file that opens in Audacity, FFmpeg, and other standard tools — rather than a plain-text error file at the .wav path
@@ -77,8 +77,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — WaveRF64Header packed struct (80 bytes, EBU TECH 3306) and RF64WaveFileHandler class with U64 counters
-- [ ] 07-02-PLAN.md — GenerateWAV conditional dispatch (RF64 for >4 GiB, PCM otherwise) and 4 GiB text-error guard removal
+- [x] 07-01-PLAN.md — WaveRF64Header packed struct (80 bytes, EBU TECH 3306) and RF64WaveFileHandler class with U64 counters
+- [x] 07-02-PLAN.md — GenerateWAV conditional dispatch (RF64 for >4 GiB, PCM otherwise) and 4 GiB text-error guard removal
 
 ## Progress
 
@@ -91,6 +91,6 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 2. Build Hygiene | v1.3 | 1/1 | Complete | 2026-02-25 |
 | 3. Code Quality & Docs | v1.3 | 2/2 | Complete | 2026-02-25 |
 | 4. SDK Audit & Housekeeping | v1.4 | 1/1 | Complete | 2026-02-25 |
-| 5. FrameV2 Enrichment | v1.4 | Complete    | 2026-02-26 | 2026-02-26 |
-| 6. Sample Rate Validation | 1/1 | Complete   | 2026-02-26 | - |
-| 7. RF64 WAV Export | 2/2 | Complete   | 2026-02-26 | - |
+| 5. FrameV2 Enrichment | v1.4 | 1/1 | Complete | 2026-02-26 |
+| 6. Sample Rate Validation | v1.4 | 1/1 | Complete | 2026-02-26 |
+| 7. RF64 WAV Export | v1.4 | 2/2 | Complete | 2026-02-26 |

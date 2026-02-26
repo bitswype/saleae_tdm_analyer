@@ -139,7 +139,7 @@ Logic 2 does not support custom export types for Low Level Analyzers — the onl
   49 - 64 data bits : 64 bits per channel
   ```
 - Data bit settings above 32 are "supported", but the wave files generated are not likely to to open.
-- The wave file header is always a standard PCM header.  This header has been tested to work in Audacity with channel counts from 1 to 256, and bit depths up to 32 bits.  There is an extended PCM header option in the code, but it is disabled.  A future version of the analyzer might select between then standard header and extended header based on slots / frame and number of data bits if there is evidence that it is needed.  Bit depths above 32 bits do not open in Audacity with either the standard or extended PCM header.
+- For captures that fit within 4 GiB, the wave file uses a standard PCM header. For captures exceeding 4 GiB, the analyzer automatically produces an RF64 file (EBU TECH 3306) with a ds64 chunk containing the true 64-bit sizes. The threshold is computed from the capture frame count, channel count, and bit depth before export begins. RF64 files open in Audacity, FFmpeg, and other tools that support the format. Standard PCM exports have been tested to work in Audacity with channel counts from 1 to 256, and bit depths up to 32 bits. Bit depths above 32 bits do not open in Audacity with either format.
 - Data bits are always scaled to ensure that the maximum values are always achievable.
   - For example, with 2 data bits, the values will map to
     ```
