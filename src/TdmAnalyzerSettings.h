@@ -26,6 +26,10 @@ enum ExportFileType
   WAV,
 };
 
+// Sample rate validation thresholds (Phase 6)
+static constexpr U64 kMaxBitClockHz = 500000000ULL;   // 500 MHz — Logic 2 Pro maximum
+static constexpr U32 kMinOversampleRatio = 4;          // 4x oversampling for reliable edge detection
+
 class TdmAnalyzerSettings : public AnalyzerSettings
 {
   public:

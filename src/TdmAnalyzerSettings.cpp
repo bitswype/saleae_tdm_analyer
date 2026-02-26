@@ -191,6 +191,16 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
 }
 
+static void FormatHzString( char* buf, size_t buf_size, U64 hz )
+{
+    if( hz >= 1000000ULL )
+        snprintf( buf, buf_size, "%llu MHz", (unsigned long long)( hz / 1000000ULL ) );
+    else if( hz >= 1000ULL )
+        snprintf( buf, buf_size, "%llu kHz", (unsigned long long)( hz / 1000ULL ) );
+    else
+        snprintf( buf, buf_size, "%llu Hz", (unsigned long long)hz );
+}
+
 bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
 {
     Channel clock_channel = mClockChannelInterface->GetChannel();
@@ -229,9 +239,45 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mBitsPerSlot = U32( mBitsPerSlotInterface->GetNumber() );
     mDataBitsPerSlot = U32( mDataBitsPerSlotInterface->GetNumber() );
 
+    // Phase 6: Zero-parameter guards — reject before any arithmetic
+    if( mTdmFrameRate == 0 )
+    {
+        SetErrorText( "Frame rate must be greater than zero" );
+        return false;
+    }
+    if( mSlotsPerFrame == 0 )
+    {
+        SetErrorText( "Slots per frame must be greater than zero" );
+        return false;
+    }
+    if( mBitsPerSlot == 0 )
+    {
+        SetErrorText( "Bits per slot must be greater than zero" );
+        return false;
+    }
+
     if( mDataBitsPerSlot > mBitsPerSlot )
     {
         SetErrorText( "Number of data bits per slot must be less than or equal to number of bits per slot" );
+        return false;
+    }
+
+    // Phase 6: Hard block — physically impossible bit clock rate
+    U64 bit_clock_hz = U64( mTdmFrameRate ) * U64( mSlotsPerFrame ) * U64( mBitsPerSlot );
+    if( bit_clock_hz > kMaxBitClockHz )
+    {
+        char rate_str[ 32 ];
+        FormatHzString( rate_str, sizeof( rate_str ), bit_clock_hz );
+        char msg[ 256 ];
+        snprintf( msg, sizeof( msg ),
+            "TDM configuration requires %s bit clock "
+            "(%llu Hz x %u slots x %u bits), exceeding maximum 500 MHz. "
+            "Reduce frame rate, slots per frame, or bits per slot.",
+            rate_str,
+            (unsigned long long)mTdmFrameRate,
+            (unsigned)mSlotsPerFrame,
+            (unsigned)mBitsPerSlot );
+        SetErrorText( msg );
         return false;
     }
 
