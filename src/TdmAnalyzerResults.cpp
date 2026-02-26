@@ -166,8 +166,8 @@ void TdmAnalyzerResults::GenerateWAV( const char* file )
 {
     U64 num_frames = GetNumFrames();
 
-    // Pre-export 4 GiB size guard (QUAL-03)
-    // Compute bytes per channel using the same bit-depth mapping as PCMWaveFileHandler.
+    // Estimate total data bytes to determine which handler to use.
+    // Uses the same bit-depth mapping as PCMWaveFileHandler.
     U32 bits = mSettings->mDataBitsPerSlot;
     U32 bytes_per_channel;
     if      ( bits <=  8 ) bytes_per_channel = 1;
@@ -185,52 +185,69 @@ void TdmAnalyzerResults::GenerateWAV( const char* file )
     constexpr U64 WAV_MAX_DATA_BYTES = ( U64 )0xFFFFFFFF - 36ULL;
     U64 estimated_data_bytes = num_frames * frame_size_bytes;
 
-    if ( estimated_data_bytes > WAV_MAX_DATA_BYTES )
-    {
-        std::ofstream warning_file;
-        warning_file.open( file, std::ios::out );
-        if ( warning_file.is_open() )
-        {
-            warning_file << "WAV export aborted: estimated output ("
-                         << ( estimated_data_bytes / ( 1024ULL * 1024 * 1024 ) )
-                         << " GiB) exceeds the 4 GiB WAV RIFF format limit.\n"
-                         << "Export as TXT/CSV instead and convert to WAV with an external tool.\n";
-            warning_file.close();
-        }
-        UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
-        return;
-    }
-
     std::ofstream f;
-    f.open( file , std::ios::out | std::ios::binary );
+    f.open( file, std::ios::out | std::ios::binary );
 
     if( f.is_open() )
     {
-        PCMWaveFileHandler wave_file_handler(f, mSettings->mTdmFrameRate, mSettings->mSlotsPerFrame, mSettings->mDataBitsPerSlot);
-        //PCMExtendedWaveFileHandler wave_file_handler(f, mSettings->mTdmFrameRate, mSettings->mSlotsPerFrame, mSettings->mDataBitsPerSlot);
         U16 num_slots_per_frame = mSettings->mSlotsPerFrame;
-        
-        for( U64 i = 0; i < num_frames; i++ )
+
+        if ( estimated_data_bytes > WAV_MAX_DATA_BYTES )
         {
-            Frame frame = GetFrame( i );
-            
-            // only populate slots we expect, extra slots are not stored in the wave file
-            if(frame.mType < num_slots_per_frame)
+            // RF64 path for >4 GiB exports
+            RF64WaveFileHandler wave_file_handler( f, mSettings->mTdmFrameRate,
+                                                   mSettings->mSlotsPerFrame,
+                                                   mSettings->mDataBitsPerSlot );
+            for( U64 i = 0; i < num_frames; i++ )
             {
-                // SHORT_SLOT frames contribute silence (0) to preserve WAV channel alignment.
-                // Skipping addSample() entirely would cause all subsequent channels to drift
-                // by one slot position in the output file.
-                U64 sample_value = (frame.mFlags & SHORT_SLOT) ? 0 : frame.mData1;
-                wave_file_handler.addSample( sample_value );
-                if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
+                Frame frame = GetFrame( i );
+
+                // only populate slots we expect, extra slots are not stored in the wave file
+                if( frame.mType < num_slots_per_frame )
                 {
-                    wave_file_handler.close();
-                    return;
+                    // SHORT_SLOT frames contribute silence (0) to preserve WAV channel alignment.
+                    // Skipping addSample() entirely would cause all subsequent channels to drift
+                    // by one slot position in the output file.
+                    U64 sample_value = ( frame.mFlags & SHORT_SLOT ) ? 0 : frame.mData1;
+                    wave_file_handler.addSample( sample_value );
+                    if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
+                    {
+                        wave_file_handler.close();
+                        return;
+                    }
                 }
             }
+            UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
+            wave_file_handler.close();
         }
-        UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
-        wave_file_handler.close();
+        else
+        {
+            // Standard PCM path for <=4 GiB exports
+            PCMWaveFileHandler wave_file_handler( f, mSettings->mTdmFrameRate,
+                                                  mSettings->mSlotsPerFrame,
+                                                  mSettings->mDataBitsPerSlot );
+            for( U64 i = 0; i < num_frames; i++ )
+            {
+                Frame frame = GetFrame( i );
+
+                // only populate slots we expect, extra slots are not stored in the wave file
+                if( frame.mType < num_slots_per_frame )
+                {
+                    // SHORT_SLOT frames contribute silence (0) to preserve WAV channel alignment.
+                    // Skipping addSample() entirely would cause all subsequent channels to drift
+                    // by one slot position in the output file.
+                    U64 sample_value = ( frame.mFlags & SHORT_SLOT ) ? 0 : frame.mData1;
+                    wave_file_handler.addSample( sample_value );
+                    if( UpdateExportProgressAndCheckForCancel( i, num_frames ) == true )
+                    {
+                        wave_file_handler.close();
+                        return;
+                    }
+                }
+            }
+            UpdateExportProgressAndCheckForCancel( num_frames, num_frames );
+            wave_file_handler.close();
+        }
     }
 }
 
