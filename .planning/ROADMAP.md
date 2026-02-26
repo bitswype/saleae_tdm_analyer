@@ -38,7 +38,7 @@ Plans:
 - [ ] 04-01-PLAN.md — SDK audit, dead member removal, FrameV2 key rename, and v2.0.0 documentation
 
 ### Phase 5: FrameV2 Enrichment
-**Goal**: Every decoded slot in the Logic 2 data table carries structured boolean error fields and a human-readable 1-based slot number, enabling HLA scripts to filter error frames without string parsing
+**Goal**: Every decoded slot in the Logic 2 data table carries structured boolean error fields and a severity enum, with the channel field renamed to slot, enabling HLA scripts to filter error frames without string parsing
 **Depends on**: Phase 4
 **Requirements**: FRM2-01, FRM2-02, FRM2-03, FRM2-04, FRM2-05, FRM2-06, FRM2-07
 **Success Criteria** (what must be TRUE):
@@ -47,10 +47,10 @@ Plans:
   3. The data table shows a `severity` column with values `error`, `warning`, or `ok` — replacing the former `errors` and `warnings` string columns
   4. An HLA script can filter for error frames using `frame.data["short_slot"] == True` without AttributeError or KeyError
   5. All boolean and severity fields are emitted on every slot frame regardless of whether the frame contains errors
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 05-01: Add boolean error fields and 1-based slot field to AnalyzeTdmSlot()
+- [ ] 05-01-PLAN.md — Rewrite FrameV2 block with nine-field schema and document breaking changes
 
 ### Phase 6: Sample Rate Validation
 **Goal**: Users with inadequate capture sample rates receive an advisory warning during analysis, and users who configure physically impossible TDM parameters are blocked before analysis runs
