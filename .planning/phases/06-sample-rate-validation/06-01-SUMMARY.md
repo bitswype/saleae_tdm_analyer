@@ -121,5 +121,17 @@ None - no external service configuration required.
 - Ready for Phase 7: WAV Export
 
 ---
+## Self-Check: PASSED
+
+- FOUND: src/TdmAnalyzerSettings.h
+- FOUND: src/TdmAnalyzerSettings.cpp
+- FOUND: src/TdmAnalyzer.h
+- FOUND: src/TdmAnalyzer.cpp
+- FOUND: CHANGELOG.md
+- FOUND: 06-01-SUMMARY.md
+- FOUND commit dc5cf43 (Task 1)
+- FOUND commit dd72935 (Task 2)
+
+---
 *Phase: 06-sample-rate-validation*
 *Completed: 2026-02-26*
