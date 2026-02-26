@@ -92,5 +92,5 @@ Phases execute in numeric order: 4 → 5 → 6 → 7
 | 3. Code Quality & Docs | v1.3 | 2/2 | Complete | 2026-02-25 |
 | 4. SDK Audit & Housekeeping | v1.4 | 1/1 | Complete | 2026-02-25 |
 | 5. FrameV2 Enrichment | v1.4 | Complete    | 2026-02-26 | 2026-02-26 |
-| 6. Sample Rate Validation | v1.4 | 0/1 | Not started | - |
+| 6. Sample Rate Validation | 1/1 | Complete   | 2026-02-26 | - |
 | 7. RF64 WAV Export | v1.4 | 0/2 | Not started | - |

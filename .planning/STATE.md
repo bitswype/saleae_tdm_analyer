@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** Correctly decode TDM audio data from logic analyzer captures with confidence that the results are accurate and the code is trustworthy.
-**Current focus:** Phase 5 — FrameV2 Enrichment (plan 01 complete)
+**Current focus:** Phase 6 — Sample Rate Validation (plan 01 complete)
 
 ## Current Position
 
-Phase: 5 of 7 (FrameV2 Enrichment) — Plan 01 complete
+Phase: 6 of 7 (Sample Rate Validation) — Plan 01 complete
 Plan: 1 of 1 in current phase — Complete
-Status: Phase 5 complete — ready for Phase 6
-Last activity: 2026-02-26 — Phase 5 plan 01 executed
+Status: Phase 6 complete — ready for Phase 7
+Last activity: 2026-02-26 — Phase 6 plan 01 executed
 
-Progress: [█████░░░░░] 57% (5/7 phases complete)
+Progress: [██████░░░░] 71% (6/7 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: unknown
 - Total execution time: unknown
 
@@ -32,12 +32,14 @@ Progress: [█████░░░░░] 57% (5/7 phases complete)
 | 3. Code Quality & Docs | 2 | - | - |
 | 4. SDK Audit & Housekeeping | 1 | ~12min | ~12min |
 | 5. FrameV2 Enrichment | 1 | ~8min | ~8min |
+| 6. Sample Rate Validation | 1 | 2min | 2min |
 
 **Recent Trend:**
 - Last 5 plans: unknown
 - Trend: Stable
 
 *Updated after each plan completion*
+| Phase 06-sample-rate-validation P01 | 2min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -66,6 +68,9 @@ Phase 5 decisions (05-01):
 Decisions for upcoming phases:
 - RF64 approach: always write RF64 headers directly (no JUNK-to-ds64 upgrade path)
 - Sample rate advisory must be non-blocking — use WorkerThread FrameV2 annotation, not SetErrorText
+- [Phase 06-sample-rate-validation]: FormatHzString duplicated in both .cpp files rather than adding shared header — small function, cleaner than new header
+- [Phase 06-sample-rate-validation]: Advisory FrameV2 at sample (0,0) — zero-duration point frame precedes all slot data safely
+- [Phase 06-sample-rate-validation]: Exactly 500 MHz allowed (strict >) and exactly 4x = no warning (strict <) — per CONTEXT.md decisions
 
 ### Pending Todos
 
@@ -78,5 +83,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-26
-Stopped at: Completed 05-01-PLAN.md (Phase 5 plan 01 complete)
-Resume file: .planning/phases/05-framev2-enrichment/05-01-SUMMARY.md
+Stopped at: Completed 06-01-PLAN.md (Phase 6 plan 01 complete)
+Resume file: .planning/phases/06-sample-rate-validation/06-01-SUMMARY.md

@@ -32,8 +32,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Sample Rate Validation
 
-- [ ] **SRAT-01**: Add non-blocking sample rate warning annotation on first analysis frame when capture sample rate is below 4× bit clock rate — uses FrameV2 or tabular text, not SetErrorText
-- [ ] **SRAT-02**: Add hard rejection in SetSettingsFromInterfaces for physically impossible TDM parameter combinations requiring sample rate >500 MSPS — uses SetErrorText to block analysis
+- [x] **SRAT-01**: Add non-blocking sample rate warning annotation on first analysis frame when capture sample rate is below 4× bit clock rate — uses FrameV2 or tabular text, not SetErrorText
+- [x] **SRAT-02**: Add hard rejection in SetSettingsFromInterfaces for physically impossible TDM parameter combinations requiring sample rate >500 MSPS — uses SetErrorText to block analysis
 
 ## Future Requirements
 
@@ -81,8 +81,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RF64-02 | Phase 7 | Pending |
 | RF64-03 | Phase 7 | Pending |
 | RF64-04 | Phase 7 | Pending |
-| SRAT-01 | Phase 6 | Pending |
-| SRAT-02 | Phase 6 | Pending |
+| SRAT-01 | Phase 6 | Complete |
+| SRAT-02 | Phase 6 | Complete |
 
 **Coverage:**
 - v1.4 requirements: 16 total
