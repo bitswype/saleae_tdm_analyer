@@ -1,8 +1,6 @@
 #include "TdmAnalyzer.h"
 #include "TdmAnalyzerSettings.h"
 #include <AnalyzerChannelData.h>
-#include <stdio.h>
-#include <cstring>
 
 TdmAnalyzer::TdmAnalyzer() 
   : Analyzer2(), 
@@ -300,43 +298,36 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mResults->AddFrame( mResultsFrame );
 
     FrameV2 frame_v2;
-    char error_str[ 80 ] = "";
-    char warning_str[ 32 ] = "";
 
-    frame_v2.AddInteger( "channel", mResultsFrame.mType );
+    frame_v2.AddInteger( "slot", mResultsFrame.mType );
     S64 adjusted_value = result;
     if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
     {
         adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( mResultsFrame.mData1, mSettings->mDataBitsPerSlot );
     }
     frame_v2.AddInteger( "data", adjusted_value );
-    
-    size_t used = 0;
-    if(mResultsFrame.mFlags & SHORT_SLOT)
-    {
-        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Short Slot " );
-    }
-    if(mResultsFrame.mFlags & MISSED_DATA)
-    {
-        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Data Error " );
-    }
-    if(mResultsFrame.mFlags & MISSED_FRAME_SYNC)
-    {
-        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Frame Sync Missed " );
-    }
-    if(mResultsFrame.mFlags & BITCLOCK_ERROR)
-    {
-        used += snprintf( error_str + used, sizeof( error_str ) - used, "E: Bitclock Error " );
-    }
+    frame_v2.AddInteger( "frame_number", mFrameNum );
 
-    if(mResultsFrame.mFlags & UNEXPECTED_BITS)
-    {
-        snprintf( warning_str, sizeof( warning_str ), "W: Extra Slot " );
-    }
+    bool is_short_slot      = (mResultsFrame.mFlags & SHORT_SLOT) != 0;
+    bool is_extra_slot      = (mResultsFrame.mFlags & UNEXPECTED_BITS) != 0;
+    bool is_bitclock_error  = (mResultsFrame.mFlags & BITCLOCK_ERROR) != 0;
+    bool is_missed_data     = (mResultsFrame.mFlags & MISSED_DATA) != 0;
+    bool is_missed_frame_sync = (mResultsFrame.mFlags & MISSED_FRAME_SYNC) != 0;
 
-    frame_v2.AddString("errors", error_str);
-    frame_v2.AddString("warnings", warning_str);
-    frame_v2.AddInteger("frame_number", mFrameNum);
+    const char* severity;
+    if( is_short_slot || is_bitclock_error || is_missed_data || is_missed_frame_sync )
+        severity = "error";
+    else if( is_extra_slot )
+        severity = "warning";
+    else
+        severity = "ok";
+
+    frame_v2.AddString( "severity", severity );
+    frame_v2.AddBoolean( "short_slot", is_short_slot );
+    frame_v2.AddBoolean( "extra_slot", is_extra_slot );
+    frame_v2.AddBoolean( "bitclock_error", is_bitclock_error );
+    frame_v2.AddBoolean( "missed_data", is_missed_data );
+    frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
     mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     
     mResults->CommitResults();
