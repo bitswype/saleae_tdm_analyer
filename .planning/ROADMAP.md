@@ -38,6 +38,11 @@ Set up the `hla/` directory as a valid Logic 2 extension. Create `extension.json
 
 **Deliverables:** `hla/extension.json`, `hla/TdmWavExport.py` (skeleton), settings wired to Logic 2 UI
 
+**Plans:** 1 plan
+
+Plans:
+- [ ] 08-01-PLAN.md — Create hla/extension.json and TdmWavExport.py scaffold with settings
+
 ### Phase 9: Core WAV Writing
 Implement slot filtering from the settings, WAV file creation and writing using Python's `wave` module, and periodic header refresh so partial captures are recoverable.
 
