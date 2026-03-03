@@ -1,5 +1,6 @@
 import wave
 import struct
+import os
 try:
     from saleae.analyzers import HighLevelAnalyzer, AnalyzerFrame, StringSetting, ChoicesSetting
 except ImportError:
@@ -103,32 +104,60 @@ class TdmWavExport(HighLevelAnalyzer):
     }
 
     def __init__(self):
-        # Capture injected setting values as private instance attributes.
-        # Logic 2 has already set self.slots, self.output_path, self.bit_depth
-        # as strings by the time __init__ is called.
-        self._slots_raw = self.slots          # str — e.g. "0,2,4" or "0-3"
-        self._output_path = self.output_path  # str — absolute path to .wav file
-        # Convert bit depth to int; fallback to 16 handles the edge case where
-        # the default attribute was not applied by an older Logic 2 build.
-        self._bit_depth = int(self.bit_depth or '16')
+        # _init_error must be set first so decode() can always check it safely,
+        # even if an exception occurs partway through the try block below.
+        self._init_error = None
 
-        # Parsed slot list — ordered per user specification (REQ-09)
-        self._slot_list = parse_slot_spec(self._slots_raw)
-        self._slot_set = set(self._slot_list)  # O(1) membership test (REQ-10)
+        try:
+            # Capture injected setting values as private instance attributes.
+            # Logic 2 has already set self.slots, self.output_path, self.bit_depth
+            # as strings by the time __init__ is called.
+            self._slots_raw = self.slots          # str — e.g. "0,2,4" or "0-3"
+            self._output_path = self.output_path  # str — absolute path to .wav file
+            # Convert bit depth to int; fallback to 16 handles the edge case where
+            # the default attribute was not applied by an older Logic 2 build.
+            self._bit_depth = int(self.bit_depth or '16')
 
-        # WAV file state — lazy-opened on first frame (REQ-12)
-        self._wav = None          # wave.Wave_write object, None until first frame
-        self._sample_rate = None  # derived from frame timing (REQ-13)
+            # REQ-16: Validate output_path before proceeding. Raising here is caught
+            # by the except block below and stored as a deferred error.
+            if not self.output_path or not self.output_path.strip():
+                raise ValueError(
+                    "output_path is required. Enter an absolute path, e.g. /home/user/capture.wav"
+                )
+            if not os.path.isabs(self.output_path.strip()):
+                raise ValueError(
+                    f"output_path must be an absolute path. Got: {self.output_path!r}"
+                )
 
-        # Sample accumulator: dict[slot_index -> sample_value] for current TDM frame
-        self._accum = {}
-        self._last_frame_num = None  # track frame_number to detect TDM frame boundaries
+            # Parsed slot list — ordered per user specification (REQ-09)
+            self._slot_list = parse_slot_spec(self._slots_raw)
+            self._slot_set = set(self._slot_list)  # O(1) membership test (REQ-10)
 
-        # Timing helper: stores first start_time seen per slot for rate derivation
-        self._timing_ref = {}   # dict[slot -> first start_time seen]
+            # WAV file state — lazy-opened on first frame (REQ-12)
+            self._wav = None          # wave.Wave_write object, None until first frame
+            self._sample_rate = None  # derived from frame timing (REQ-13)
 
-        # Count of complete TDM frames written to WAV
-        self._frame_count = 0
+            # Sample accumulator: dict[slot_index -> sample_value] for current TDM frame
+            self._accum = {}
+            self._last_frame_num = None  # track frame_number to detect TDM frame boundaries
+
+            # Timing helper: stores first start_time seen per slot for rate derivation
+            self._timing_ref = {}   # dict[slot -> first start_time seen]
+
+            # Count of complete TDM frames written to WAV
+            self._frame_count = 0
+
+        except Exception as e:
+            self._init_error = str(e)
+            # Safe defaults so decode() can run without AttributeError
+            self._slot_list = []
+            self._slot_set = set()
+            self._wav = None
+            self._sample_rate = None
+            self._accum = {}
+            self._last_frame_num = None
+            self._timing_ref = {}
+            self._frame_count = 0
 
     def _open_wav(self, sample_rate: int) -> None:
         """Open the output WAV file and configure it for streaming write.
@@ -202,13 +231,28 @@ class TdmWavExport(HighLevelAnalyzer):
     def decode(self, frame: AnalyzerFrame):
         """Process one FrameV2 from the upstream TdmAnalyzer LLA.
 
+        Deferred error pattern (REQ-16, REQ-17): if __init__ caught an exception
+        (e.g. invalid slots spec, missing or relative output_path), _init_error
+        is set. The first decode() call emits one AnalyzerFrame('error', ...) with
+        the error message visible in the Logic 2 protocol table, then clears
+        _init_error so subsequent frames are silently ignored. This ensures the
+        user sees a readable error rather than a silent crash.
+
         Advisory frames (frame.type == 'advisory') carry diagnostic messages
         and do not contain sample data — skip them to avoid KeyError on
         frame.data['slot']. All other frames are 'slot' frames.
 
-        Returns None for all frames — the WAV file is the output, not HLA
-        annotation frames.
+        Returns None for normal frames, or AnalyzerFrame('error', ...) once if
+        init failed.
         """
+        # REQ-16/REQ-17: Emit deferred __init__ error as a visible protocol-table entry.
+        # Cleared after first emission so subsequent frames are silently dropped.
+        if self._init_error is not None:
+            err_msg = self._init_error
+            self._init_error = None  # clear — emit only once, then silence
+            return AnalyzerFrame('error', frame.start_time, frame.end_time,
+                                 {'message': err_msg})
+
         if frame.type != 'slot':
             return None
 
@@ -222,7 +266,8 @@ class TdmWavExport(HighLevelAnalyzer):
         # Accumulate sample — error frames contribute silence by not writing to
         # accum; self._accum.get(slot, 0) will return 0 for missing entries
         if not (frame.data.get('short_slot') or frame.data.get('bitclock_error')):
-            self._accum[slot] = _as_signed(frame.data['data'], self._bit_depth)
+            # REQ-18/REQ-19: .get() guard — data field always present per LLA schema but defensive access costs nothing
+            self._accum[slot] = _as_signed(frame.data.get('data', 0), self._bit_depth)
 
         # Derive sample rate from frame timing (REQ-13)
         self._try_derive_sample_rate(frame)
