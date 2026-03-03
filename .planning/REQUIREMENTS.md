@@ -40,7 +40,7 @@ Add a Python High Level Analyzer (HLA) to the repository that sits on top of the
 - [x] REQ-12: HLA opens the output WAV file when the first frame is received *(completed 09-01)*
 - [x] REQ-13: WAV is written as standard PCM (integer samples) at the sample rate derived from frame timing *(completed 09-01)*
 - [x] REQ-14: WAV header is refreshed periodically (every ~1000 frames) so partial captures are playable *(completed 09-01)*
-- [ ] REQ-15: Each frame in the WAV corresponds to one TDM frame (one sample per channel per frame) *(gap-closure: 11-01)*
+- [x] REQ-15: Each frame in the WAV corresponds to one TDM frame (one sample per channel per frame) *(completed 11-01)*
 
 ### Error Handling
 
