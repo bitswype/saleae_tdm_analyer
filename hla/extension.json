@@ -1,0 +1,13 @@
+{
+    "name": "TDM WAV Export",
+    "apiVersion": "1.0.0",
+    "version": "1.0.0",
+    "author": "Chris Keeser",
+    "description": "Exports selected TDM slots to a WAV file via Logic 2 HLA.",
+    "extensions": {
+        "TDM WAV Export": {
+            "type": "HighLevelAnalyzer",
+            "entryPoint": "TdmWavExport.TdmWavExport"
+        }
+    }
+}
