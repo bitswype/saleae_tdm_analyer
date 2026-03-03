@@ -9,24 +9,24 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 
 ## Current Position
 
-Phase: 8 of 10 (HLA Scaffold & Settings) — not yet started
-Plan: —
-Status: Milestone started — ready to plan Phase 8
-Last activity: 2026-03-02 — milestone scoped, requirements written
+Phase: 8 of 10 (HLA Scaffold & Settings) — in progress
+Plan: 01 complete
+Status: Phase 8 Plan 01 complete — HLA scaffold and settings created
+Last activity: 2026-03-03 — hla/extension.json and hla/TdmWavExport.py created
 
-Progress: [░░░░░░░░░░] 0% (0 of 3 phases complete)
+Progress: [█░░░░░░░░░] ~10% (Phase 8 plan 01 of 1 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (this milestone)
-- Average duration: unknown
+- Total plans completed: 1 (this milestone)
+- Average duration: ~2 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 8. HLA Scaffold & Settings | — | — | — |
+| 8. HLA Scaffold & Settings | 1 | 2 min | 2 min |
 | 9. Core WAV Writing | — | — | — |
 | 10. Error Handling & Docs | — | — | — |
 
@@ -41,6 +41,10 @@ Progress: [░░░░░░░░░░] 0% (0 of 3 phases complete)
 - Standard Python `wave` module (part of Python 3.8 stdlib embedded in Logic 2)
 - Absolute paths required for output_path — relative paths resolve to Logic 2 install dir
 - No sandboxing in Logic 2 HLA environment (confirmed by Saleae staff)
+- apiVersion must be "1.0.0" — the only value Logic 2 accepts
+- Settings declared as class-level attributes (not in __init__) so Logic 2 discovers them at load time
+- bit_depth.default = '16' set post-construction; default= kwarg raises TypeError in ChoicesSetting
+- entryPoint "TdmWavExport.TdmWavExport" is case-sensitive on Linux — must match .py filename exactly
 
 ### Research Findings (2026-03-02)
 
@@ -59,6 +63,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Milestone scoped and requirements written — ready to plan Phase 8
+Last session: 2026-03-03
+Stopped at: Completed 08-01-PLAN.md — HLA scaffold with extension.json and TdmWavExport.py
 Resume file: —

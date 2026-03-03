@@ -38,7 +38,7 @@ Set up the `hla/` directory as a valid Logic 2 extension. Create `extension.json
 
 **Deliverables:** `hla/extension.json`, `hla/TdmWavExport.py` (skeleton), settings wired to Logic 2 UI
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 08-01-PLAN.md — Create hla/extension.json and TdmWavExport.py scaffold with settings
@@ -64,6 +64,6 @@ Harden error paths (invalid slots, missing output path, LLA error frames), updat
 | 5. FrameV2 Enrichment | v1.4 | 1/1 | Complete | 2026-02-26 |
 | 6. Sample Rate Validation | v1.4 | 1/1 | Complete | 2026-02-26 |
 | 7. RF64 WAV Export | v1.4 | 2/2 | Complete | 2026-02-26 |
-| 8. HLA Scaffold & Settings | v1.5 | 0/1 | Pending | — |
+| 8. HLA Scaffold & Settings | 1/1 | Complete   | 2026-03-03 | — |
 | 9. Core WAV Writing | v1.5 | 0/1 | Pending | — |
 | 10. Error Handling & Docs | v1.5 | 0/1 | Pending | — |

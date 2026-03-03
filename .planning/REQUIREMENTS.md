@@ -17,16 +17,16 @@ Add a Python High Level Analyzer (HLA) to the repository that sits on top of the
 
 ### Installation & Structure
 
-- REQ-01: HLA lives in `hla/` subdirectory of this repository
-- REQ-02: `hla/` contains a valid `extension.json` so Logic 2 can load it as a custom extension
-- REQ-03: User installs by adding `hla/` as a custom extension directory in Logic 2 preferences
-- REQ-04: HLA appears in Logic 2 as "TDM WAV Export" in the analyzer chain
+- [x] REQ-01: HLA lives in `hla/` subdirectory of this repository *(completed 08-01)*
+- [x] REQ-02: `hla/` contains a valid `extension.json` so Logic 2 can load it as a custom extension *(completed 08-01)*
+- [ ] REQ-03: User installs by adding `hla/` as a custom extension directory in Logic 2 preferences
+- [x] REQ-04: HLA appears in Logic 2 as "TDM WAV Export" in the analyzer chain *(completed 08-01)*
 
 ### Settings UI
 
-- REQ-05: HLA exposes a `slots` setting — comma-separated or range notation (e.g. `0,2,4` or `0-3`)
-- REQ-06: HLA exposes an `output_path` setting — absolute path to the desired WAV file
-- REQ-07: HLA exposes a `bit_depth` setting — 16 or 32 bit (default 16)
+- [x] REQ-05: HLA exposes a `slots` setting — comma-separated or range notation (e.g. `0,2,4` or `0-3`) *(completed 08-01)*
+- [x] REQ-06: HLA exposes an `output_path` setting — absolute path to the desired WAV file *(completed 08-01)*
+- [x] REQ-07: HLA exposes a `bit_depth` setting — 16 or 32 bit (default 16) *(completed 08-01)*
 
 ### Slot Filtering
 
