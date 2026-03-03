@@ -150,6 +150,53 @@ Logic 2 does not support custom export types for Low Level Analyzers — the onl
     ```
 - The headers of the wave file are updated every 10 ms of audio data, so if the analyzer crashes or the export is cancelled early, the most data that will be lost is the most recently written 10 ms.
 
+## HLA: TDM WAV Export
+
+The `hla/` directory contains a Logic 2 High Level Analyzer (HLA) that exports
+selected TDM slots to a WAV file in real time during capture.
+
+This is separate from the built-in LLA export described above. The HLA approach
+allows slot selection and writes the WAV incrementally during capture rather than
+as a post-capture export step.
+
+### Installation
+
+1. In Logic 2, open the **Extensions** panel (right sidebar).
+2. Click the **three-dots** menu icon at the top of the panel.
+3. Select **"Load Existing Extension..."**.
+4. Navigate to the `hla/` folder in this repository.
+5. Select `extension.json` and click **Open**.
+6. The extension appears as **"TDM WAV Export"** in the Extensions panel.
+
+To use the HLA, add it to your analyzer chain after the **TdmAnalyzer** LLA.
+
+### Settings
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| **Slots** | Comma-separated slot indices or hyphenated ranges to export as WAV channels | `0,2` or `0-3` or `1,3-5,7` |
+| **Output Path** | **Absolute** path to the output `.wav` file | `/home/user/captures/output.wav` |
+| **Bit Depth** | Sample bit depth: `16` (default) or `32` | `16` |
+
+### Absolute Paths Required
+
+The **Output Path** setting must be an absolute path. Relative paths resolve
+against the Logic 2 application directory, not your working directory.
+
+- **Linux:** `/home/user/captures/output.wav`
+- **Windows:** `C:\Users\user\captures\output.wav`
+- **macOS:** `/Users/user/captures/output.wav`
+
+### How It Works
+
+- The HLA reads frames from the upstream TdmAnalyzer LLA.
+- Only the slots listed in **Slots** are written — others are discarded.
+- Channels appear in the WAV in the order slots were specified (not sorted).
+- The WAV header is updated after every frame, so partial captures are playable.
+- LLA error frames (short slot, bitclock error) produce silence in the WAV rather than crashing.
+- If **Output Path** is empty or **Slots** is invalid, the HLA emits a readable error in
+  the Logic 2 protocol table rather than silently failing.
+
 # Install instructions
 
 [https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer](https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer)
