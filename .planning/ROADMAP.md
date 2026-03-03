@@ -76,4 +76,4 @@ Plans:
 | 7. RF64 WAV Export | v1.4 | 2/2 | Complete | 2026-02-26 |
 | 8. HLA Scaffold & Settings | v1.5 | 1/1 | Complete | 2026-03-03 |
 | 9. Core WAV Writing | v1.5 | 1/1 | Complete | 2026-03-03 |
-| 10. Error Handling & Docs | 1/1 | Complete   | 2026-03-03 | — |
+| 10. Error Handling & Docs | 1/1 | Complete    | 2026-03-03 | — |
