@@ -310,3 +310,58 @@ if __name__ == '__main__':
     assert _as_signed(65535, 16) == -1, "unsigned max = signed -1 (16-bit)"
 
     print("All self-tests passed.")
+
+    # Self-test: decode() flush-before-accumulate ordering (REQ-15)
+    import io, wave as _wave
+
+    class _FakeFrame:
+        """Minimal FrameV2 stand-in for self-testing decode() ordering."""
+        type = 'slot'
+        start_time = 0.0
+        end_time   = 0.0
+        def __init__(self, slot, frame_number, data_val):
+            self.data = {
+                'slot': slot,
+                'frame_number': frame_number,
+                'data': data_val,
+                'short_slot': False,
+                'bitclock_error': False,
+            }
+
+    import tempfile, os as _os
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tf:
+        _tmp_path = tf.name
+    try:
+        # Patch settings as Logic 2 would inject them
+        hla = TdmWavExport.__new__(TdmWavExport)
+        hla.slots        = '0,1'
+        hla.output_path  = _tmp_path
+        hla.bit_depth    = '16'
+        hla.__init__()
+
+        # Provide an explicit sample rate so _open_wav fires on first flush
+        hla._sample_rate = 48000
+
+        # Feed: TDM frame 0 (slot0=100, slot1=200), TDM frame 1 (slot0=300, slot1=400)
+        # A third TDM frame is needed to trigger the flush of frame 1.
+        frames_in = [
+            _FakeFrame(slot=0, frame_number=0, data_val=100),
+            _FakeFrame(slot=1, frame_number=0, data_val=200),
+            _FakeFrame(slot=0, frame_number=1, data_val=300),
+            _FakeFrame(slot=1, frame_number=1, data_val=400),
+            _FakeFrame(slot=0, frame_number=2, data_val=999),  # triggers flush of frame 1
+        ]
+        for f in frames_in:
+            hla.decode(f)
+
+        # Read back the WAV and verify sample values
+        with _wave.open(_tmp_path, 'rb') as wf:
+            raw = wf.readframes(wf.getnframes())
+        samples = list(struct.unpack(f'<{len(raw)//2}h', raw))
+        # Expect [100, 200, 300, 400] — frame 2 (999) not yet flushed
+        assert samples == [100, 200, 300, 400], \
+            f"REQ-15 ordering bug: expected [100, 200, 300, 400] got {samples}"
+    finally:
+        _os.unlink(_tmp_path)
+
+    print("REQ-15 decode ordering test passed.")
