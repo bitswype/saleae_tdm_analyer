@@ -48,7 +48,7 @@ Implement slot filtering from the settings, WAV file creation and writing using 
 
 **Deliverables:** Full `decode()` implementation, slot parser, WAV writer with frame-based header refresh
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 09-01-PLAN.md — Implement parse_slot_spec, _as_signed helpers and full WAV writing decode()
@@ -70,5 +70,5 @@ Harden error paths (invalid slots, missing output path, LLA error frames), updat
 | 6. Sample Rate Validation | v1.4 | 1/1 | Complete | 2026-02-26 |
 | 7. RF64 WAV Export | v1.4 | 2/2 | Complete | 2026-02-26 |
 | 8. HLA Scaffold & Settings | v1.5 | 1/1 | Complete | 2026-03-03 |
-| 9. Core WAV Writing | v1.5 | 0/1 | Pending | — |
+| 9. Core WAV Writing | 1/1 | Complete   | 2026-03-03 | — |
 | 10. Error Handling & Docs | v1.5 | 0/1 | Pending | — |

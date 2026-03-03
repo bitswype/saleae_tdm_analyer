@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Python HLA WAV Companion
-status: unknown
-last_updated: "2026-03-03T04:03:32.009Z"
+status: in-progress
+last_updated: "2026-03-03T04:25:30Z"
 progress:
-  total_phases: 1
+  total_phases: 3
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 3
+  completed_plans: 2
 ---
 
 # Project State
@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 
 ## Current Position
 
-Phase: 8 of 10 (HLA Scaffold & Settings) — in progress
-Plan: 01 complete
-Status: Phase 8 Plan 01 complete — HLA scaffold and settings created
-Last activity: 2026-03-03 — hla/extension.json and hla/TdmWavExport.py created
+Phase: 9 of 10 (Core WAV Writing) — complete
+Plan: 01 of 1 complete
+Status: Phase 9 Plan 01 complete — full decode() implementation with WAV writing machinery
+Last activity: 2026-03-03 — hla/TdmWavExport.py fully implemented with WAV writing
 
-Progress: [█░░░░░░░░░] ~10% (Phase 8 plan 01 of 1 complete)
+Progress: [███░░░░░░░] ~67% (Phases 8+9 complete; Phase 10 remaining)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1 (this milestone)
+- Total plans completed: 2 (this milestone)
 - Average duration: ~2 min
 
 **By Phase:**
@@ -40,7 +40,7 @@ Progress: [█░░░░░░░░░] ~10% (Phase 8 plan 01 of 1 complete)
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 8. HLA Scaffold & Settings | 1 | 2 min | 2 min |
-| 9. Core WAV Writing | — | — | — |
+| 9. Core WAV Writing | 1 | 2 min | 2 min |
 | 10. Error Handling & Docs | — | — | — |
 
 ## Accumulated Context
@@ -58,13 +58,19 @@ Progress: [█░░░░░░░░░] ~10% (Phase 8 plan 01 of 1 complete)
 - Settings declared as class-level attributes (not in __init__) so Logic 2 discovers them at load time
 - bit_depth.default = '16' set post-construction; default= kwarg raises TypeError in ChoicesSetting
 - entryPoint "TdmWavExport.TdmWavExport" is case-sensitive on Linux — must match .py filename exactly
+- parse_slot_spec uses dict.fromkeys() not sorted(set()) — preserves user-specified channel order (REQ-09)
+- _as_signed applied unconditionally — makes HLA robust regardless of LLA Signed setting
+- ImportError guard added for saleae.analyzers — allows standalone python3 self-testing
+- Sample rate sanity clamped to 1000-200000 Hz; falls back to 48000 for imprecise GraphTime deltas
+- decode() always returns None — WAV file is the output, no HLA annotation frames generated
 
 ### Research Findings (2026-03-02)
 
 - HLA file I/O confirmed working via Saleae forum (staff post + SaleaeSocketTransportHLA community HLA)
 - Python 3.8 embedded, no sandbox, full stdlib assumed available
-- No finalize/destructor hook — periodic header refresh is the correct pattern
+- No finalize/destructor hook — periodic header refresh is the correct pattern (wave.writeframes() auto-patches header)
 - Automation API cannot write WAV (CSV only) — HLA is the right approach
+- wave.writeframes() calls _patchheader() internally after every write — REQ-14 satisfied automatically
 
 ### Pending Todos
 
@@ -77,5 +83,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 08-01-PLAN.md — HLA scaffold with extension.json and TdmWavExport.py
+Stopped at: Completed 09-01-PLAN.md — full decode() implementation with WAV writing
 Resume file: —
