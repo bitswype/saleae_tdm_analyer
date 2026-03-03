@@ -40,12 +40,18 @@ Correctly decode TDM audio data from logic analyzer captures with confidence tha
 - ✓ RF64 WAV support — conditional RF64/PCM dispatch for exports exceeding 4 GiB — v1.4
 - ✓ Sample rate sanity check — non-blocking advisory annotation and 500 MHz hard block — v1.4
 
-### Active
+### Active (v1.5)
+
+- [ ] Python HLA (`hla/`) — slot-filtered WAV export from TDM captures — v1.5
+- [ ] HLA settings UI: slots (comma/range), output_path (absolute), bit_depth (16/32) — v1.5
+- [ ] WAV writing via Python `wave` module with periodic header refresh — v1.5
+- [ ] README section: HLA installation and usage — v1.5
+
+### Backlog
 
 - [ ] Named standard presets (I2S, LJ, RJ, DSP Mode A/B) — auto-fill settings from protocol name
 - [ ] Settings dialog UX improvements — scope TBD
 - [ ] Settings format version field — needed if future milestone adds persistent settings fields
-- [ ] Python HLA companion for post-processing decoded TDM data — separate project
 
 ## Context
 
@@ -88,4 +94,6 @@ Correctly decode TDM audio data from logic analyzer captures with confidence tha
 | FormatHzString duplication | ~8-line helper in two .cpp files avoids new shared header | — Accepted debt |
 
 ---
-*Last updated: 2026-02-26 after v1.4 milestone complete*
+- v1.5 started 2026-03-02 — Python HLA WAV companion (Phases 8-10)
+
+*Last updated: 2026-03-02 after v1.5 milestone started*
