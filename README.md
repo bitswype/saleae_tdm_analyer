@@ -183,47 +183,37 @@ Installing CMake on MacOS:
 
 Building the analyzer:
 ```
-mkdir build
-cd build
-cmake ..           # Configures the project: downloads AnalyzerSDK via FetchContent, generates build files
-cmake --build .    # Compiles the analyzer shared library into the Analyzers/ subdirectory
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release  # Configures, downloads AnalyzerSDK via FetchContent
+cmake --build build    # Compiles the analyzer shared library into build/Analyzers/
 ```
 
-### Ubuntu 16.04
+### Linux (Ubuntu 20.04+)
 
 Dependencies:
 - CMake 3.13+
-- gcc 4.8+
+- GCC 7+ (or Clang equivalent)
 
-Misc dependencies:
+Install build dependencies:
 
 ```
-sudo apt-get install build-essential
-```
-
-Building the analyzer (original instructions):
-```
-mkdir build
-cd build
-cmake ..           # Configures the project: downloads AnalyzerSDK via FetchContent, generates build files
-cmake --build .    # Compiles the analyzer shared library into the Analyzers/ subdirectory
-# and to clean
-cmake --build . --target clean  # Removes compiled artifacts (leaves the downloaded SDK intact)
+sudo apt-get install build-essential cmake
 ```
 
 Building the analyzer (release):
 ```
-# Configures for an optimized release build and downloads AnalyzerSDK via FetchContent
-cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
-cmake --build build-release    # Compiles the release analyzer shared library
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release  # Configures, downloads AnalyzerSDK via FetchContent
+cmake --build build-release    # Compiles the analyzer shared library
 ```
+
+The built library is placed in `build-release/Analyzers/libtdm_analyzer.so`.
 
 Building the analyzer (debug):
 ```
-# Configures for a debug build with debug symbols and downloads AnalyzerSDK via FetchContent
-cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug  # Configures for debug build with debug symbols
 cmake --build build-debug      # Compiles the debug analyzer shared library
 ```
+
+The built library is placed in `build-debug/Analyzers/libtdm_analyzer.so`.
 
 Cleaning:
 ```
@@ -262,17 +252,12 @@ that has the libtdm_analyzer.so loaded (`| grep libtdm_analyzer.so`) then print 
 ### Windows
 
 Dependencies:
-- Visual Studio 2015 Update 3
+- Visual Studio 2019 or newer (with "Desktop development with C++" workload)
 - CMake 3.13+
 
-**Visual Studio 2015**
+**Visual Studio**
 
-*Note - newer versions of Visual Studio should be fine.*
-
-Setup options:
-- Programming Languages > Visual C++ > select all sub-components.
-
-Note - if CMake has any problems with the MSVC compiler, it's likely a component is missing.
+Install the "Desktop development with C++" workload from the Visual Studio Installer. Older versions (2015+) also work.
 
 **CMake**
 
@@ -281,9 +266,13 @@ https://cmake.org/download/
 
 Building the analyzer:
 ```
-mkdir build
-cd build
-cmake .. -A x64    # Configures the project for 64-bit: downloads AnalyzerSDK via FetchContent, generates a Visual Studio solution
+cmake -S . -B build -A x64    # Configures for 64-bit: downloads AnalyzerSDK via FetchContent, generates a Visual Studio solution
+cmake --build build --config Release    # Compiles the analyzer DLL
 ```
 
-Then, open the newly created solution file located here: `build\tdm_analyzer.sln`
+Alternatively, open the generated solution in Visual Studio:
+```
+build\tdm_analyzer.sln
+```
+
+The built library is placed in `build\Analyzers\tdm_analyzer.dll`.
