@@ -1,5 +1,14 @@
 # Milestones
 
+## v1.5 Python HLA WAV Companion (Shipped: 2026-03-03)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v1.3 TDM Analyzer Audit (Shipped: 2026-02-25)
 
 **Phases completed:** 3 phases, 4 plans, 8 tasks
