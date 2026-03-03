@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Python HLA WAV Companion
 status: unknown
-last_updated: "2026-03-03T04:45:03.793Z"
+last_updated: "2026-03-02T00:00:00Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Correctly decode TDM audio data from logic analyzer captures with confidence that the results are accurate and the code is trustworthy.
-**Current focus:** v1.5 — Python HLA WAV Companion (Phases 8-10) — COMPLETE
+**Current focus:** v1.5 — Python HLA WAV Companion (Phases 8-11) — COMPLETE
 
 ## Current Position
 
-Phase: 10 of 10 (Error Handling & Documentation) — complete
+Phase: 11 of 11 (Fix WAV Sample Ordering) — complete
 Plan: 01 of 1 complete
-Status: Phase 10 Plan 01 complete — error paths hardened, README HLA section added
-Last activity: 2026-03-03 — v1.5 milestone complete
+Status: Phase 11 Plan 01 complete — REQ-15 gap closed, decode() ordering fixed
+Last activity: 2026-03-02 — v1.5 milestone fully complete with all 22 REQs satisfied
 
-Progress: [██████████] 100% (All phases 8+9+10 complete)
+Progress: [██████████] 100% (All phases 8+9+10+11 complete)
 
 ## Performance Metrics
 
@@ -42,6 +42,7 @@ Progress: [██████████] 100% (All phases 8+9+10 complete)
 | 8. HLA Scaffold & Settings | 1 | 2 min | 2 min |
 | 9. Core WAV Writing | 1 | 2 min | 2 min |
 | 10. Error Handling & Docs | 1 | 2 min | 2 min |
+| 11. Fix WAV Sample Ordering | 1 | 2 min | 2 min |
 
 ## Accumulated Context
 
@@ -65,6 +66,7 @@ Progress: [██████████] 100% (All phases 8+9+10 complete)
 - decode() always returns None — WAV file is the output, no HLA annotation frames generated
 - Deferred-error pattern: __init__ stores exception in _init_error; decode() emits AnalyzerFrame('error') once then clears — surfaces errors in Logic 2 protocol table instead of silent crash (Phase 10)
 - output_path validated for both emptiness and absolute-path requirement via os.path.isabs() (Phase 10)
+- decode() must flush BEFORE accumulating — _try_flush() clears self._accum so accumulate after flush ensures new data lands in a clean accumulator (Phase 11, REQ-15)
 
 ### Research Findings (2026-03-02)
 
@@ -84,6 +86,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-03
-Stopped at: Completed 10-01-PLAN.md — error handling hardened and README HLA section added (v1.5 milestone complete)
+Last session: 2026-03-02
+Stopped at: Completed 11-01-PLAN.md — REQ-15 gap closed, decode() flush-before-accumulate ordering fixed, all 22 requirements satisfied
 Resume file: —

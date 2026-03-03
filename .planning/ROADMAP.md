@@ -4,7 +4,7 @@
 
 - [x] **v1.3 Audit** - Phases 1-3 (shipped 2026-02-25)
 - [x] **v1.4 SDK & Export Modernization** - Phases 4-7 (shipped 2026-02-26)
-- [ ] **v1.5 Python HLA WAV Companion** - Phases 8-11 (in progress)
+- [x] **v1.5 Python HLA WAV Companion** - Phases 8-11 (shipped 2026-03-02)
 
 ## Phases
 
@@ -41,7 +41,7 @@ Set up the `hla/` directory as a valid Logic 2 extension. Create `extension.json
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 08-01-PLAN.md — Create hla/extension.json and TdmWavExport.py scaffold with settings
+- [x] 08-01-PLAN.md — Create hla/extension.json and TdmWavExport.py scaffold with settings
 
 ### Phase 9: Core WAV Writing
 Implement slot filtering from the settings, WAV file creation and writing using Python's `wave` module, and periodic header refresh so partial captures are recoverable.
@@ -51,7 +51,7 @@ Implement slot filtering from the settings, WAV file creation and writing using 
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 09-01-PLAN.md — Implement parse_slot_spec, _as_signed helpers and full WAV writing decode()
+- [x] 09-01-PLAN.md — Implement parse_slot_spec, _as_signed helpers and full WAV writing decode()
 
 ### Phase 10: Error Handling & Documentation
 Harden error paths (invalid slots, missing output path, LLA error frames), update README with HLA installation and usage instructions.
@@ -61,7 +61,7 @@ Harden error paths (invalid slots, missing output path, LLA error frames), updat
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 10-01-PLAN.md — Harden __init__ error paths (deferred error pattern) and add README HLA section
+- [x] 10-01-PLAN.md — Harden __init__ error paths (deferred error pattern) and add README HLA section
 
 ### Phase 11: Fix WAV Sample Ordering Bug
 Fix the accumulate-before-flush ordering bug in `decode()` where the incoming slot's sample data is written to the accumulator before `_try_flush()` reads it, causing every WAV output frame's first-arriving slot to carry data from the next TDM frame instead of the current one. Also update REQ-08 through REQ-15 checkboxes in REQUIREMENTS.md.
@@ -70,10 +70,10 @@ Fix the accumulate-before-flush ordering bug in `decode()` where the incoming sl
 
 **Gap Closure:** Closes REQ-15 gap from v1.5 audit
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 11-01-PLAN.md — Reorder accumulate/flush in decode() and update requirements traceability
+- [x] 11-01-PLAN.md — Reorder accumulate/flush in decode() and update requirements traceability
 
 ## Progress
 
@@ -89,4 +89,4 @@ Plans:
 | 8. HLA Scaffold & Settings | v1.5 | 1/1 | Complete | 2026-03-03 |
 | 9. Core WAV Writing | v1.5 | 1/1 | Complete | 2026-03-03 |
 | 10. Error Handling & Docs | v1.5 | 1/1 | Complete | 2026-03-03 |
-| 11. Fix WAV Sample Ordering | v1.5 | 0/1 | Pending | — |
+| 11. Fix WAV Sample Ordering | v1.5 | 1/1 | Complete | 2026-03-02 |
