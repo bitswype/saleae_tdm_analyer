@@ -30,17 +30,17 @@ Add a Python High Level Analyzer (HLA) to the repository that sits on top of the
 
 ### Slot Filtering
 
-- REQ-08: HLA parses the `slots` setting and filters incoming frames to the specified slot numbers
-- REQ-09: Slots are written to the WAV as channels in the order they were specified
-- REQ-10: Unspecified slots are silently discarded
-- REQ-11: If a specified slot is missing from a frame, silence (zero) is written for that channel
+- [x] REQ-08: HLA parses the `slots` setting and filters incoming frames to the specified slot numbers *(completed 09-01)*
+- [x] REQ-09: Slots are written to the WAV as channels in the order they were specified *(completed 09-01)*
+- [x] REQ-10: Unspecified slots are silently discarded *(completed 09-01)*
+- [x] REQ-11: If a specified slot is missing from a frame, silence (zero) is written for that channel *(completed 09-01)*
 
 ### WAV Writing
 
-- REQ-12: HLA opens the output WAV file when the first frame is received
-- REQ-13: WAV is written as standard PCM (integer samples) at the sample rate derived from frame timing
-- REQ-14: WAV header is refreshed periodically (every ~1000 frames) so partial captures are playable
-- REQ-15: Each frame in the WAV corresponds to one TDM frame (one sample per channel per frame)
+- [x] REQ-12: HLA opens the output WAV file when the first frame is received *(completed 09-01)*
+- [x] REQ-13: WAV is written as standard PCM (integer samples) at the sample rate derived from frame timing *(completed 09-01)*
+- [x] REQ-14: WAV header is refreshed periodically (every ~1000 frames) so partial captures are playable *(completed 09-01)*
+- [ ] REQ-15: Each frame in the WAV corresponds to one TDM frame (one sample per channel per frame) *(gap-closure: 11-01)*
 
 ### Error Handling
 

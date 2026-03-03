@@ -4,7 +4,7 @@
 
 - [x] **v1.3 Audit** - Phases 1-3 (shipped 2026-02-25)
 - [x] **v1.4 SDK & Export Modernization** - Phases 4-7 (shipped 2026-02-26)
-- [ ] **v1.5 Python HLA WAV Companion** - Phases 8-10 (in progress)
+- [ ] **v1.5 Python HLA WAV Companion** - Phases 8-11 (in progress)
 
 ## Phases
 
@@ -63,6 +63,18 @@ Harden error paths (invalid slots, missing output path, LLA error frames), updat
 Plans:
 - [ ] 10-01-PLAN.md — Harden __init__ error paths (deferred error pattern) and add README HLA section
 
+### Phase 11: Fix WAV Sample Ordering Bug
+Fix the accumulate-before-flush ordering bug in `decode()` where the incoming slot's sample data is written to the accumulator before `_try_flush()` reads it, causing every WAV output frame's first-arriving slot to carry data from the next TDM frame instead of the current one. Also update REQ-08 through REQ-15 checkboxes in REQUIREMENTS.md.
+
+**Deliverables:** Corrected `decode()` in `hla/TdmWavExport.py`, updated REQUIREMENTS.md traceability
+
+**Gap Closure:** Closes REQ-15 gap from v1.5 audit
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 11-01-PLAN.md — Reorder accumulate/flush in decode() and update requirements traceability
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -76,4 +88,5 @@ Plans:
 | 7. RF64 WAV Export | v1.4 | 2/2 | Complete | 2026-02-26 |
 | 8. HLA Scaffold & Settings | v1.5 | 1/1 | Complete | 2026-03-03 |
 | 9. Core WAV Writing | v1.5 | 1/1 | Complete | 2026-03-03 |
-| 10. Error Handling & Docs | 1/1 | Complete    | 2026-03-03 | — |
+| 10. Error Handling & Docs | v1.5 | 1/1 | Complete | 2026-03-03 |
+| 11. Fix WAV Sample Ordering | v1.5 | 0/1 | Pending | — |
