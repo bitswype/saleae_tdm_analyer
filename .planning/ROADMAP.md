@@ -89,4 +89,4 @@ Plans:
 | 8. HLA Scaffold & Settings | v1.5 | 1/1 | Complete | 2026-03-03 |
 | 9. Core WAV Writing | v1.5 | 1/1 | Complete | 2026-03-03 |
 | 10. Error Handling & Docs | v1.5 | 1/1 | Complete | 2026-03-03 |
-| 11. Fix WAV Sample Ordering | v1.5 | 1/1 | Complete | 2026-03-02 |
+| 11. Fix WAV Sample Ordering | v1.5 | Complete    | 2026-03-03 | 2026-03-02 |
