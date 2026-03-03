@@ -263,17 +263,18 @@ class TdmWavExport(HighLevelAnalyzer):
         if slot not in self._slot_set:
             return None
 
-        # Accumulate sample — error frames contribute silence by not writing to
-        # accum; self._accum.get(slot, 0) will return 0 for missing entries
-        if not (frame.data.get('short_slot') or frame.data.get('bitclock_error')):
-            # REQ-18/REQ-19: .get() guard — data field always present per LLA schema but defensive access costs nothing
-            self._accum[slot] = _as_signed(frame.data.get('data', 0), self._bit_depth)
-
         # Derive sample rate from frame timing (REQ-13)
         self._try_derive_sample_rate(frame)
 
-        # Detect TDM frame boundary and flush completed frame (REQ-15)
+        # Detect TDM frame boundary and flush completed frame (REQ-15).
+        # Flush BEFORE accumulating so the flush reads the previous frame's
+        # clean accumulator, not the current slot's newly-arrived data.
         self._try_flush(frame_num)
+
+        # Accumulate sample AFTER flush — error frames contribute silence by
+        # not writing to accum; self._accum.get(slot, 0) returns 0 for them.
+        if not (frame.data.get('short_slot') or frame.data.get('bitclock_error')):
+            self._accum[slot] = _as_signed(frame.data.get('data', 0), self._bit_depth)
 
         # Update frame tracker
         self._last_frame_num = frame_num
