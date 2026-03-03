@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Python HLA WAV Companion
-status: unknown
-last_updated: "2026-03-03T04:27:27.788Z"
+status: complete
+last_updated: "2026-03-03T04:43:00Z"
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -18,21 +18,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Correctly decode TDM audio data from logic analyzer captures with confidence that the results are accurate and the code is trustworthy.
-**Current focus:** v1.5 — Python HLA WAV Companion (Phases 8-10)
+**Current focus:** v1.5 — Python HLA WAV Companion (Phases 8-10) — COMPLETE
 
 ## Current Position
 
-Phase: 9 of 10 (Core WAV Writing) — complete
+Phase: 10 of 10 (Error Handling & Documentation) — complete
 Plan: 01 of 1 complete
-Status: Phase 9 Plan 01 complete — full decode() implementation with WAV writing machinery
-Last activity: 2026-03-03 — hla/TdmWavExport.py fully implemented with WAV writing
+Status: Phase 10 Plan 01 complete — error paths hardened, README HLA section added
+Last activity: 2026-03-03 — v1.5 milestone complete
 
-Progress: [███░░░░░░░] ~67% (Phases 8+9 complete; Phase 10 remaining)
+Progress: [██████████] 100% (All phases 8+9+10 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2 (this milestone)
+- Total plans completed: 3 (this milestone)
 - Average duration: ~2 min
 
 **By Phase:**
@@ -41,7 +41,7 @@ Progress: [███░░░░░░░] ~67% (Phases 8+9 complete; Phase 10 r
 |-------|-------|-------|----------|
 | 8. HLA Scaffold & Settings | 1 | 2 min | 2 min |
 | 9. Core WAV Writing | 1 | 2 min | 2 min |
-| 10. Error Handling & Docs | — | — | — |
+| 10. Error Handling & Docs | 1 | 2 min | 2 min |
 
 ## Accumulated Context
 
@@ -63,6 +63,8 @@ Progress: [███░░░░░░░] ~67% (Phases 8+9 complete; Phase 10 r
 - ImportError guard added for saleae.analyzers — allows standalone python3 self-testing
 - Sample rate sanity clamped to 1000-200000 Hz; falls back to 48000 for imprecise GraphTime deltas
 - decode() always returns None — WAV file is the output, no HLA annotation frames generated
+- Deferred-error pattern: __init__ stores exception in _init_error; decode() emits AnalyzerFrame('error') once then clears — surfaces errors in Logic 2 protocol table instead of silent crash (Phase 10)
+- output_path validated for both emptiness and absolute-path requirement via os.path.isabs() (Phase 10)
 
 ### Research Findings (2026-03-02)
 
@@ -83,5 +85,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 09-01-PLAN.md — full decode() implementation with WAV writing
+Stopped at: Completed 10-01-PLAN.md — error handling hardened and README HLA section added (v1.5 milestone complete)
 Resume file: —

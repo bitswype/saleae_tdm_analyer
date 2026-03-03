@@ -19,7 +19,7 @@ Add a Python High Level Analyzer (HLA) to the repository that sits on top of the
 
 - [x] REQ-01: HLA lives in `hla/` subdirectory of this repository *(completed 08-01)*
 - [x] REQ-02: `hla/` contains a valid `extension.json` so Logic 2 can load it as a custom extension *(completed 08-01)*
-- [ ] REQ-03: User installs by adding `hla/` as a custom extension directory in Logic 2 preferences
+- [x] REQ-03: User installs by adding `hla/` as a custom extension directory in Logic 2 preferences *(completed 10-01)*
 - [x] REQ-04: HLA appears in Logic 2 as "TDM WAV Export" in the analyzer chain *(completed 08-01)*
 
 ### Settings UI
@@ -44,16 +44,16 @@ Add a Python High Level Analyzer (HLA) to the repository that sits on top of the
 
 ### Error Handling
 
-- REQ-16: If `output_path` is empty or unset, HLA surfaces a clear error via its frame output
-- REQ-17: If `slots` is invalid (unparseable), HLA surfaces a clear error
-- REQ-18: Error frames from the LLA (short slot, extra slot, bitclock error) are written as silence for that sample rather than crashing
-- REQ-19: HLA gracefully handles frames with severity = error — logs them, does not raise
+- [x] REQ-16: If `output_path` is empty or unset, HLA surfaces a clear error via its frame output *(completed 10-01)*
+- [x] REQ-17: If `slots` is invalid (unparseable), HLA surfaces a clear error *(completed 10-01)*
+- [x] REQ-18: Error frames from the LLA (short slot, extra slot, bitclock error) are written as silence for that sample rather than crashing *(completed 10-01)*
+- [x] REQ-19: HLA gracefully handles frames with severity = error — logs them, does not raise *(completed 10-01)*
 
 ### Documentation
 
-- REQ-20: README section explains how to install the HLA in Logic 2
-- REQ-21: README section explains the settings fields (slots, output_path, bit_depth) with examples
-- REQ-22: README notes the requirement for absolute paths in `output_path`
+- [x] REQ-20: README section explains how to install the HLA in Logic 2 *(completed 10-01)*
+- [x] REQ-21: README section explains the settings fields (slots, output_path, bit_depth) with examples *(completed 10-01)*
+- [x] REQ-22: README notes the requirement for absolute paths in `output_path` *(completed 10-01)*
 
 ## Out of Scope (v1.5)
 

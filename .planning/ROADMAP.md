@@ -58,7 +58,7 @@ Harden error paths (invalid slots, missing output path, LLA error frames), updat
 
 **Deliverables:** Error frame emission, graceful error frame handling, README `hla/` section
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 10-01-PLAN.md — Harden __init__ error paths (deferred error pattern) and add README HLA section
@@ -76,4 +76,4 @@ Plans:
 | 7. RF64 WAV Export | v1.4 | 2/2 | Complete | 2026-02-26 |
 | 8. HLA Scaffold & Settings | v1.5 | 1/1 | Complete | 2026-03-03 |
 | 9. Core WAV Writing | v1.5 | 1/1 | Complete | 2026-03-03 |
-| 10. Error Handling & Docs | v1.5 | 0/1 | Pending | — |
+| 10. Error Handling & Docs | 1/1 | Complete   | 2026-03-03 | — |
