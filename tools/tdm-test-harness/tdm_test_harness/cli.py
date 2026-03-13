@@ -32,17 +32,26 @@ def _make_slot_spec(channels):
 
 
 def _feed_with_pacing(driver, frames, sample_rate, slot_count, realtime=True,
-                      chunk_ms=5):
+                      chunk_ms=None):
     """Feed frames to the HLA, optionally pacing at real-time speed.
 
     When realtime=True, groups frames into chunks of chunk_ms milliseconds
     and sleeps between chunks to approximate real-time delivery. Chunking
     avoids per-frame sleeps (Python sleep granularity is ~1-10ms, far too
-    coarse for per-sample pacing at 48kHz). Smaller chunks (5ms default)
-    produce smoother delivery for audio playback.
+    coarse for per-sample pacing at 48kHz).
+
+    If chunk_ms is None, it auto-scales based on sample rate: higher rates
+    use larger chunks to give Python enough time to process decode() calls
+    between sleeps.
 
     When False, feeds as fast as possible.
     """
+    if chunk_ms is None:
+        # Target ~480 TDM frames per chunk regardless of sample rate.
+        # At 48kHz this is 10ms, at 96kHz it's 5ms — keeping the number
+        # of decode() calls per chunk constant so Python can keep up.
+        # The player's 500ms pre-buffer absorbs delivery jitter.
+        chunk_ms = max(5, int(480 * 1000 / sample_rate))
     # Group all slot-frames by TDM frame number
     tdm_groups = []
     current_group = []
@@ -212,46 +221,33 @@ def serve(signal_spec, wav_file, sample_rate, channels, bit_depth, port,
     try:
         from .frame_emitter import FakeFrame
         frame_num = 0
+        total_frames = int(sample_rate * duration) if duration > 0 else None
 
-        # Pre-generate all loop iterations as one continuous frame list
-        # so there are no flush frames or timing gaps at loop boundaries.
-        total_frames_needed = int(sample_rate * duration) if duration > 0 else None
-
-        all_frames = []
-        while True:
+        # Stream signal in loop-sized chunks with continuous frame numbers.
+        # No flush frames between loops — the next loop's first frame
+        # triggers the flush of the previous loop's last frame.
+        # This avoids pre-generating the entire signal in memory and
+        # ensures data starts flowing to TCP immediately.
+        while not stop.is_set():
             chunk = list(emit_frames(signal_data, sample_rate, slot_list,
                                       start_frame_num=frame_num))
-            all_frames.extend(chunk)
+            _feed_with_pacing(driver, chunk, sample_rate, channels,
+                               realtime=True)
             frame_num += len(signal_data)
 
             if not loop:
                 break
-            if total_frames_needed and frame_num >= total_frames_needed:
-                break
-            if stop.is_set():
+            if total_frames and frame_num >= total_frames:
                 break
 
-        # Add a flush frame at the very end to push the last accumulated sample
+        # Flush the last accumulated frame
         flush_t = frame_num / sample_rate
-        flush_frame = FakeFrame(
-            frame_type='slot',
-            start_time=flush_t,
-            end_time=flush_t,
-            data={
-                'slot': slot_list[0],
-                'data': 0,
-                'frame_number': frame_num,
-                'severity': 'ok',
-                'short_slot': False,
-                'bitclock_error': False,
-            },
-        )
-        all_frames.append(flush_frame)
-
-        _feed_with_pacing(driver, all_frames, sample_rate, channels,
-                           realtime=True)
-
-        # Wait for remaining data to be sent
+        driver.feed([FakeFrame(
+            frame_type='slot', start_time=flush_t, end_time=flush_t,
+            data={'slot': slot_list[0], 'data': 0,
+                  'frame_number': frame_num, 'severity': 'ok',
+                  'short_slot': False, 'bitclock_error': False},
+        )])
         time.sleep(0.5)
 
     except KeyboardInterrupt:
