@@ -1,0 +1,13 @@
+{
+    "name": "TDM Audio Stream",
+    "apiVersion": "1.0.0",
+    "version": "1.0.0",
+    "author": "Chris Keeser",
+    "description": "Streams selected TDM slots as live PCM audio over TCP.",
+    "extensions": {
+        "TDM Audio Stream": {
+            "type": "HighLevelAnalyzer",
+            "entryPoint": "TdmAudioStream.TdmAudioStream"
+        }
+    }
+}
