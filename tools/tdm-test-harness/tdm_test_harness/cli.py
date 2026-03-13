@@ -32,7 +32,7 @@ def _make_slot_spec(channels):
 
 
 def _feed_with_pacing(driver, frames, sample_rate, slot_count, realtime=True,
-                      chunk_ms=None):
+                      chunk_ms=None, start_time=None, groups_fed_offset=0):
     """Feed frames to the HLA, optionally pacing at real-time speed.
 
     When realtime=True, groups frames into chunks of chunk_ms milliseconds
@@ -44,7 +44,21 @@ def _feed_with_pacing(driver, frames, sample_rate, slot_count, realtime=True,
     use larger chunks to give Python enough time to process decode() calls
     between sleeps.
 
+    Accepts either a list or a generator — frames are consumed lazily so
+    that large signals don't need to be fully materialized in memory.
+
     When False, feeds as fast as possible.
+
+    Args:
+        start_time: Monotonic clock reference for pacing. If None, uses
+            time.monotonic() at the start. Pass this across loop iterations
+            to maintain continuous pacing without gaps.
+        groups_fed_offset: Number of TDM frames already fed in previous
+            calls, used to compute the correct pacing deadline.
+
+    Returns:
+        Tuple of (groups_fed_total, start_time) where groups_fed_total
+        includes the offset, so it can be passed as the next offset.
     """
     if chunk_ms is None:
         # Target ~480 TDM frames per chunk regardless of sample rate.
@@ -52,46 +66,56 @@ def _feed_with_pacing(driver, frames, sample_rate, slot_count, realtime=True,
         # of decode() calls per chunk constant so Python can keep up.
         # The player's 500ms pre-buffer absorbs delivery jitter.
         chunk_ms = max(5, int(480 * 1000 / sample_rate))
-    # Group all slot-frames by TDM frame number
-    tdm_groups = []
-    current_group = []
-    current_fn = None
-
-    for frame in frames:
-        fn = frame.data['frame_number']
-        if current_fn is not None and fn != current_fn:
-            tdm_groups.append(current_group)
-            current_group = []
-        current_group.append(frame)
-        current_fn = fn
-    if current_group:
-        tdm_groups.append(current_group)
 
     if not realtime:
-        # Feed everything at once
-        driver.feed(frames)
-        return
+        # Feed everything at once (materializes if generator)
+        if hasattr(frames, '__len__'):
+            driver.feed(frames)
+        else:
+            driver.feed(list(frames))
+        return groups_fed_offset, start_time
 
-    # Feed in time-aligned chunks at slightly faster than real-time.
-    # The 0.95 factor means we feed ~5% faster, which keeps the player's
-    # buffer topped up and absorbs scheduling jitter. The ring buffer's
-    # deque(maxlen=N) prevents runaway growth.
+    # Stream frames lazily: group into TDM frames on the fly, then feed
+    # in time-aligned chunks at slightly faster than real-time.
     pace_factor = 0.95
     chunk_size = max(1, int(sample_rate * chunk_ms / 1000))
-    start_time = time.monotonic()
-    groups_fed = 0
+    if start_time is None:
+        start_time = time.monotonic()
 
-    for i in range(0, len(tdm_groups), chunk_size):
-        chunk = tdm_groups[i:i + chunk_size]
-        flat = [f for group in chunk for f in group]
+    # Accumulate TDM frame groups from the (possibly lazy) frame stream
+    current_group = []
+    current_fn = None
+    pending_groups = []
+    groups_fed = groups_fed_offset
+
+    def _flush_chunk():
+        nonlocal groups_fed
+        flat = [f for group in pending_groups for f in group]
         driver.feed(flat)
-        groups_fed += len(chunk)
+        groups_fed += len(pending_groups)
+        pending_groups.clear()
 
-        # Sleep until this chunk's adjusted deadline
         expected_time = start_time + (groups_fed / sample_rate) * pace_factor
         now = time.monotonic()
         if expected_time > now:
             time.sleep(expected_time - now)
+
+    for frame in frames:
+        fn = frame.data['frame_number']
+        if current_fn is not None and fn != current_fn:
+            pending_groups.append(current_group)
+            current_group = []
+            if len(pending_groups) >= chunk_size:
+                _flush_chunk()
+        current_group.append(frame)
+        current_fn = fn
+
+    if current_group:
+        pending_groups.append(current_group)
+    if pending_groups:
+        _flush_chunk()
+
+    return groups_fed, start_time
 
 
 def _feed_batched(driver, frames, batch_size):
@@ -226,13 +250,19 @@ def serve(signal_spec, wav_file, sample_rate, channels, bit_depth, port,
         # Stream signal in loop-sized chunks with continuous frame numbers.
         # No flush frames between loops — the next loop's first frame
         # triggers the flush of the previous loop's last frame.
-        # This avoids pre-generating the entire signal in memory and
-        # ensures data starts flowing to TCP immediately.
+        # Frames are passed as a generator (not materialized) so data
+        # starts flowing immediately without a pause to build the list.
+        # The pacing start_time is carried across iterations so timing
+        # is continuous — no gap at the loop boundary.
+        pace_start = None
+        groups_fed_total = 0
         while not stop.is_set():
-            chunk = list(emit_frames(signal_data, sample_rate, slot_list,
-                                      start_frame_num=frame_num))
-            _feed_with_pacing(driver, chunk, sample_rate, channels,
-                               realtime=True)
+            frames_gen = emit_frames(signal_data, sample_rate, slot_list,
+                                     start_frame_num=frame_num)
+            groups_fed_total, pace_start = _feed_with_pacing(
+                driver, frames_gen, sample_rate, channels,
+                realtime=True, start_time=pace_start,
+                groups_fed_offset=groups_fed_total)
             frame_num += len(signal_data)
 
             if not loop:
