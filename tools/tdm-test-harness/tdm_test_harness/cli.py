@@ -795,6 +795,191 @@ def analyze(wav_file, freq, window_ms, threshold_db, skip_start_ms, json_output)
     sys.exit(0 if results['pass'] else 1)
 
 
+@cli.command('quality-sweep')
+@click.option('--json', 'json_output', is_flag=True, help='Output results as JSON')
+@click.help_option('-h', '--help')
+@click.pass_context
+def quality_sweep(ctx, json_output):
+    """Run a full serve→capture→analyze sweep across configurations.
+
+    Tests the complete HLA + TCP pipeline at multiple sample rates,
+    channel counts, and bit depths. Each test starts a serve instance,
+    captures the TCP stream to a WAV file, then runs sox-based quality
+    analysis.
+
+    Requires sox to be installed.
+
+    Examples:
+
+        tdm-test-harness quality-sweep
+
+        tdm-test-harness quality-sweep --json
+    """
+    import subprocess
+    import shutil
+    import tempfile
+    import os
+
+    sox_path = shutil.which('sox')
+    if not sox_path:
+        click.echo(click.style("sox not found — install with: sudo apt install sox", fg='red'))
+        sys.exit(1)
+
+    configs = [
+        # (signal, sample_rate, channels, bit_depth, freq_to_check, loop, description)
+        ('sine:440', 24000, 1, '16', 440, False, '24kHz mono 16-bit'),
+        ('sine:440', 44100, 1, '16', 440, False, '44.1kHz mono 16-bit'),
+        ('sine:440', 48000, 1, '16', 440, False, '48kHz mono 16-bit'),
+        ('sine:440', 96000, 1, '16', 440, False, '96kHz mono 16-bit'),
+        ('sine:440,880', 48000, 2, '16', None, False, '48kHz stereo 16-bit'),
+        ('sine:440', 48000, 1, '32', 440, False, '48kHz mono 32-bit'),
+        ('sine:440,880,1320,1760', 48000, 4, '16', None, False, '48kHz 4ch 16-bit'),
+        ('sine:440', 48000, 1, '16', 440, True, '48kHz mono 16-bit looping'),
+        ('sine:440,880', 48000, 2, '16', None, True, '48kHz stereo 16-bit looping'),
+    ]
+
+    base_port = 14070
+    all_results = []
+    pass_count = 0
+    fail_count = 0
+
+    for i, (sig, rate, channels, depth, freq, loop, desc) in enumerate(configs):
+        port = base_port + i
+        click.echo(f"\n[{i+1}/{len(configs)}] {desc} ...")
+
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            wav_path = tmp.name
+
+        try:
+            # Start serve in background
+            serve_cmd = [
+                sys.executable, '-m', 'tdm_test_harness.cli',
+                'serve', '--signal', sig,
+                '--sample-rate', str(rate), '--channels', str(channels),
+                '--bit-depth', depth, '--port', str(port),
+                '--duration', '5',
+                '--loop' if loop else '--no-loop',
+            ]
+            serve_proc = subprocess.Popen(
+                serve_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            time.sleep(1.5)  # Let serve initialize
+
+            # Capture
+            capture_cmd = [
+                sys.executable, '-m', 'tdm_test_harness.cli',
+                'capture', '--port', str(port), '--duration', '2',
+                '--skip', '0.5', '-o', wav_path,
+            ]
+            cap_proc = subprocess.run(
+                capture_cmd, capture_output=True, text=True, timeout=15,
+            )
+
+            # Kill serve
+            serve_proc.terminate()
+            serve_proc.wait(timeout=5)
+
+            if cap_proc.returncode != 0:
+                result = {'config': desc, 'pass': False, 'error': cap_proc.stderr.strip()}
+                all_results.append(result)
+                fail_count += 1
+                click.echo(click.style(f"  FAIL (capture): {result['error']}", fg='red'))
+                continue
+
+            # For multi-channel signals, analyze each channel separately
+            if channels > 1 and freq is None:
+                # Parse per-channel frequencies from signal spec
+                freqs_str = sig.split(':')[1]
+                freqs = [float(f) for f in freqs_str.split(',')]
+
+                config_pass = True
+                chan_results = []
+                for ch_idx in range(channels):
+                    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as ch_tmp:
+                        ch_path = ch_tmp.name
+                    try:
+                        subprocess.run(
+                            [sox_path, wav_path, ch_path, 'remix', str(ch_idx + 1)],
+                            capture_output=True, timeout=10,
+                        )
+                        analyze_cmd = [
+                            sys.executable, '-m', 'tdm_test_harness.cli',
+                            'analyze', ch_path, '--freq', str(freqs[ch_idx]), '--json',
+                        ]
+                        a_proc = subprocess.run(
+                            analyze_cmd, capture_output=True, text=True, timeout=30,
+                        )
+                        ch_result = json.loads(a_proc.stdout) if a_proc.stdout.strip() else {'pass': False}
+                        chan_results.append({'channel': ch_idx, 'freq': freqs[ch_idx], **ch_result})
+                        if not ch_result.get('pass', False):
+                            config_pass = False
+                    finally:
+                        try:
+                            os.unlink(ch_path)
+                        except OSError:
+                            pass
+
+                result = {'config': desc, 'pass': config_pass, 'channels': chan_results}
+            else:
+                # Single channel or known single frequency
+                analyze_cmd = [
+                    sys.executable, '-m', 'tdm_test_harness.cli',
+                    'analyze', wav_path, '--json',
+                ]
+                if freq:
+                    analyze_cmd.extend(['--freq', str(freq)])
+
+                a_proc = subprocess.run(
+                    analyze_cmd, capture_output=True, text=True, timeout=30,
+                )
+                result = json.loads(a_proc.stdout) if a_proc.stdout.strip() else {'pass': False}
+                result['config'] = desc
+
+            all_results.append(result)
+            if result.get('pass', False):
+                pass_count += 1
+                click.echo(click.style(f"  PASS", fg='green'))
+            else:
+                fail_count += 1
+                click.echo(click.style(f"  FAIL", fg='red'))
+                # Show which checks failed
+                for check in result.get('checks', []):
+                    if not check.get('pass', True):
+                        click.echo(f"    {check['name']}: {check}")
+
+        except Exception as e:
+            result = {'config': desc, 'pass': False, 'error': str(e)}
+            all_results.append(result)
+            fail_count += 1
+            click.echo(click.style(f"  FAIL: {e}", fg='red'))
+        finally:
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
+            # Ensure serve is dead
+            try:
+                serve_proc.kill()
+            except Exception:
+                pass
+
+    # Summary
+    click.echo(f"\n{'='*50}")
+    total = pass_count + fail_count
+    if fail_count == 0:
+        click.echo(click.style(f"ALL PASS: {pass_count}/{total}", fg='green', bold=True))
+    else:
+        click.echo(click.style(f"FAIL: {fail_count}/{total} failed", fg='red', bold=True))
+
+    if json_output:
+        click.echo(json.dumps({
+            'total': total, 'pass': pass_count, 'fail': fail_count,
+            'results': all_results,
+        }, indent=2))
+
+    sys.exit(0 if fail_count == 0 else 1)
+
+
 @cli.command()
 def signals():
     """List available test signal types."""
