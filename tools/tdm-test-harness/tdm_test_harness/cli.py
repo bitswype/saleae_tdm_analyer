@@ -66,6 +66,46 @@ def _feed_with_pacing(driver, frames, sample_rate, slot_count, realtime=True):
         driver.feed(batch)
 
 
+def _feed_batched(driver, frames, batch_size):
+    """Feed frames in batches, yielding between batches to let the sender drain.
+
+    Splits the frame list into chunks of TDM frames (detected by frame_number
+    boundaries). Each chunk contains up to batch_size TDM frames. A short sleep
+    between chunks gives the sender thread time to drain the ring buffer.
+
+    This prevents ring buffer overflow when feeding faster than real-time,
+    while still being much faster than real-time pacing.
+    """
+    # Split into per-TDM-frame groups
+    tdm_frames = []
+    current_group = []
+    current_fn = None
+
+    for frame in frames:
+        fn = frame.data['frame_number']
+        if current_fn is not None and fn != current_fn:
+            tdm_frames.append(current_group)
+            current_group = []
+        current_group.append(frame)
+        current_fn = fn
+    if current_group:
+        tdm_frames.append(current_group)
+
+    # Feed in batches, sleeping proportionally to let the sender drain.
+    # Each PCM frame is (channels * bytes_per_sample) bytes sent over TCP.
+    # At ~100 MB/s localhost throughput the sender can drain fast, but we
+    # also need the sender thread to wake and run between batches.
+    for i in range(0, len(tdm_frames), batch_size):
+        chunk = tdm_frames[i:i + batch_size]
+        flat = [f for group in chunk for f in group]
+        driver.feed(flat)
+        if i + batch_size < len(tdm_frames):
+            # Sleep long enough for the sender thread to drain this batch.
+            # 0.001s per frame in the batch, clamped to [0.005, 0.1]s.
+            sleep_time = max(0.005, min(0.1, len(chunk) * 0.001))
+            time.sleep(sleep_time)
+
+
 @click.group()
 @click.option('-v', '--verbose', count=True, help='Increase verbosity (-v info, -vv debug)')
 @click.help_option('-h', '--help')
@@ -288,7 +328,11 @@ def verify(signal_spec, wav_file, sample_rate, channels, bit_depth, port,
 
         def feed_test():
             time.sleep(0.15)  # Let verifier connect first
-            driver.feed(test_frames)
+            # Feed in batches to avoid overflowing the ring buffer.
+            # Batch size is half the buffer, capped at 256 to keep
+            # drain sleeps short and prevent overflow.
+            batch = max(1, min(256, buffer_size // 2))
+            _feed_batched(driver, test_frames, batch)
 
         feeder = threading.Thread(target=feed_test)
         feeder.start()
