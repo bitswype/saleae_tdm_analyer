@@ -1,0 +1,172 @@
+"""Audio playback engine using sounddevice.
+
+Receives raw PCM bytes from the StreamClient and plays them through
+the selected audio output device. Handles format conversion, buffering,
+and device management.
+"""
+
+import threading
+import logging
+
+log = logging.getLogger('tdm-audio-bridge')
+
+# Lazy imports — sounddevice and numpy require PortAudio at import time.
+# Deferring lets the CLI show help text and run non-audio commands even
+# when PortAudio is not installed.
+sd = None
+np = None
+
+
+def _ensure_audio():
+    """Import sounddevice and numpy, raising a clear error if unavailable."""
+    global sd, np
+    if sd is not None:
+        return
+    try:
+        import sounddevice as _sd
+        import numpy as _np
+        sd = _sd
+        np = _np
+    except OSError as e:
+        raise RuntimeError(
+            f"Audio subsystem not available: {e}\n"
+            "Install PortAudio (e.g. 'apt install libportaudio2' on Linux, "
+            "or 'brew install portaudio' on macOS)."
+        ) from e
+
+
+def list_output_devices():
+    """Return a list of available output devices.
+
+    Each entry is a dict with 'index', 'name', and 'max_channels'.
+    """
+    _ensure_audio()
+    devices = sd.query_devices()
+    results = []
+    for i, d in enumerate(devices):
+        if d['max_output_channels'] > 0:
+            results.append({
+                'index': i,
+                'name': d['name'],
+                'max_channels': d['max_output_channels'],
+            })
+    return results
+
+
+def find_device(name_or_index):
+    """Find an output device by name substring or index.
+
+    Returns the device index, or raises ValueError if not found.
+    """
+    _ensure_audio()
+    if name_or_index is None:
+        return None  # use default
+
+    # Try as integer index first
+    try:
+        idx = int(name_or_index)
+        info = sd.query_devices(idx)
+        if info['max_output_channels'] > 0:
+            return idx
+        raise ValueError(f"Device {idx} has no output channels")
+    except (ValueError, sd.PortAudioError):
+        pass
+
+    # Search by name substring (case-insensitive)
+    needle = name_or_index.lower()
+    for dev in list_output_devices():
+        if needle in dev['name'].lower():
+            return dev['index']
+
+    raise ValueError(f"No output device matching '{name_or_index}'")
+
+
+class Player:
+    """Plays PCM audio received from the HLA stream.
+
+    Uses sounddevice's OutputStream with a callback that pulls from an
+    internal byte buffer. The buffer is fed by calling feed(data).
+    """
+
+    def __init__(self, handshake, device=None, latency='high'):
+        _ensure_audio()
+        self._handshake = handshake
+        self._device = device
+        self._latency = latency
+        self._stream = None
+
+        # Internal buffer for received PCM
+        self._lock = threading.Lock()
+        self._buf = bytearray()
+
+        # Stats
+        self._underruns = 0
+
+    @property
+    def underruns(self):
+        return self._underruns
+
+    def start(self):
+        """Open the audio stream and start playback."""
+        hs = self._handshake
+        dtype = 'int16' if hs.bit_depth == 16 else 'int32'
+
+        log.info("Opening audio: %d Hz, %d ch, %s, device=%s",
+                 hs.sample_rate, hs.channels, dtype, self._device)
+
+        self._stream = sd.OutputStream(
+            samplerate=hs.sample_rate,
+            channels=hs.channels,
+            dtype=dtype,
+            device=self._device,
+            latency=self._latency,
+            callback=self._audio_callback,
+        )
+        self._stream.start()
+
+    def stop(self):
+        """Stop and close the audio stream."""
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except sd.PortAudioError as e:
+                log.warning("Error closing stream: %s", e)
+            self._stream = None
+
+    def feed(self, data: bytes):
+        """Add raw PCM data to the playback buffer."""
+        with self._lock:
+            self._buf.extend(data)
+
+    def _audio_callback(self, outdata, frame_count, time_info, status):
+        """sounddevice callback — fill output buffer from internal store."""
+        if status:
+            log.debug("Audio status: %s", status)
+
+        hs = self._handshake
+        bytes_per_sample = hs.bit_depth // 8
+        needed = frame_count * hs.channels * bytes_per_sample
+
+        with self._lock:
+            available = len(self._buf)
+            if available >= needed:
+                raw = bytes(self._buf[:needed])
+                del self._buf[:needed]
+            elif available > 0:
+                # Partial — pad with silence
+                raw = bytes(self._buf) + b'\x00' * (needed - available)
+                self._buf.clear()
+                self._underruns += 1
+            else:
+                # No data — output silence
+                outdata[:] = 0
+                self._underruns += 1
+                return
+
+        # Convert bytes to numpy array for sounddevice
+        dtype = np.int16 if hs.bit_depth == 16 else np.int32
+        samples = np.frombuffer(raw, dtype=dtype).reshape(-1, hs.channels)
+        outdata[:len(samples)] = samples
+        if len(samples) < frame_count:
+            outdata[len(samples):] = 0
