@@ -199,127 +199,95 @@ against the Logic 2 application directory, not your working directory.
 
 # Install instructions
 
-[https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer](https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer)
+To install a pre-built analyzer, see Saleae’s guide:
+[Installing a community shared protocol analyzer](https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer)
 
-# Building instructions
+# Building from source
 
-This project uses CMake with FetchContent to automatically download the Saleae AnalyzerSDK from GitHub during the configure step — no manual SDK installation is needed. The first `cmake` configure command handles the download (requires an internet connection on first run). The build produces a shared library (`libtdm_analyzer.so` on Linux, `libtdm_analyzer.dylib` on macOS, `tdm_analyzer.dll` on Windows) in the `Analyzers/` subdirectory of your build directory.
+This project uses CMake with FetchContent to automatically download the Saleae AnalyzerSDK from GitHub during the configure step — no manual SDK installation is needed. An internet connection is required on the first configure run.
 
-### MacOS
+The build produces a shared library in the `Analyzers/` subdirectory of your build directory:
 
-Dependencies:
-- XCode with command line tools
-- CMake 3.13+
+| Platform | Output file |
+|----------|-------------|
+| Linux | `build/Analyzers/libtdm_analyzer.so` |
+| macOS | `build/<arch>/Analyzers/libtdm_analyzer.so` |
+| Windows | `build\Analyzers\Release\tdm_analyzer.dll` |
 
-Installing command line tools after XCode is installed:
-```
-xcode-select --install
-```
+## Prerequisites
 
-Then open XCode, open Preferences from the main menu, go to locations, and select the only option under 'Command line tools'.
+All platforms require **CMake 3.13+** and **git**.
 
-Installing CMake on MacOS:
+| Platform | Additional requirements |
+|----------|------------------------|
+| Linux | GCC 5+ and `build-essential` (`sudo apt-get install build-essential cmake`) |
+| macOS | Xcode with command line tools (`xcode-select --install`) |
+| Windows | Visual Studio 2017+ with the "Desktop development with C++" workload |
 
-1. Download the binary distribution for MacOS, `cmake-*-Darwin-x86_64.dmg`
-2. Install the usual way by dragging into applications.
-3. Open a terminal and run the following:
-```
-/Applications/CMake.app/Contents/bin/cmake-gui --install
-```
-*Note: Errors may occur if older versions of CMake are installed.*
+## Linux
 
-Building the analyzer:
-```
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release  # Configures, downloads AnalyzerSDK via FetchContent
-cmake --build build    # Compiles the analyzer shared library into build/Analyzers/
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
 
-### Linux (Ubuntu 20.04+)
+The built library is `build/Analyzers/libtdm_analyzer.so`.
 
-Dependencies:
-- CMake 3.13+
-- GCC 7+ (or Clang equivalent)
-
-Install build dependencies:
-
-```
-sudo apt-get install build-essential cmake
+For a debug build (required for GDB debugging):
+```bash
+cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug
 ```
 
-Building the analyzer (release):
-```
-cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release  # Configures, downloads AnalyzerSDK via FetchContent
-cmake --build build-release    # Compiles the analyzer shared library
-```
+## macOS
 
-The built library is placed in `build-release/Analyzers/libtdm_analyzer.so`.
+Logic 2 supports both Apple Silicon and Intel Macs natively, but universal binaries are **not supported** by the AnalyzerSDK. You must build for each architecture separately.
 
-Building the analyzer (debug):
-```
-cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug  # Configures for debug build with debug symbols
-cmake --build build-debug      # Compiles the debug analyzer shared library
-```
+Build for your Mac’s architecture (or both for distribution):
+```bash
+# Apple Silicon (arm64)
+cmake -B build/arm64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+cmake --build build/arm64
 
-The built library is placed in `build-debug/Analyzers/libtdm_analyzer.so`.
-
-Cleaning:
-```
-cmake --build build-debug --target clean    # Removes debug build artifacts
-# -or-
-cmake --build build-release --target clean  # Removes release build artifacts
+# Intel (x86_64)
+cmake -B build/x86_64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
+cmake --build build/x86_64
 ```
 
-Debugging on linux with the app image:
-You will need to attach gdb to a specifc running process because the *.AppImage program distributed is actually an AppImage wrapper around the Logic software. However, the launched process doesn’t load your analyzer either, it launches another instance of itself which eventually loads your analyzer.
+If you omit `-DCMAKE_OSX_ARCHITECTURES`, CMake builds for your host architecture by default.
 
-How to identify the process you will want to debug:
+## Windows
 
-1. Open the Logic 2 app and add your analyzer. (It needs to be added for the lib to be loaded). The app will load and then unload the lib once at startup to get its identification, but the shared library isn’t loaded again until you add it.
-1. Run `ps ax | grep Logic`
-1. There should be at least 7 matches. Several will have the path `/tmp/.mount_Logic-XXXXXX/Logic`. Of those items, look for ones that have the argument `--type=renderer`. There may be two of them. Note their process IDs.
-1. To figure out which one has loaded your library, run `lsof -p <process id> | grep libtdm_analyzer.so`
-1. One of the two process IDs will have a match, the other will not (see below for a command that will help with finding the PID).
-1. Then, run `gdb ./libtdm_analyzer.so`. Then type `attach <process id>`.
-1. `break TdmAnalyzer::WorkerThread`
-
-_Note:_ If you run into an operation not permitted, you can run `sudo sysctl -w kernel.yama.ptrace_scope=0`
-
-oneliner to get the proper process ID:
-`ps aux | grep 'Logic' | awk '{print $2}' | xargs -I % lsof -p % | grep libtdm_analyzer.so | awk '{print $2}'`
-
-_How it works:_ find all processes with 'Logic' in the name (`ps aux | grep 'Logic'`) and grab the second field which is the process ID (`| awk '{print $2}'`)
-and pass that list to xargs which places the PID as the argument to lsof (`| xargs -I % lsof -p %`) pass this to grep to find the process
-that has the libtdm_analyzer.so loaded (`| grep libtdm_analyzer.so`) then print the second field, which is the process ID (`| awk '{print $2}'`)
-
-### How did I figure some of this stuff out?
-- make a debug build with cmake : https://hsf-training.github.io/hsf-training-cmake-webpage/08-debugging/index.html
-- debug with the appimage : https://discuss.saleae.com/t/failed-to-load-custom-analyzer/903/6
-
-
-### Windows
-
-Dependencies:
-- Visual Studio 2019 or newer (with "Desktop development with C++" workload)
-- CMake 3.13+
-
-**Visual Studio**
-
-Install the "Desktop development with C++" workload from the Visual Studio Installer. Older versions (2015+) also work.
-
-**CMake**
-
-Download and install the latest CMake release here.
-https://cmake.org/download/
-
-Building the analyzer:
-```
-cmake -S . -B build -A x64    # Configures for 64-bit: downloads AnalyzerSDK via FetchContent, generates a Visual Studio solution
-cmake --build build --config Release    # Compiles the analyzer DLL
+From a Developer Command Prompt or terminal with Visual Studio in your PATH:
+```bat
+cmake -B build -A x64
+cmake --build build --config Release
 ```
 
-Alternatively, open the generated solution in Visual Studio:
-```
+The built DLL is `build\Analyzers\Release\tdm_analyzer.dll`.
+
+You can also open the generated solution directly in Visual Studio:
+```bat
 build\tdm_analyzer.sln
 ```
 
-The built library is placed in `build\Analyzers\tdm_analyzer.dll`.
+## Debugging on Linux
+
+The Logic 2 AppImage launches multiple processes. Your analyzer is loaded by a child `--type=renderer` process, not the main process. To attach GDB:
+
+1. Open Logic 2 and add the TDM analyzer (the shared library is loaded when the analyzer is added).
+2. Find the process that loaded the library:
+   ```bash
+   ps aux | grep ‘Logic’ | awk ‘{print $2}’ | xargs -I % lsof -p % 2>/dev/null | grep libtdm_analyzer.so | awk ‘{print $2}’
+   ```
+3. Attach GDB:
+   ```bash
+   gdb ./libtdm_analyzer.so
+   (gdb) attach <pid>
+   (gdb) break TdmAnalyzer::WorkerThread
+   ```
+
+If you get a "ptrace: Operation not permitted" error:
+```bash
+sudo sysctl -w kernel.yama.ptrace_scope=0
+```
