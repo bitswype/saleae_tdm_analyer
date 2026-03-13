@@ -397,6 +397,405 @@ def verify(signal_spec, wav_file, sample_rate, channels, bit_depth, port,
 
 
 @cli.command()
+@click.option('--port', default=4011, type=int, help='TCP port to connect to')
+@click.option('--duration', default=3.0, type=float, help='Capture duration in seconds')
+@click.option('--output', '-o', default=None, type=click.Path(),
+              help='Output WAV path (default: capture_<rate>Hz_<ch>ch.wav)')
+@click.option('--skip', default=0.0, type=float,
+              help='Seconds to skip at start (filter transients, pre-buffer)')
+@click.help_option('-h', '--help')
+def capture(port, duration, output, skip):
+    """Capture TCP PCM stream to a WAV file.
+
+    Connects to a running serve instance, receives the PCM stream via
+    the TCP protocol, and writes it to a WAV file for offline analysis.
+
+    This bypasses audio hardware entirely — useful for testing the
+    HLA + TCP pipeline in isolation.
+
+    Examples:
+
+        tdm-test-harness capture --port 4011 --duration 3
+
+        tdm-test-harness capture -o test.wav --duration 5 --skip 0.5
+    """
+    import socket
+    import struct
+    import wave
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(10.0)
+
+    try:
+        click.echo(f"Connecting to 127.0.0.1:{port}...")
+        sock.connect(('127.0.0.1', port))
+    except (ConnectionRefusedError, OSError) as e:
+        click.echo(click.style(f"Connection failed: {e}", fg='red'))
+        sys.exit(1)
+
+    try:
+        # Read handshake
+        buf = b''
+        while b'\n' not in buf:
+            chunk = sock.recv(4096)
+            if not chunk:
+                click.echo(click.style("Connection closed before handshake", fg='red'))
+                sys.exit(1)
+            buf += chunk
+
+        line, remainder = buf.split(b'\n', 1)
+        handshake = json.loads(line)
+
+        sample_rate = handshake['sample_rate']
+        channels = handshake['channels']
+        bit_depth = handshake['bit_depth']
+        bytes_per_sample = bit_depth // 8
+        frame_size = channels * bytes_per_sample
+
+        click.echo(f"Handshake: {channels}ch, {sample_rate}Hz, {bit_depth}-bit")
+
+        # Determine output path
+        wav_path = output or f"capture_{sample_rate}Hz_{channels}ch.wav"
+
+        # Calculate how many bytes to capture
+        total_frames = int(sample_rate * (duration + skip))
+        skip_frames = int(sample_rate * skip)
+        total_bytes = total_frames * frame_size
+
+        click.echo(f"Capturing {duration}s (skipping first {skip}s)...")
+
+        # Receive PCM data
+        pcm_buf = remainder
+        sock.settimeout(2.0)
+        while len(pcm_buf) < total_bytes:
+            try:
+                chunk = sock.recv(65536)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            pcm_buf += chunk
+
+        # Skip the initial transient frames
+        skip_bytes = skip_frames * frame_size
+        pcm_data = pcm_buf[skip_bytes:skip_bytes + int(sample_rate * duration) * frame_size]
+
+        # Align to frame boundary
+        pcm_data = pcm_data[:len(pcm_data) - (len(pcm_data) % frame_size)]
+
+        captured_frames = len(pcm_data) // frame_size
+        captured_duration = captured_frames / sample_rate
+
+        # Write WAV
+        with wave.open(wav_path, 'wb') as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(bytes_per_sample)
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm_data)
+
+        click.echo(f"Wrote {wav_path}: {captured_frames} frames ({captured_duration:.3f}s)")
+
+    finally:
+        sock.close()
+
+
+@cli.command()
+@click.argument('wav_file', type=click.Path(exists=True))
+@click.option('--freq', type=float, default=None,
+              help='Expected frequency in Hz (enables notch filter analysis)')
+@click.option('--window-ms', default=50, type=int,
+              help='Analysis window size in milliseconds')
+@click.option('--threshold-db', default=-40.0, type=float,
+              help='Residual RMS threshold in dB (windows above this are glitches)')
+@click.option('--skip-start-ms', default=100, type=int,
+              help='Skip initial ms (filter startup transient)')
+@click.option('--json', 'json_output', is_flag=True,
+              help='Output results as JSON')
+@click.help_option('-h', '--help')
+def analyze(wav_file, freq, window_ms, threshold_db, skip_start_ms, json_output):
+    """Analyze a WAV file for audio quality using sox.
+
+    Checks for glitches, dropouts, and signal integrity. If --freq is
+    given, applies a notch filter to isolate non-signal content and
+    detects anomalous windows.
+
+    Requires sox to be installed.
+
+    Examples:
+
+        tdm-test-harness analyze capture.wav --freq 440
+
+        tdm-test-harness analyze capture.wav --freq 440 --json
+
+        tdm-test-harness analyze capture.wav --freq 440 --threshold-db -35
+    """
+    import subprocess
+    import shutil
+
+    sox_path = shutil.which('sox')
+    if not sox_path:
+        click.echo(click.style("sox not found — install with: sudo apt install sox", fg='red'))
+        sys.exit(1)
+
+    soxi_path = shutil.which('soxi')
+
+    results = {'file': wav_file, 'pass': True, 'checks': []}
+
+    def run_sox(args, stderr=True):
+        """Run sox and return its stderr output (where stats go)."""
+        cmd = [sox_path] + args
+        log.debug("Running: %s", ' '.join(cmd))
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        return proc.stderr if stderr else proc.stdout
+
+    def parse_stat(output):
+        """Parse sox stat output into a dict."""
+        stats = {}
+        for line in output.strip().split('\n'):
+            if ':' in line:
+                # stats output format: "Key         value"
+                # stat output format: "Key           value"
+                parts = line.rsplit(None, 1)
+                if len(parts) == 2:
+                    key = parts[0].strip().rstrip(':').strip()
+                    try:
+                        stats[key] = float(parts[1])
+                    except ValueError:
+                        stats[key] = parts[1]
+            elif line.strip():
+                # stat -freq format: "freq  magnitude"
+                pass
+        return stats
+
+    def parse_stats(output):
+        """Parse sox stats output into a dict."""
+        stats = {}
+        for line in output.strip().split('\n'):
+            parts = line.rsplit(None, 1)
+            if len(parts) == 2:
+                key = parts[0].strip()
+                try:
+                    stats[key] = float(parts[1])
+                except ValueError:
+                    stats[key] = parts[1]
+        return stats
+
+    # === Check 1: File info ===
+    info_output = run_sox([wav_file, '-n', 'stat'])
+    stat = parse_stat(info_output)
+    stats_output = run_sox([wav_file, '-n', 'stats'])
+    stats = parse_stats(stats_output)
+
+    file_info = {
+        'sample_rate': int(stat.get('Samples read', 0) / stat.get('Length (seconds)', 1)),
+        'duration': stat.get('Length (seconds)', 0),
+        'rms_amplitude': stat.get('RMS     amplitude', 0),
+        'rms_db': stats.get('RMS lev dB', 0),
+        'peak_db': stats.get('Pk lev dB', 0),
+        'rms_trough_db': stats.get('RMS Tr dB', 0),
+    }
+
+    # Use soxi for more reliable file info
+    if soxi_path:
+        for flag, key in [('-r', 'sample_rate'), ('-c', 'channels'),
+                          ('-b', 'bit_depth'), ('-D', 'duration')]:
+            try:
+                proc = subprocess.run([soxi_path, flag, wav_file],
+                                       capture_output=True, text=True, timeout=10)
+                val = proc.stdout.strip()
+                if key == 'duration':
+                    file_info[key] = float(val)
+                else:
+                    file_info[key] = int(val)
+            except (subprocess.TimeoutExpired, ValueError):
+                pass
+
+    results['file_info'] = file_info
+
+    # === Check 2: Rough frequency ===
+    rough_freq = stat.get('Rough   frequency')
+    if rough_freq is not None:
+        results['rough_frequency'] = rough_freq
+        if freq:
+            freq_error = abs(rough_freq - freq)
+            freq_ok = freq_error <= max(5, freq * 0.02)  # within 2% or 5 Hz
+            results['checks'].append({
+                'name': 'frequency',
+                'pass': freq_ok,
+                'expected': freq,
+                'measured': rough_freq,
+                'error_hz': freq_error,
+            })
+            if not freq_ok:
+                results['pass'] = False
+
+    # === Check 3: Signal level ===
+    rms_db = stats.get('RMS lev dB', -100)
+    level_ok = rms_db > -20  # signal should be reasonably loud
+    results['checks'].append({
+        'name': 'signal_level',
+        'pass': level_ok,
+        'rms_db': rms_db,
+    })
+    if not level_ok:
+        results['pass'] = False
+
+    # === Check 4: Notch filter + windowed analysis (if freq given) ===
+    if freq:
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            notched_path = tmp.name
+
+        try:
+            # Apply notch filter at the expected frequency
+            run_sox([wav_file, notched_path, 'bandreject', str(freq), '5q'])
+
+            # Get total duration
+            total_duration = file_info.get('duration', 0)
+            if total_duration <= 0:
+                click.echo(click.style("Cannot determine file duration", fg='red'))
+                sys.exit(1)
+
+            # Analyze in windows
+            window_s = window_ms / 1000.0
+            skip_s = skip_start_ms / 1000.0
+            window_results = []
+            glitch_windows = []
+
+            t = skip_s
+            while t + window_s <= total_duration:
+                win_stats = run_sox([notched_path, '-n',
+                                      'trim', str(t), str(window_s), 'stats'])
+                ws = parse_stats(win_stats)
+                rms = ws.get('RMS lev dB', -100)
+                pk = ws.get('Pk lev dB', -100)
+
+                is_glitch = rms > threshold_db
+                window_results.append({
+                    'start_s': round(t, 4),
+                    'rms_db': rms,
+                    'pk_db': pk,
+                    'glitch': is_glitch,
+                })
+                if is_glitch:
+                    glitch_windows.append(round(t, 4))
+
+                t += window_s
+
+            n_windows = len(window_results)
+            n_glitches = len(glitch_windows)
+
+            # Compute noise floor (median of non-glitch windows)
+            clean_rms = sorted([w['rms_db'] for w in window_results if not w['glitch']])
+            noise_floor = clean_rms[len(clean_rms) // 2] if clean_rms else -100
+
+            results['checks'].append({
+                'name': 'glitch_detection',
+                'pass': n_glitches == 0,
+                'windows_analyzed': n_windows,
+                'glitch_count': n_glitches,
+                'glitch_windows': glitch_windows,
+                'noise_floor_db': round(noise_floor, 1),
+                'threshold_db': threshold_db,
+            })
+            if n_glitches > 0:
+                results['pass'] = False
+
+            # Store all windows for detailed analysis
+            results['windows'] = window_results
+
+        finally:
+            try:
+                os.unlink(notched_path)
+            except OSError:
+                pass
+
+    # === Check 5: Dropout detection via silence effect ===
+    if freq:
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            nonsilent_path = tmp.name
+
+        try:
+            # Remove silence regions and measure remaining duration
+            run_sox([wav_file, nonsilent_path,
+                     'silence', '1', '100', '0.1%', '1', '100', '0.1%',
+                     ':', 'restart'])
+
+            if soxi_path:
+                proc = subprocess.run([soxi_path, '-D', nonsilent_path],
+                                       capture_output=True, text=True, timeout=10)
+                nonsilent_duration = float(proc.stdout.strip())
+            else:
+                ns_out = run_sox([nonsilent_path, '-n', 'stat'])
+                ns_stat = parse_stat(ns_out)
+                nonsilent_duration = ns_stat.get('Length (seconds)', 0)
+
+            total_dur = file_info.get('duration', 0)
+            if total_dur > 0:
+                dropout_ratio = 1.0 - (nonsilent_duration / total_dur)
+                dropout_ok = dropout_ratio < 0.02  # less than 2% silence
+                results['checks'].append({
+                    'name': 'dropout_detection',
+                    'pass': dropout_ok,
+                    'total_duration': round(total_dur, 4),
+                    'nonsilent_duration': round(nonsilent_duration, 4),
+                    'dropout_ratio': round(dropout_ratio, 4),
+                })
+                if not dropout_ok:
+                    results['pass'] = False
+        finally:
+            try:
+                os.unlink(nonsilent_path)
+            except OSError:
+                pass
+
+    # === Output ===
+    if json_output:
+        click.echo(json.dumps(results, indent=2))
+    else:
+        status = click.style('PASS', fg='green', bold=True) if results['pass'] \
+            else click.style('FAIL', fg='red', bold=True)
+        click.echo(f"{status}  {wav_file}")
+        click.echo(f"  Format: {file_info.get('channels', '?')}ch, "
+                   f"{file_info.get('sample_rate', '?')}Hz, "
+                   f"{file_info.get('bit_depth', '?')}-bit, "
+                   f"{file_info.get('duration', 0):.3f}s")
+        click.echo(f"  Level: RMS={file_info.get('rms_db', '?')} dB, "
+                   f"Peak={file_info.get('peak_db', '?')} dB")
+
+        for check in results['checks']:
+            icon = click.style('OK', fg='green') if check['pass'] \
+                else click.style('FAIL', fg='red')
+            name = check['name']
+
+            if name == 'frequency':
+                click.echo(f"  [{icon}] Frequency: {check['measured']} Hz "
+                           f"(expected {check['expected']} Hz, error {check['error_hz']} Hz)")
+            elif name == 'signal_level':
+                click.echo(f"  [{icon}] Signal level: {check['rms_db']} dB RMS")
+            elif name == 'glitch_detection':
+                click.echo(f"  [{icon}] Glitch detection: {check['glitch_count']} glitches "
+                           f"in {check['windows_analyzed']} windows "
+                           f"(floor={check['noise_floor_db']} dB, "
+                           f"threshold={check['threshold_db']} dB)")
+                if check['glitch_windows']:
+                    for t in check['glitch_windows'][:10]:
+                        click.echo(f"         glitch at {t}s")
+                    if len(check['glitch_windows']) > 10:
+                        click.echo(f"         ... and {len(check['glitch_windows']) - 10} more")
+            elif name == 'dropout_detection':
+                click.echo(f"  [{icon}] Dropout: {check['dropout_ratio']*100:.1f}% silence "
+                           f"({check['nonsilent_duration']:.3f}s / {check['total_duration']:.3f}s)")
+
+    sys.exit(0 if results['pass'] else 1)
+
+
+@cli.command()
 def signals():
     """List available test signal types."""
     click.echo("Available test signals:\n")
