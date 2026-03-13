@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-03-02
+
+### Added
+
+- **Python HLA: TDM WAV Export** — a Logic 2 High Level Analyzer (`hla/TdmWavExport.py`) that exports selected TDM slots to a WAV file in real time during capture, with slot selection via comma/range syntax, 16 or 32-bit depth, and auto-derived sample rate from frame timing
+
+## [2.1.0] - 2026-02-25
+
 ### Changed
 
 - **FrameV2 schema:** Replaced `channel` (integer) field with `slot` (integer, same 0-based value) [FRM2-06]
@@ -34,7 +42,7 @@ channel = frame.data["channel"]
 errors = frame.data["errors"]    # string like "E: Short Slot E: Data Error "
 warnings = frame.data["warnings"]  # string like "W: Extra Slot "
 
-# After (unreleased)
+# After (v2.1.0+)
 slot = frame.data["slot"]                       # same 0-based integer value
 severity = frame.data["severity"]               # "error", "warning", or "ok"
 is_short = frame.data["short_slot"]             # True or False
@@ -75,5 +83,7 @@ low_rate = frame.data["low_sample_rate"]        # True or False
   This was dead code — the implementation correctly uses a local `FrameV2` variable
   in `AnalyzeTdmSlot()`.
 
-[Unreleased]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/bitswype/saleae_tdm_analyer/releases/tag/v2.0.0
