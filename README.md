@@ -1,11 +1,36 @@
 # TDM Analyzer
 
- TDM Analyzer for decoding TDM data.
+TDM Analyzer for decoding TDM data.
 
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
 
 # Migration Guide
+
+## v2.1.0 — FrameV2 schema overhaul
+
+The FrameV2 schema was reworked for structured error reporting. HLA scripts that
+read decoded slot frames must update their field access:
+
+```python
+# Before (v2.0.0)
+channel = frame.data["channel"]           # integer, 0-based
+errors  = frame.data["errors"]            # string like "E: Short Slot E: Data Error "
+warnings = frame.data["warnings"]         # string like "W: Extra Slot "
+
+# After (v2.1.0+)
+slot     = frame.data["slot"]             # integer, 0-based (same value, renamed)
+severity = frame.data["severity"]         # "error", "warning", or "ok"
+is_short = frame.data["short_slot"]       # bool
+is_extra = frame.data["extra_slot"]       # bool
+is_bclk  = frame.data["bitclock_error"]   # bool
+is_miss  = frame.data["missed_data"]      # bool
+is_sync  = frame.data["missed_frame_sync"]  # bool
+low_rate = frame.data["low_sample_rate"]  # bool
+```
+
+A new `"advisory"` frame type (distinct from `"slot"`) is emitted as the first
+row when the capture sample rate is below 4x the bit clock.
 
 ## v2.0.0 — FrameV2 key rename
 
@@ -38,7 +63,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
 - Searchable warnings and errors in protocol table
 
 # Advanced Analysis features
-- Checks for bitclock discrepencies and generates an error
+- Checks for bitclock discrepancies and generates an error
 - Identifies and marks slots with data changing that is not captured by the bitclock
 - Identifies and marks missed frame sync pulses
 
@@ -50,7 +75,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
 
 _Note:_ Certain errors and warnings are only available with the `Advanced analysis` option enabled in the analyzer settings.  When advanced analysis is not enabled, each slot will show the sampled bits when zoomed in.  Due to the other markers placed on the serial data, these bits are not shown when advanced analysis is enabled.
 
-![How to enable adanced analysis](pictures/advanced_analysis.PNG)
+![How to enable advanced analysis](pictures/advanced_analysis.PNG)
 
 - Search for the following in the protocol table to quickly locate any errors or warnings
  - `E:` to find errors
@@ -138,7 +163,7 @@ Logic 2 does not support custom export types for Low Level Analyzers — the onl
   41 - 48 data bits : 48 bits per channel
   49 - 64 data bits : 64 bits per channel
   ```
-- Data bit settings above 32 are "supported", but the wave files generated are not likely to to open.
+- Data bit settings above 32 are "supported", but the wave files generated are not likely to open.
 - For captures that fit within 4 GiB, the wave file uses a standard PCM header. For captures exceeding 4 GiB, the analyzer automatically produces an RF64 file (EBU TECH 3306) with a ds64 chunk containing the true 64-bit sizes. The threshold is computed from the capture frame count, channel count, and bit depth before export begins. RF64 files open in Audacity, FFmpeg, and other tools that support the format. Standard PCM exports have been tested to work in Audacity with channel counts from 1 to 256, and bit depths up to 32 bits. Bit depths above 32 bits do not open in Audacity with either format.
 - Data bits are always scaled to ensure that the maximum values are always achievable.
   - For example, with 2 data bits, the values will map to
