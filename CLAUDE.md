@@ -29,7 +29,7 @@ hla-audio-stream/             Python HLA — live audio streaming
   extension.json              Logic 2 extension manifest
 
 tools/tdm-test-harness/       Standalone test harness (no Logic 2 needed)
-  tdm_test_harness/cli.py     Click CLI: serve, verify, signals
+  tdm_test_harness/cli.py     Click CLI: serve, verify, capture, analyze, quality-sweep, signals
   tdm_test_harness/signals.py Signal generators (sine, silence, ramp, WAV)
   tdm_test_harness/frame_emitter.py  Converts samples to fake AnalyzerFrames
   tdm_test_harness/hla_driver.py     Drives HLA outside Logic 2
@@ -84,6 +84,24 @@ tdm-test-harness verify --signal ramp --bit-depth 32 --json
 ```
 
 Exit code 0 = pass, 1 = fail. `--json` flag outputs structured results for automation.
+
+### Audio quality analysis (requires sox)
+
+```bash
+# Capture TCP stream to WAV (while serve is running)
+tdm-test-harness capture --port 4011 --duration 3 --skip 0.5 -o test.wav
+
+# Analyze for glitches, dropouts, and frequency accuracy
+tdm-test-harness analyze test.wav --freq 440
+
+# Full automated quality sweep across 9 configurations
+tdm-test-harness quality-sweep
+```
+
+The `analyze` command uses sox to:
+- Verify the dominant frequency matches expected
+- Detect glitches via notch filter + windowed RMS (50ms windows, -40 dB threshold)
+- Detect dropouts via silence removal duration comparison
 
 ## Critical Patterns
 
