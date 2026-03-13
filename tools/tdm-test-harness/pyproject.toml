@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tdm-test-harness"
+version = "0.1.0"
+description = "Test harness for the TDM Audio Stream HLA"
+dependencies = ["click>=8.0"]
+
+[project.scripts]
+tdm-test-harness = "tdm_test_harness.cli:main"
