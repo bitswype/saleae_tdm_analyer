@@ -210,37 +210,49 @@ def serve(signal_spec, wav_file, sample_rate, channels, bit_depth, port,
     signal.signal(signal.SIGINT, sigint_handler)
 
     try:
+        from .frame_emitter import FakeFrame
         frame_num = 0
-        while not stop.is_set():
-            frames = list(emit_frames(signal_data, sample_rate, slot_list,
-                                       start_frame_num=frame_num))
-            # Add one extra frame to flush the last TDM frame
-            from .frame_emitter import FakeFrame
-            flush_t = (frame_num + len(signal_data)) / sample_rate
-            flush_frame = FakeFrame(
-                frame_type='slot',
-                start_time=flush_t,
-                end_time=flush_t,
-                data={
-                    'slot': slot_list[0],
-                    'data': 0,
-                    'frame_number': frame_num + len(signal_data),
-                    'severity': 'ok',
-                    'short_slot': False,
-                    'bitclock_error': False,
-                },
-            )
-            frames.append(flush_frame)
 
-            _feed_with_pacing(driver, frames, sample_rate, channels,
-                               realtime=True)
+        # Pre-generate all loop iterations as one continuous frame list
+        # so there are no flush frames or timing gaps at loop boundaries.
+        total_frames_needed = int(sample_rate * duration) if duration > 0 else None
 
-            frame_num += len(signal_data) + 1
+        all_frames = []
+        while True:
+            chunk = list(emit_frames(signal_data, sample_rate, slot_list,
+                                      start_frame_num=frame_num))
+            all_frames.extend(chunk)
+            frame_num += len(signal_data)
 
-            if not loop or (duration > 0 and frame_num / sample_rate >= duration):
-                # Wait for any remaining data to be sent
-                time.sleep(0.5)
+            if not loop:
                 break
+            if total_frames_needed and frame_num >= total_frames_needed:
+                break
+            if stop.is_set():
+                break
+
+        # Add a flush frame at the very end to push the last accumulated sample
+        flush_t = frame_num / sample_rate
+        flush_frame = FakeFrame(
+            frame_type='slot',
+            start_time=flush_t,
+            end_time=flush_t,
+            data={
+                'slot': slot_list[0],
+                'data': 0,
+                'frame_number': frame_num,
+                'severity': 'ok',
+                'short_slot': False,
+                'bitclock_error': False,
+            },
+        )
+        all_frames.append(flush_frame)
+
+        _feed_with_pacing(driver, all_frames, sample_rate, channels,
+                           realtime=True)
+
+        # Wait for remaining data to be sent
+        time.sleep(0.5)
 
     except KeyboardInterrupt:
         pass
