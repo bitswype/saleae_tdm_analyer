@@ -53,6 +53,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
 - Slot sizes from 2 to 64 bits
 - data bits / slot from 2 to 64 bits
 - Data can be exported as a `.wav` or a `.csv` file
+- Live audio streaming over TCP with companion playback CLI
 - Frame sync can be asserted on last bit before a new frame, or on first bit of new frame
 - Rising or falling frame sync sensitivity
 - Rising or falling bit clock data latching
@@ -221,6 +222,116 @@ against the Logic 2 application directory, not your working directory.
 - LLA error frames (short slot, bitclock error) produce silence in the WAV rather than crashing.
 - If **Output Path** is empty or **Slots** is invalid, the HLA emits a readable error in
   the Logic 2 protocol table rather than silently failing.
+
+## HLA: TDM Audio Stream
+
+The `hla-audio-stream/` directory contains a Logic 2 High Level Analyzer (HLA)
+that streams selected TDM slots as live PCM audio over a TCP socket. A companion
+CLI tool receives the stream and plays it through a local audio device or virtual
+sound card — letting you hear decoded TDM audio in real time.
+
+### Installation
+
+1. In Logic 2, open the **Extensions** panel (right sidebar).
+2. Click the **three-dots** menu icon at the top of the panel.
+3. Select **"Load Existing Extension..."**.
+4. Navigate to the `hla-audio-stream/` folder in this repository.
+5. Select `extension.json` and click **Open**.
+6. The extension appears as **"TDM Audio Stream"** in the Extensions panel.
+
+To use the HLA, add it to your analyzer chain after the **TdmAnalyzer** LLA.
+
+### Settings
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| **Slots** | Comma-separated slot indices or hyphenated ranges to stream | `0,1` or `0-3` |
+| **TCP Port** | Port for the TCP server (default 4011) | `4011` |
+| **Ring Buffer Size** | PCM frame buffer size; oldest frames dropped when full (default 128) | `256` |
+| **Bit Depth** | Sample bit depth: `16` (default) or `32` | `16` |
+
+### How It Works
+
+- The HLA reads slot frames from the upstream TdmAnalyzer LLA.
+- Audio sample rate is derived automatically from frame timing.
+- A TCP server runs on `127.0.0.1:<port>` accepting one client at a time.
+- On connect, a JSON handshake line is sent with format metadata (sample rate, channels, bit depth, slot list).
+- After the handshake, raw interleaved little-endian PCM follows continuously.
+- A ring buffer (deque) smooths timing; oldest frames are dropped if the client falls behind.
+- Error frames (short slot, bitclock error) produce silence rather than corrupted samples.
+
+### Companion CLI: tdm-audio-bridge
+
+The `tools/tdm-audio-bridge/` directory contains the companion playback tool.
+
+**Install:**
+```bash
+pip install tools/tdm-audio-bridge/
+```
+
+**Requirements:** Python 3.8+, PortAudio (`apt install libportaudio2` on Linux,
+`brew install portaudio` on macOS, included with VB-CABLE on Windows).
+
+**Commands:**
+
+```bash
+# List available audio output devices
+tdm-audio-bridge devices
+
+# Connect and play (auto-configures from HLA handshake)
+tdm-audio-bridge listen
+
+# Play through a specific device
+tdm-audio-bridge listen --output "VB-Cable"
+
+# Use a non-default port
+tdm-audio-bridge listen --port 4012
+```
+
+The bridge auto-reconnects if the HLA restarts. Use `--no-reconnect` for
+single-shot operation.
+
+### Virtual Sound Cards
+
+To present TDM audio as a system audio device, use a virtual sound card:
+
+| Platform | Software | Channels |
+|----------|----------|----------|
+| Windows | [VB-CABLE](https://vb-audio.com/Cable/) | 8 (A+B) |
+| macOS | [BlackHole](https://github.com/ExistentialAudio/BlackHole) | 2, 16, or 64 |
+| Linux | PipeWire null-sink | 64+ |
+
+Point `tdm-audio-bridge listen --output <virtual-device>` at the virtual device,
+then select it as an input in your DAW, VoIP app, or audio player.
+
+### Test Harness
+
+The `tools/tdm-test-harness/` directory provides a standalone testing tool that
+drives the HLA without Logic 2 or hardware.
+
+**Install:**
+```bash
+pip install tools/tdm-test-harness/
+```
+
+**Commands:**
+
+```bash
+# Run automated verification (exit code 0 = pass, 1 = fail)
+tdm-test-harness verify --signal sine:440 --duration 0.5 --json
+
+# Serve a test signal for manual testing with tdm-audio-bridge
+tdm-test-harness serve --signal sine:440 --channels 2
+
+# Multi-channel, per-channel frequencies
+tdm-test-harness verify --signal sine:440,880 --channels 2 --json
+
+# 32-bit depth
+tdm-test-harness verify --signal ramp --bit-depth 32 --json
+
+# List available test signals
+tdm-test-harness signals
+```
 
 # Install instructions
 

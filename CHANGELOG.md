@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Python HLA: TDM Audio Stream** — a Logic 2 High Level Analyzer (`hla-audio-stream/TdmAudioStream.py`) that streams selected TDM slots as live PCM audio over a TCP socket, with configurable ring buffer, 16 or 32-bit depth, and auto-derived sample rate
+- **Companion CLI: tdm-audio-bridge** — connects to the Audio Stream HLA's TCP server and plays decoded audio through local audio devices or virtual sound cards (VB-CABLE, BlackHole, PipeWire null-sink), with auto-reconnect
+- **Test harness: tdm-test-harness** — standalone testing tool that drives the HLA without Logic 2 or hardware; supports automated verification with structured JSON output, test signal generation (sine, silence, ramp, WAV), and agent-friendly exit codes
+
 ## [2.2.0] - 2026-03-02
 
 ### Added
