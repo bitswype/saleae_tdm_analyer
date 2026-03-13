@@ -60,11 +60,14 @@ class StreamClient:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(self._reconnect_delay)
                 sock.connect((self._host, self._port))
-                sock.settimeout(1.0)
                 log.info("Connected to %s:%d", self._host, self._port)
 
-                # Read handshake
+                # Read handshake — use a longer timeout since the HLA
+                # may need time to derive the sample rate before it can
+                # send the handshake (deferred handshake pattern).
+                sock.settimeout(10.0)
                 self._handshake, remainder = read_handshake(sock)
+                sock.settimeout(1.0)
                 if self._on_handshake:
                     self._on_handshake(self._handshake)
 

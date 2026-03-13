@@ -88,12 +88,19 @@ class Player:
     internal byte buffer. The buffer is fed by calling feed(data).
     """
 
-    def __init__(self, handshake, device=None, latency='high'):
+    def __init__(self, handshake, device=None, latency='high',
+                 prebuffer_ms=500):
         _ensure_audio()
         self._handshake = handshake
         self._device = device
         self._latency = latency
         self._stream = None
+
+        # Pre-buffer: accumulate this many bytes before starting playback
+        bytes_per_sample = handshake.bit_depth // 8
+        prebuffer_frames = int(handshake.sample_rate * prebuffer_ms / 1000)
+        self._prebuffer_bytes = prebuffer_frames * handshake.channels * bytes_per_sample
+        self._started = False
 
         # Internal buffer for received PCM
         self._lock = threading.Lock()
@@ -107,7 +114,19 @@ class Player:
         return self._underruns
 
     def start(self):
-        """Open the audio stream and start playback."""
+        """Mark the player as ready to start.
+
+        Actual playback begins once the pre-buffer threshold is reached,
+        ensuring smooth initial playback without underruns.
+        """
+        self._started = False
+        log.info("Buffering %d ms before playback...",
+                 int(self._prebuffer_bytes * 1000 /
+                     (self._handshake.sample_rate * self._handshake.channels *
+                      (self._handshake.bit_depth // 8))))
+
+    def _open_stream(self):
+        """Actually open the sounddevice stream."""
         hs = self._handshake
         dtype = 'int16' if hs.bit_depth == 16 else 'int32'
 
@@ -120,9 +139,11 @@ class Player:
             dtype=dtype,
             device=self._device,
             latency=self._latency,
+            blocksize=1024,
             callback=self._audio_callback,
         )
         self._stream.start()
+        self._started = True
 
     def stop(self):
         """Stop and close the audio stream."""
@@ -135,9 +156,17 @@ class Player:
             self._stream = None
 
     def feed(self, data: bytes):
-        """Add raw PCM data to the playback buffer."""
+        """Add raw PCM data to the playback buffer.
+
+        If the stream hasn't started yet, begins playback once the
+        pre-buffer threshold is reached.
+        """
         with self._lock:
             self._buf.extend(data)
+            buf_len = len(self._buf)
+
+        if not self._started and buf_len >= self._prebuffer_bytes:
+            self._open_stream()
 
     def _audio_callback(self, outdata, frame_count, time_info, status):
         """sounddevice callback — fill output buffer from internal store."""

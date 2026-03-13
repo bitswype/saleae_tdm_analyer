@@ -93,12 +93,18 @@ def listen(host, port, output_device, latency, no_reconnect):
             player = Player(handshake, device=device_idx, latency=latency)
             player.start()
 
-        click.echo("Playing...")
+        click.echo("Buffering...")
+
+    playing_announced = False
 
     def on_data(data):
+        nonlocal playing_announced
         with player_lock:
             if player is not None:
                 player.feed(data)
+                if not playing_announced and player._started:
+                    playing_announced = True
+                    click.echo("Playing...")
 
     def on_disconnect():
         nonlocal player

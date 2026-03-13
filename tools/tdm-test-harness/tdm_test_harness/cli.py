@@ -31,39 +31,58 @@ def _make_slot_spec(channels):
     return ','.join(str(i) for i in range(channels))
 
 
-def _feed_with_pacing(driver, frames, sample_rate, slot_count, realtime=True):
+def _feed_with_pacing(driver, frames, sample_rate, slot_count, realtime=True,
+                      chunk_ms=5):
     """Feed frames to the HLA, optionally pacing at real-time speed.
 
-    When realtime=True, sleeps between TDM frames to approximate the
-    actual data rate. When False, feeds as fast as possible.
+    When realtime=True, groups frames into chunks of chunk_ms milliseconds
+    and sleeps between chunks to approximate real-time delivery. Chunking
+    avoids per-frame sleeps (Python sleep granularity is ~1-10ms, far too
+    coarse for per-sample pacing at 48kHz). Smaller chunks (5ms default)
+    produce smoother delivery for audio playback.
+
+    When False, feeds as fast as possible.
     """
-    frame_period = 1.0 / sample_rate if realtime else 0
-    batch = []
-    current_frame_num = None
-    start_time = time.monotonic()
-    frames_fed = 0
+    # Group all slot-frames by TDM frame number
+    tdm_groups = []
+    current_group = []
+    current_fn = None
 
     for frame in frames:
         fn = frame.data['frame_number']
-        if current_frame_num is not None and fn != current_frame_num:
-            # New TDM frame — feed the completed batch
-            driver.feed(batch)
-            batch = []
-            frames_fed += 1
+        if current_fn is not None and fn != current_fn:
+            tdm_groups.append(current_group)
+            current_group = []
+        current_group.append(frame)
+        current_fn = fn
+    if current_group:
+        tdm_groups.append(current_group)
 
-            if realtime and frame_period > 0:
-                # Pace to real-time
-                expected_time = start_time + frames_fed * frame_period
-                now = time.monotonic()
-                if expected_time > now:
-                    time.sleep(expected_time - now)
+    if not realtime:
+        # Feed everything at once
+        driver.feed(frames)
+        return
 
-        batch.append(frame)
-        current_frame_num = fn
+    # Feed in time-aligned chunks at slightly faster than real-time.
+    # The 0.95 factor means we feed ~5% faster, which keeps the player's
+    # buffer topped up and absorbs scheduling jitter. The ring buffer's
+    # deque(maxlen=N) prevents runaway growth.
+    pace_factor = 0.95
+    chunk_size = max(1, int(sample_rate * chunk_ms / 1000))
+    start_time = time.monotonic()
+    groups_fed = 0
 
-    # Feed remaining batch
-    if batch:
-        driver.feed(batch)
+    for i in range(0, len(tdm_groups), chunk_size):
+        chunk = tdm_groups[i:i + chunk_size]
+        flat = [f for group in chunk for f in group]
+        driver.feed(flat)
+        groups_fed += len(chunk)
+
+        # Sleep until this chunk's adjusted deadline
+        expected_time = start_time + (groups_fed / sample_rate) * pace_factor
+        now = time.monotonic()
+        if expected_time > now:
+            time.sleep(expected_time - now)
 
 
 def _feed_batched(driver, frames, batch_size):
@@ -135,7 +154,7 @@ def cli(ctx, verbose):
 @click.option('--bit-depth', default='16', type=click.Choice(['16', '32']),
               help='Bit depth')
 @click.option('--port', default=4011, type=int, help='TCP port')
-@click.option('--buffer-size', default=128, type=int, help='Ring buffer size in frames')
+@click.option('--buffer-size', default=4096, type=int, help='Ring buffer size in frames')
 @click.option('--duration', default=10.0, type=float,
               help='Duration in seconds (0 = infinite)')
 @click.option('--loop/--no-loop', default=True, help='Loop the signal')
