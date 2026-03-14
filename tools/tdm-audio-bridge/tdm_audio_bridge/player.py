@@ -102,9 +102,12 @@ class Player:
         self._prebuffer_bytes = prebuffer_frames * handshake.channels * bytes_per_sample
         self._started = False
 
-        # Internal buffer for received PCM
+        # Internal buffer for received PCM.
+        # Uses a read offset to avoid O(n) shift on every audio callback.
         self._lock = threading.Lock()
         self._buf = bytearray()
+        self._read_pos = 0
+        self._compact_threshold = 256 * 1024  # compact after 256 KiB consumed
 
         # Stats
         self._underruns = 0
@@ -120,7 +123,7 @@ class Player:
     @property
     def buffer_level(self):
         with self._lock:
-            return len(self._buf) / max(self._prebuffer_bytes, 1)
+            return (len(self._buf) - self._read_pos) / max(self._prebuffer_bytes, 1)
 
     def start(self):
         """Mark the player as ready to start.
@@ -172,7 +175,7 @@ class Player:
         """
         with self._lock:
             self._buf.extend(data)
-            buf_len = len(self._buf)
+            buf_len = len(self._buf) - self._read_pos
 
         if not self._started and buf_len >= self._prebuffer_bytes:
             self._open_stream()
@@ -187,14 +190,21 @@ class Player:
         needed = frame_count * hs.channels * bytes_per_sample
 
         with self._lock:
-            available = len(self._buf)
+            available = len(self._buf) - self._read_pos
             if available >= needed:
-                raw = bytes(self._buf[:needed])
-                del self._buf[:needed]
+                raw = bytes(
+                    memoryview(self._buf)[self._read_pos:self._read_pos + needed])
+                self._read_pos += needed
+                # Compact periodically to reclaim consumed space
+                if self._read_pos >= self._compact_threshold:
+                    del self._buf[:self._read_pos]
+                    self._read_pos = 0
             elif available > 0:
                 # Partial — pad with silence
-                raw = bytes(self._buf) + b'\x00' * (needed - available)
+                raw = (bytes(memoryview(self._buf)[self._read_pos:])
+                       + b'\x00' * (needed - available))
                 self._buf.clear()
+                self._read_pos = 0
                 self._underruns += 1
             else:
                 # No data — output silence

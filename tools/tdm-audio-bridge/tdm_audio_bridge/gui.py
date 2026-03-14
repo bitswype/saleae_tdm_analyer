@@ -74,6 +74,7 @@ class BridgeApp:
         self._player_lock = threading.Lock()
         self._state = _DISCONNECTED
         self._handshake = None
+        self._last_underruns = -1
 
         root.title('TDM Audio Bridge')
         root.resizable(False, False)
@@ -309,11 +310,14 @@ class BridgeApp:
             self._player.start()
 
     def _update_stats(self):
-        """Update live stats from the player."""
+        """Update live stats from the player (only when changed)."""
         with self._player_lock:
             if self._player is not None:
-                self._underruns_label.config(
-                    text=f'Underruns: {self._player.underruns}')
+                count = self._player.underruns
+                if count != self._last_underruns:
+                    self._last_underruns = count
+                    self._underruns_label.config(
+                        text=f'Underruns: {count}')
 
     def _set_state(self, state, detail=''):
         """Update the state indicator and label."""

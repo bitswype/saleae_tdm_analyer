@@ -84,6 +84,7 @@ class TdmAudioStream(HighLevelAnalyzer):
 
             self._slot_list = parse_slot_spec(self._slots_raw)
             self._slot_set = set(self._slot_list)
+            self._pcm_fmt = '<' + ('h' if self._bit_depth == 16 else 'i') * len(self._slot_list)
 
             # Sample accumulator (same pattern as TdmWavExport)
             self._accum = {}
@@ -135,6 +136,7 @@ class TdmAudioStream(HighLevelAnalyzer):
             # Safe defaults so decode() can run without AttributeError
             self._slot_list = []
             self._slot_set = set()
+            self._pcm_fmt = '<'
             self._accum = {}
             self._last_frame_num = None
             self._timing_ref = {}
@@ -263,17 +265,18 @@ class TdmAudioStream(HighLevelAnalyzer):
 
     def _enqueue_frame(self):
         """Pack accumulated samples into PCM bytes and add to ring buffer."""
-        # Send deferred handshake if client connected after rate was derived
-        with self._client_lock:
-            if (self._current_client is not None
-                    and not self._handshake_sent
-                    and self._sample_rate is not None):
-                self._send_handshake(self._current_client)
+        # Send deferred handshake if client connected after rate was derived.
+        # Fast-path: skip lock when handshake already sent (steady state).
+        if not self._handshake_sent:
+            with self._client_lock:
+                if (self._current_client is not None
+                        and not self._handshake_sent
+                        and self._sample_rate is not None):
+                    self._send_handshake(self._current_client)
 
         # Pack interleaved PCM — missing slots contribute silence (zero)
-        fmt = '<' + ('h' if self._bit_depth == 16 else 'i') * len(self._slot_list)
         samples = [self._accum.get(slot, 0) for slot in self._slot_list]
-        packed = struct.pack(fmt, *samples)
+        packed = struct.pack(self._pcm_fmt, *samples)
 
         with self._ring_lock:
             self._ring.append(packed)
