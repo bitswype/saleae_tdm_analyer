@@ -25,10 +25,10 @@ A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and 
 - [Debugging on Linux](#debugging-on-linux)
 - [Migration Guide](#migration-guide)
 
+# Features
+
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
-
-# Features
 
 - 1 to 256 slots per frame
 - Slot sizes from 2 to 64 bits
