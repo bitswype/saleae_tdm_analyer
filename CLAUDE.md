@@ -35,8 +35,11 @@ tools/tdm-test-harness/       Standalone test harness (no Logic 2 needed)
   tdm_test_harness/hla_driver.py     Drives HLA outside Logic 2
   tdm_test_harness/verifier.py       TCP client for automated verification
 
-tools/tdm-audio-bridge/       Companion CLI — plays streamed audio
-  tdm_audio_bridge/cli.py     Click CLI: listen, devices
+tools/tdm-audio-bridge/       Companion CLI + GUI — plays streamed audio
+  _build.py                   Custom setuptools backend (auto-generates _version.py)
+  gen_version.py              Generates _version.py from git describe
+  tdm_audio_bridge/cli.py     Click CLI: listen, gui, devices
+  tdm_audio_bridge/gui.py     tkinter GUI (~400 lines)
   tdm_audio_bridge/client.py  Auto-reconnecting TCP client
   tdm_audio_bridge/player.py  sounddevice playback engine
   tdm_audio_bridge/protocol.py  Handshake parsing and PCM unpacking
@@ -144,7 +147,20 @@ Slot frames have these fields: `slot`, `data`, `frame_number`, `severity`, `shor
 
 ## Git Conventions
 
-- Tags: `vX.Y.Z` (e.g. v2.0.0, v2.1.0, v2.2.0) — semantic versioning
+- Tags: `vX.Y.Z` (e.g. v2.0.0, v2.1.0, v2.2.0, v2.3.0) — semantic versioning
 - Linear history, no squash, no amend
 - Feature branches merged via fast-forward only
-- Current feature branch: `feature/live_stream` (audio streaming work)
+- Remote: SSH (`git@github.com:bitswype/saleae_tdm_analyer.git`)
+
+## CI / Release
+
+- GitHub Actions workflow: `.github/workflows/build.yml`
+- Triggers on push to main, tags, and PRs
+- Builds C++ LLA for Windows, macOS (x86_64 + arm64), Linux
+- Tagged builds create a GitHub Release with `analyzer.zip` containing:
+  - Platform-specific LLA binaries
+  - `hla-wav-export/` and `hla-audio-stream/` (Python HLAs)
+  - `tools/` (tdm-audio-bridge and tdm-test-harness)
+  - `README.md` and `LICENSE`
+  - Pre-generated `_version.py` (via `gen_version.py` with `fetch-depth: 0`)
+- `_build.py` custom setuptools backend auto-generates `_version.py` during `pip install`
