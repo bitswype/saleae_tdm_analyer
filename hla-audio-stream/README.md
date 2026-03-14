@@ -360,6 +360,54 @@ pipeline. For reliable audio testing:
   stream directly to WAV, bypassing audio hardware entirely. Then analyze with
   `tdm-test-harness analyze`.
 
+## Known Limitations
+
+### Looping (rolling) capture mode
+
+In Logic 2's looping capture mode (untriggered, continuous recording into a
+circular RAM buffer), the LLA and HLA will error out once the capture buffer
+fills and Logic 2 begins discarding the oldest sample data. Both analyzers show
+red exclamation-mark error indicators in the Logic 2 UI and stop processing.
+
+**Root cause:** This is a known Logic 2 platform limitation, not a bug in this
+analyzer. When the circular buffer wraps, Logic 2 evicts old sample data. If the
+LLA's `WorkerThread` attempts to access evicted samples (via SDK calls like
+`AdvanceToNextEdge()`), the SDK throws an internal termination exception and the
+analyzer enters an error state. Since the HLA depends on the LLA, both fail
+together. Saleae has acknowledged this category of issue:
+
+> *"The memory buffer setting currently does not handle added analyzers and HLAs
+> too well."*
+> — [Saleae Support: Backlog Error](https://support.saleae.com/getting-help/troubleshooting/backlog-error)
+
+A community member confirmed the same pattern: the analyzer errors when its
+processing falls behind the data eviction frontier, and the onset correlates
+directly with capture buffer size
+([discuss.saleae.com #3551](https://discuss.saleae.com/t/analyzer-error-causes-api-code-to-wait-infinitely/3551/1)).
+
+**Workarounds:**
+
+- **Restart the analyzer** via the three-dot menu after the error appears.
+- **Use Timer mode** instead of Looping mode — set a fixed capture duration
+  long enough for your needs.
+- **Remove analyzers before starting** a looping capture, then add them after
+  stopping (analyzers will process the retained buffer contents).
+- **Reduce the capture sample rate** to give the analyzer more processing
+  headroom relative to data arrival.
+- **Increase the memory buffer size** in Logic 2's capture settings — this
+  delays the onset but does not prevent the error.
+- **Disable the glitch filter** if enabled — it is a known performance
+  bottleneck in the processing pipeline
+  ([discuss.saleae.com #1395](https://discuss.saleae.com/t/please-allow-for-lower-memory-limit-and-temporary-analyzer-disable/1395)).
+
+**References:**
+
+- [Capture Modes](https://support.saleae.com/product/user-guide/using-logic/capture-modes) — Saleae documentation on looping mode
+- [Backlog Error](https://support.saleae.com/getting-help/troubleshooting/backlog-error) — Saleae acknowledgment of analyzer/buffer interaction issues
+- [Analyzer error in looping mode](https://discuss.saleae.com/t/analyzer-error-causes-api-code-to-wait-infinitely/3551/1) — Community report confirming buffer-size correlation
+- [Memory buffer size inaccuracy](https://discuss.saleae.com/t/logic-2-3-19-how-to-make-the-memory-buffer-size-work/944) — Buffer size does not account for analyzer memory usage
+- [Analyzer temp file accumulation](https://discuss.saleae.com/t/i2c-analyzer-hoarding-temp-files/1249) — Analyzer results not garbage-collected during looping capture
+
 ## Debugging
 
 ### No audio / "Connection refused"

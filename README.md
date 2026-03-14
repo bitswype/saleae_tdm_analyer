@@ -333,6 +333,18 @@ tdm-test-harness verify --signal ramp --bit-depth 32 --json
 tdm-test-harness signals
 ```
 
+# Known Limitations
+
+## Looping (rolling) capture mode
+
+Both HLAs (WAV Export and Audio Stream) will error out when used with Logic 2's
+looping capture mode. Once the circular buffer fills and Logic 2 begins
+discarding old sample data, the analyzers lose access to samples they need and
+enter an error state. This is a known Logic 2 platform limitation — see
+[Saleae's backlog error documentation](https://support.saleae.com/getting-help/troubleshooting/backlog-error)
+and the [detailed writeup in the Audio Stream README](hla-audio-stream/README.md#looping-rolling-capture-mode)
+for workarounds and references.
+
 # Install instructions
 
 To install a pre-built analyzer, see Saleae’s guide:
