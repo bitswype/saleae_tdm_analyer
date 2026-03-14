@@ -1,51 +1,10 @@
 # TDM Analyzer
 
-TDM Analyzer for decoding TDM data.
+TDM Analyzer for decoding TDM data with Saleae Logic 2. Includes two High Level
+Analyzers for audio export and live streaming.
 
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
-
-# Migration Guide
-
-## v2.1.0 — FrameV2 schema overhaul
-
-The FrameV2 schema was reworked for structured error reporting. HLA scripts that
-read decoded slot frames must update their field access:
-
-```python
-# Before (v2.0.0)
-channel = frame.data["channel"]           # integer, 0-based
-errors  = frame.data["errors"]            # string like "E: Short Slot E: Data Error "
-warnings = frame.data["warnings"]         # string like "W: Extra Slot "
-
-# After (v2.1.0+)
-slot     = frame.data["slot"]             # integer, 0-based (same value, renamed)
-severity = frame.data["severity"]         # "error", "warning", or "ok"
-is_short = frame.data["short_slot"]       # bool
-is_extra = frame.data["extra_slot"]       # bool
-is_bclk  = frame.data["bitclock_error"]   # bool
-is_miss  = frame.data["missed_data"]      # bool
-is_sync  = frame.data["missed_frame_sync"]  # bool
-low_rate = frame.data["low_sample_rate"]  # bool
-```
-
-A new `"advisory"` frame type (distinct from `"slot"`) is emitted as the first
-row when the capture sample rate is below 4x the bit clock.
-
-## v2.0.0 — FrameV2 key rename
-
-The `"frame #"` FrameV2 field has been renamed to `"frame_number"`.
-Update any HLA scripts that access this field:
-
-```python
-# Before (v1.x)
-frame_number = frame.data["frame #"]
-
-# After (v2.0+)
-frame_number = frame.data["frame_number"]
-```
-
-See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
 
 # Features
 
@@ -53,7 +12,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
 - Slot sizes from 2 to 64 bits
 - data bits / slot from 2 to 64 bits
 - Data can be exported as a `.wav` or a `.csv` file
-- Live audio streaming over TCP with companion playback CLI
+- Live audio streaming over TCP with companion playback CLI and GUI
 - Frame sync can be asserted on last bit before a new frame, or on first bit of new frame
 - Rising or falling frame sync sensitivity
 - Rising or falling bit clock data latching
@@ -152,7 +111,7 @@ Logic 2 does not support custom export types for Low Level Analyzers — the onl
   // F# is frame number and S# is slot #. So F3S2 is frame 3 slot 2's data
   [F1S1, F1S2, F1S3, F2S1]
   [F2S2, F2S3, F3S1, F3S2]
-  [F3S3, F4S1, F4S2, F4S3] 
+  [F3S3, F4S1, F4S2, F4S3]
   ...
   ```
 - Data in the wave file is stored in the following bit depth:
@@ -176,162 +135,47 @@ Logic 2 does not support custom export types for Low Level Analyzers — the onl
     ```
 - The headers of the wave file are updated every 10 ms of audio data, so if the analyzer crashes or the export is cancelled early, the most data that will be lost is the most recently written 10 ms.
 
+# High Level Analyzers (HLAs)
+
+Two HLAs extend the TDM LLA with audio-focused features. Both run as Logic 2
+extensions on top of the TdmAnalyzer.
+
 ## HLA: TDM WAV Export
 
-The `hla/` directory contains a Logic 2 High Level Analyzer (HLA) that exports
-selected TDM slots to a WAV file in real time during capture.
+Exports selected TDM slots to a WAV file in real time during capture. This is
+separate from the built-in LLA export — the HLA approach allows slot selection
+and writes incrementally during capture rather than as a post-capture step.
 
-This is separate from the built-in LLA export described above. The HLA approach
-allows slot selection and writes the WAV incrementally during capture rather than
-as a post-capture export step.
+See the [TDM WAV Export README](hla/README.md) for full documentation.
 
-### Installation
+**Quick start:**
 
-1. In Logic 2, open the **Extensions** panel (right sidebar).
-2. Click the **three-dots** menu icon at the top of the panel.
-3. Select **"Load Existing Extension..."**.
-4. Navigate to the `hla/` folder in this repository.
-5. Select `extension.json` and click **Open**.
-6. The extension appears as **"TDM WAV Export"** in the Extensions panel.
-
-To use the HLA, add it to your analyzer chain after the **TdmAnalyzer** LLA.
-
-### Settings
-
-| Setting | Description | Example |
-|---------|-------------|---------|
-| **Slots** | Comma-separated slot indices or hyphenated ranges to export as WAV channels | `0,2` or `0-3` or `1,3-5,7` |
-| **Output Path** | **Absolute** path to the output `.wav` file | `/home/user/captures/output.wav` |
-| **Bit Depth** | Sample bit depth: `16` (default) or `32` | `16` |
-
-### Absolute Paths Required
-
-The **Output Path** setting must be an absolute path. Relative paths resolve
-against the Logic 2 application directory, not your working directory.
-
-- **Linux:** `/home/user/captures/output.wav`
-- **Windows:** `C:\Users\user\captures\output.wav`
-- **macOS:** `/Users/user/captures/output.wav`
-
-### How It Works
-
-- The HLA reads frames from the upstream TdmAnalyzer LLA.
-- Only the slots listed in **Slots** are written — others are discarded.
-- Channels appear in the WAV in the order slots were specified (not sorted).
-- The WAV header is updated after every frame, so partial captures are playable.
-- LLA error frames (short slot, bitclock error) produce silence in the WAV rather than crashing.
-- If **Output Path** is empty or **Slots** is invalid, the HLA emits a readable error in
-  the Logic 2 protocol table rather than silently failing.
+1. Load the extension in Logic 2 (Extensions → Load Existing Extension → `hla/`)
+2. Add **"TDM WAV Export"** after the TdmAnalyzer LLA
+3. Configure slots, output path, and bit depth
+4. Start capturing — the WAV file is written in real time
 
 ## HLA: TDM Audio Stream
 
-The `hla-audio-stream/` directory contains a Logic 2 High Level Analyzer (HLA)
-that streams selected TDM slots as live PCM audio over a TCP socket. A companion
-CLI tool receives the stream and plays it through a local audio device or virtual
-sound card — letting you hear decoded TDM audio in real time.
+Streams selected TDM slots as live PCM audio over TCP. A companion CLI tool
+and GUI connect to the stream and play it through any audio output device —
+hear decoded TDM audio in real time.
 
-### Installation
+See the [TDM Audio Stream README](hla-audio-stream/README.md) for full
+documentation, platform-specific setup, test harness, and debugging tips.
 
-1. In Logic 2, open the **Extensions** panel (right sidebar).
-2. Click the **three-dots** menu icon at the top of the panel.
-3. Select **"Load Existing Extension..."**.
-4. Navigate to the `hla-audio-stream/` folder in this repository.
-5. Select `extension.json` and click **Open**.
-6. The extension appears as **"TDM Audio Stream"** in the Extensions panel.
+**Quick start:**
 
-To use the HLA, add it to your analyzer chain after the **TdmAnalyzer** LLA.
-
-### Settings
-
-| Setting | Description | Example |
-|---------|-------------|---------|
-| **Slots** | Comma-separated slot indices or hyphenated ranges to stream | `0,1` or `0-3` |
-| **TCP Port** | Port for the TCP server (default 4011) | `4011` |
-| **Ring Buffer Size** | PCM frame buffer size; oldest frames dropped when full (default 128) | `256` |
-| **Bit Depth** | Sample bit depth: `16` (default) or `32` | `16` |
-
-### How It Works
-
-- The HLA reads slot frames from the upstream TdmAnalyzer LLA.
-- Audio sample rate is derived automatically from frame timing.
-- A TCP server runs on `127.0.0.1:<port>` accepting one client at a time.
-- On connect, a JSON handshake line is sent with format metadata (sample rate, channels, bit depth, slot list).
-- After the handshake, raw interleaved little-endian PCM follows continuously.
-- A ring buffer (deque) smooths timing; oldest frames are dropped if the client falls behind.
-- Error frames (short slot, bitclock error) produce silence rather than corrupted samples.
-
-### Companion CLI: tdm-audio-bridge
-
-The `tools/tdm-audio-bridge/` directory contains the companion playback tool.
-
-**Install:**
 ```bash
+# Install the companion tool
 pip install tools/tdm-audio-bridge/
+
+# Launch the GUI (or use the CLI: tdm-audio-bridge listen)
+tdm-audio-bridge gui
 ```
 
-**Requirements:** Python 3.8+, PortAudio (`apt install libportaudio2` on Linux,
-`brew install portaudio` on macOS, included with VB-CABLE on Windows).
-
-**Commands:**
-
-```bash
-# List available audio output devices
-tdm-audio-bridge devices
-
-# Connect and play (auto-configures from HLA handshake)
-tdm-audio-bridge listen
-
-# Play through a specific device
-tdm-audio-bridge listen --output "VB-Cable"
-
-# Use a non-default port
-tdm-audio-bridge listen --port 4012
-```
-
-The bridge auto-reconnects if the HLA restarts. Use `--no-reconnect` for
-single-shot operation.
-
-### Virtual Sound Cards
-
-To present TDM audio as a system audio device, use a virtual sound card:
-
-| Platform | Software | Channels |
-|----------|----------|----------|
-| Windows | [VB-CABLE](https://vb-audio.com/Cable/) | 8 (A+B) |
-| macOS | [BlackHole](https://github.com/ExistentialAudio/BlackHole) | 2, 16, or 64 |
-| Linux | PipeWire null-sink | 64+ |
-
-Point `tdm-audio-bridge listen --output <virtual-device>` at the virtual device,
-then select it as an input in your DAW, VoIP app, or audio player.
-
-### Test Harness
-
-The `tools/tdm-test-harness/` directory provides a standalone testing tool that
-drives the HLA without Logic 2 or hardware.
-
-**Install:**
-```bash
-pip install tools/tdm-test-harness/
-```
-
-**Commands:**
-
-```bash
-# Run automated verification (exit code 0 = pass, 1 = fail)
-tdm-test-harness verify --signal sine:440 --duration 0.5 --json
-
-# Serve a test signal for manual testing with tdm-audio-bridge
-tdm-test-harness serve --signal sine:440 --channels 2
-
-# Multi-channel, per-channel frequencies
-tdm-test-harness verify --signal sine:440,880 --channels 2 --json
-
-# 32-bit depth
-tdm-test-harness verify --signal ramp --bit-depth 32 --json
-
-# List available test signals
-tdm-test-harness signals
-```
+![GUI — disconnected](hla-audio-stream/pictures/gui_disconnected.png)
+![GUI — playing](hla-audio-stream/pictures/gui_playing.png)
 
 # Known Limitations
 
@@ -347,7 +191,7 @@ for workarounds and references.
 
 # Install instructions
 
-To install a pre-built analyzer, see Saleae’s guide:
+To install a pre-built analyzer, see Saleae's guide:
 [Installing a community shared protocol analyzer](https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer)
 
 # Building from source
@@ -391,7 +235,7 @@ cmake --build build-debug
 
 Logic 2 supports both Apple Silicon and Intel Macs natively, but universal binaries are **not supported** by the AnalyzerSDK. You must build for each architecture separately.
 
-Build for your Mac’s architecture (or both for distribution):
+Build for your Mac's architecture (or both for distribution):
 ```bash
 # Apple Silicon (arm64)
 cmake -B build/arm64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
@@ -426,7 +270,7 @@ The Logic 2 AppImage launches multiple processes. Your analyzer is loaded by a c
 1. Open Logic 2 and add the TDM analyzer (the shared library is loaded when the analyzer is added).
 2. Find the process that loaded the library:
    ```bash
-   ps aux | grep ‘Logic’ | awk ‘{print $2}’ | xargs -I % lsof -p % 2>/dev/null | grep libtdm_analyzer.so | awk ‘{print $2}’
+   ps aux | grep 'Logic' | awk '{print $2}' | xargs -I % lsof -p % 2>/dev/null | grep libtdm_analyzer.so | awk '{print $2}'
    ```
 3. Attach GDB:
    ```bash
@@ -439,3 +283,45 @@ If you get a "ptrace: Operation not permitted" error:
 ```bash
 sudo sysctl -w kernel.yama.ptrace_scope=0
 ```
+
+# Migration Guide
+
+## v2.1.0 — FrameV2 schema overhaul
+
+The FrameV2 schema was reworked for structured error reporting. HLA scripts that
+read decoded slot frames must update their field access:
+
+```python
+# Before (v2.0.0)
+channel = frame.data["channel"]           # integer, 0-based
+errors  = frame.data["errors"]            # string like "E: Short Slot E: Data Error "
+warnings = frame.data["warnings"]         # string like "W: Extra Slot "
+
+# After (v2.1.0+)
+slot     = frame.data["slot"]             # integer, 0-based (same value, renamed)
+severity = frame.data["severity"]         # "error", "warning", or "ok"
+is_short = frame.data["short_slot"]       # bool
+is_extra = frame.data["extra_slot"]       # bool
+is_bclk  = frame.data["bitclock_error"]   # bool
+is_miss  = frame.data["missed_data"]      # bool
+is_sync  = frame.data["missed_frame_sync"]  # bool
+low_rate = frame.data["low_sample_rate"]  # bool
+```
+
+A new `"advisory"` frame type (distinct from `"slot"`) is emitted as the first
+row when the capture sample rate is below 4x the bit clock.
+
+## v2.0.0 — FrameV2 key rename
+
+The `"frame #"` FrameV2 field has been renamed to `"frame_number"`.
+Update any HLA scripts that access this field:
+
+```python
+# Before (v1.x)
+frame_number = frame.data["frame #"]
+
+# After (v2.0+)
+frame_number = frame.data["frame_number"]
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.
