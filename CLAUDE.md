@@ -94,7 +94,7 @@ tdm-test-harness capture --port 4011 --duration 3 --skip 0.5 -o test.wav
 # Analyze for glitches, dropouts, and frequency accuracy
 tdm-test-harness analyze test.wav --freq 440
 
-# Full automated quality sweep across 9 configurations
+# Full automated quality sweep across 11 configurations
 tdm-test-harness quality-sweep
 ```
 
@@ -102,6 +102,23 @@ The `analyze` command uses sox to:
 - Verify the dominant frequency matches expected
 - Detect glitches via notch filter + windowed RMS (50ms windows, -40 dB threshold)
 - Detect dropouts via silence removal duration comparison
+
+### Quality sweep test suite (11 tests)
+
+1. Signal integrity: 24kHz, 44.1kHz, 48kHz, 96kHz mono 16-bit
+2. Multi-channel: stereo, 4-channel
+3. 32-bit depth
+4. Loop boundary: phase-perfect 440Hz sine (sox-generated), captures across 2+ boundaries, notch-filter verified — any detected glitch is a pipeline bug, not content mismatch
+5. Reconnection resilience: disconnect mid-stream, reconnect, verify clean handshake + data
+6. Buffer pressure: 32-frame ring buffer, verify data integrity (frame alignment, amplitude, sign balance) despite heavy overflow
+
+### Sender batching optimization
+
+The HLA's `_sender_loop` batches up to 1024 frames per `sendall()` call. Without batching, stereo streams generate 44100+ individual 4-byte TCP sends per second, starving the decode thread of GIL time.
+
+### WSL2 audio limitations
+
+Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. WSL2's WSLg/PulseAudio/RDP audio path produces ALSA underruns that are not pipeline bugs. For audio quality testing, use TCP capture (`tdm-test-harness capture`) which bypasses audio hardware entirely.
 
 ## Critical Patterns
 
