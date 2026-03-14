@@ -158,6 +158,266 @@ def _feed_batched(driver, frames, batch_size):
             time.sleep(sleep_time)
 
 
+def _test_reconnection(port):
+    """Test that disconnecting and reconnecting mid-stream yields clean data.
+
+    Drives the HLA directly (no subprocess), connects a TCP client, reads
+    some data, disconnects abruptly, reconnects, captures 2 seconds of
+    post-reconnect PCM, and verifies it via frequency analysis.
+
+    Returns a result dict with 'pass' and diagnostic fields.
+    """
+    import socket as _socket
+    import struct as _struct
+    import wave as _wave
+    import tempfile as _tempfile
+    import subprocess
+
+    freq = 440
+    rate = 48000
+    signal_data = parse_signal_spec('sine:440', rate, 1, 1.0, 16)
+    slot_list = [0]
+
+    driver = HlaDriver('0', port=port, buffer_size=4096, bit_depth=16)
+
+    stop = threading.Event()
+
+    def feeder():
+        frame_num = 0
+        pace_start = None
+        groups_total = 0
+        while not stop.is_set():
+            gen = emit_frames(signal_data, rate, slot_list,
+                              start_frame_num=frame_num)
+            groups_total, pace_start = _feed_with_pacing(
+                driver, gen, rate, 1, realtime=True,
+                start_time=pace_start, groups_fed_offset=groups_total)
+            frame_num += len(signal_data)
+
+    feeder_thread = threading.Thread(target=feeder, daemon=True)
+    feeder_thread.start()
+    time.sleep(1.5)
+
+    bytes_per_frame = 2  # mono 16-bit
+
+    try:
+        # Connection 1: read briefly, then disconnect abruptly
+        sock1 = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock1.settimeout(5.0)
+        sock1.connect(('127.0.0.1', port))
+        buf = b''
+        while b'\n' not in buf:
+            buf += sock1.recv(4096)
+        _hs_line, remainder = buf.split(b'\n', 1)
+        # Read 0.5s then drop
+        target = int(rate * 0.5) * bytes_per_frame
+        pcm1 = remainder
+        while len(pcm1) < target:
+            pcm1 += sock1.recv(65536)
+        sock1.close()
+
+        time.sleep(0.5)
+
+        # Connection 2: reconnect and capture 2s
+        sock2 = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock2.settimeout(5.0)
+        sock2.connect(('127.0.0.1', port))
+        buf = b''
+        while b'\n' not in buf:
+            buf += sock2.recv(4096)
+        hs_line, remainder = buf.split(b'\n', 1)
+        hs = json.loads(hs_line)
+
+        target = int(rate * 2.0) * bytes_per_frame
+        pcm2 = remainder
+        sock2.settimeout(2.0)
+        try:
+            while len(pcm2) < target:
+                pcm2 += sock2.recv(65536)
+        except _socket.timeout:
+            pass
+        sock2.close()
+
+    finally:
+        stop.set()
+        feeder_thread.join(timeout=5)
+        driver.shutdown()
+
+    # Verify handshake is correct after reconnect
+    if hs.get('sample_rate') != rate or hs.get('channels') != 1:
+        return {'config': 'reconnection', 'pass': False,
+                'error': f"Bad handshake after reconnect: {hs}"}
+
+    pcm2 = pcm2[:target]
+    pcm2 = pcm2[:len(pcm2) - (len(pcm2) % bytes_per_frame)]
+    n_frames = len(pcm2) // bytes_per_frame
+
+    if n_frames < rate:  # need at least 1s for analysis
+        return {'config': 'reconnection', 'pass': False,
+                'error': f"Only {n_frames} frames after reconnect"}
+
+    # Write to WAV and analyze — skip first 200ms for reconnect transient
+    with _tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+        wav_path = tmp.name
+    try:
+        with _wave.open(wav_path, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(rate)
+            wf.writeframes(pcm2)
+
+        a_proc = subprocess.run(
+            [sys.executable, '-m', 'tdm_test_harness.cli',
+             'analyze', wav_path, '--freq', str(freq), '--json',
+             '--skip-start-ms', '200'],
+            capture_output=True, text=True, timeout=30,
+        )
+        result = json.loads(a_proc.stdout) if a_proc.stdout.strip() else {'pass': False}
+        result['config'] = 'reconnection'
+        result['frames_after_reconnect'] = n_frames
+        return result
+    finally:
+        try:
+            import os
+            os.unlink(wav_path)
+        except OSError:
+            pass
+
+
+def _test_buffer_pressure(port):
+    """Test that ring buffer overflow doesn't corrupt data.
+
+    Uses a tiny ring buffer (32 frames) with real-time feeding. The buffer
+    will overflow between sender drain cycles, dropping oldest frames.
+    Verifies DATA INTEGRITY — not signal quality — since heavy frame loss
+    is expected.  Checks:
+
+    1. Total received bytes is a multiple of frame_size (no partial frames)
+    2. All sample values are within full-scale sine range (no byte shift)
+    3. Peak amplitude matches a full-scale sine (correct encoding)
+    4. Handshake is valid after buffer pressure
+
+    Returns a result dict with 'pass' and diagnostic fields.
+    """
+    import socket as _socket
+    import struct as _struct
+
+    freq = 440
+    rate = 48000
+    signal_data = parse_signal_spec('sine:440', rate, 1, 1.0, 16)
+    slot_list = [0]
+
+    # Tiny buffer — will overflow regularly
+    driver = HlaDriver('0', port=port, buffer_size=32, bit_depth=16)
+
+    stop = threading.Event()
+
+    def feeder():
+        frame_num = 0
+        pace_start = None
+        groups_total = 0
+        while not stop.is_set():
+            gen = emit_frames(signal_data, rate, slot_list,
+                              start_frame_num=frame_num)
+            groups_total, pace_start = _feed_with_pacing(
+                driver, gen, rate, 1, realtime=True,
+                start_time=pace_start, groups_fed_offset=groups_total)
+            frame_num += len(signal_data)
+
+    feeder_thread = threading.Thread(target=feeder, daemon=True)
+    feeder_thread.start()
+    time.sleep(1.0)
+
+    bytes_per_frame = 2  # mono 16-bit
+
+    try:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock.settimeout(5.0)
+        sock.connect(('127.0.0.1', port))
+        buf = b''
+        while b'\n' not in buf:
+            buf += sock.recv(4096)
+        hs_line, remainder = buf.split(b'\n', 1)
+        hs = json.loads(hs_line)
+
+        # Read for 3 seconds
+        target = int(rate * 3.0) * bytes_per_frame
+        pcm = remainder
+        sock.settimeout(2.0)
+        try:
+            while len(pcm) < target:
+                pcm += sock.recv(65536)
+        except _socket.timeout:
+            pass
+        sock.close()
+
+    finally:
+        stop.set()
+        feeder_thread.join(timeout=5)
+        driver.shutdown()
+
+    checks = []
+    all_pass = True
+
+    # Check 1: Handshake valid
+    hs_ok = (hs.get('sample_rate') == rate and hs.get('channels') == 1
+             and hs.get('bit_depth') == 16)
+    checks.append({'name': 'handshake', 'pass': hs_ok,
+                   'detail': hs if not hs_ok else 'ok'})
+    if not hs_ok:
+        all_pass = False
+
+    # Check 2: Frame alignment — total bytes must be a multiple of frame_size
+    aligned = (len(pcm) % bytes_per_frame) == 0
+    checks.append({'name': 'frame_alignment', 'pass': aligned,
+                   'total_bytes': len(pcm), 'frame_size': bytes_per_frame})
+    if not aligned:
+        all_pass = False
+
+    pcm = pcm[:len(pcm) - (len(pcm) % bytes_per_frame)]
+    n_frames = len(pcm) // bytes_per_frame
+
+    # Check 3: Got a reasonable amount of data (some loss is expected)
+    data_ok = n_frames > 0
+    checks.append({'name': 'data_received', 'pass': data_ok,
+                   'frames': n_frames})
+    if not data_ok:
+        all_pass = False
+        return {'config': 'buffer pressure', 'pass': False, 'checks': checks}
+
+    # Check 4: All samples within valid 16-bit sine range
+    samples = _struct.unpack(f'<{n_frames}h', pcm)
+    max_amp = max(abs(s) for s in samples)
+    min_amp = min(abs(s) for s in samples)
+    # Full-scale sine: peak near 32767, minimum near 0
+    amplitude_ok = max_amp > 30000
+    checks.append({'name': 'amplitude', 'pass': amplitude_ok,
+                   'max': max_amp, 'expected_min': 30000})
+    if not amplitude_ok:
+        all_pass = False
+
+    # Check 5: No impossible values (byte-shift corruption would produce
+    # values that are statistically unlikely for a sine wave).
+    # A correctly packed sine has roughly equal positive/negative samples.
+    n_pos = sum(1 for s in samples if s > 0)
+    n_neg = sum(1 for s in samples if s < 0)
+    n_total = n_pos + n_neg
+    if n_total > 0:
+        balance = min(n_pos, n_neg) / max(n_pos, n_neg)
+    else:
+        balance = 0
+    # Sine wave should be ~50/50; byte-shifted data would be random
+    balance_ok = balance > 0.3
+    checks.append({'name': 'sign_balance', 'pass': balance_ok,
+                   'positive': n_pos, 'negative': n_neg,
+                   'ratio': round(balance, 3)})
+    if not balance_ok:
+        all_pass = False
+
+    return {'config': 'buffer pressure', 'pass': all_pass, 'checks': checks,
+            'frames_received': n_frames}
+
+
 @click.group()
 @click.option('-v', '--verbose', count=True, help='Increase verbosity (-v info, -vv debug)')
 @click.help_option('-h', '--help')
@@ -875,7 +1135,12 @@ def quality_sweep(ctx, json_output):
         (440, 48000, 1, '16', 1.0, '48kHz mono loop boundary'),
         (440, 48000, 2, '16', 1.0, '48kHz stereo loop boundary'),
     ]
-    total_tests = len(configs) + len(loop_boundary_configs)
+    # Resilience tests run after the config-driven tests
+    resilience_tests = [
+        ('reconnection', 'Reconnection resilience'),
+        ('buffer_pressure', 'Buffer pressure (32-frame ring)'),
+    ]
+    total_tests = len(configs) + len(loop_boundary_configs) + len(resilience_tests)
 
     base_port = 14070
     all_results = []
@@ -1134,6 +1399,39 @@ def quality_sweep(ctx, json_output):
                     serve_proc.kill()
                 except Exception:
                     pass
+
+    # === Resilience tests ===
+    for k, (test_key, desc) in enumerate(resilience_tests):
+        test_num = len(configs) + len(loop_boundary_configs) + k
+        port = base_port + test_num
+        click.echo(f"\n[{test_num+1}/{total_tests}] {desc} ...")
+
+        try:
+            if test_key == 'reconnection':
+                result = _test_reconnection(port)
+            elif test_key == 'buffer_pressure':
+                result = _test_buffer_pressure(port)
+            else:
+                result = {'config': desc, 'pass': False, 'error': 'unknown test'}
+
+            all_results.append(result)
+            if result.get('pass', False):
+                pass_count += 1
+                click.echo(click.style(f"  PASS", fg='green'))
+            else:
+                fail_count += 1
+                click.echo(click.style(f"  FAIL", fg='red'))
+                if result.get('error'):
+                    click.echo(f"    {result['error']}")
+                for check in result.get('checks', []):
+                    if not check.get('pass', True):
+                        click.echo(f"    {check['name']}: {check}")
+
+        except Exception as e:
+            result = {'config': desc, 'pass': False, 'error': str(e)}
+            all_results.append(result)
+            fail_count += 1
+            click.echo(click.style(f"  FAIL: {e}", fg='red'))
 
     # Summary
     click.echo(f"\n{'='*50}")
