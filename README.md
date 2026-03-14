@@ -167,7 +167,7 @@ documentation, platform-specific setup, test harness, and debugging tips.
 **Quick start:**
 
 ```bash
-# Install the companion tool
+# Install the companion tool (from the repo root or release zip root)
 pip install tools/tdm-audio-bridge/
 
 # Launch the GUI (or use the CLI: tdm-audio-bridge listen)

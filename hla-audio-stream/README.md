@@ -106,7 +106,8 @@ Add it to your analyzer chain after the **TdmAnalyzer** LLA.
 
 **Prerequisites:** Python 3.8+ and PortAudio.
 
-Install PortAudio first (platform-specific), then install the bridge:
+Install PortAudio first (platform-specific), then install the bridge from the
+repository root (or the root of the release zip):
 
 #### Linux
 

@@ -65,15 +65,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: download individual builds
       uses: actions/download-artifact@v4
       with:
         path: ${{github.workspace}}/artifacts
-    - name: bundle HLAs and tools
+    - name: generate version and bundle HLAs and tools
       run: |
-        cp -r ${{github.workspace}}/hla ${{github.workspace}}/artifacts/hla
-        cp -r ${{github.workspace}}/hla-audio-stream ${{github.workspace}}/artifacts/hla-audio-stream
-        cp -r ${{github.workspace}}/tools ${{github.workspace}}/artifacts/tools
+        python3 ${{github.workspace}}/tools/tdm-audio-bridge/gen_version.py
+        rsync -a --exclude='__pycache__' --exclude='*.egg-info' --exclude='build/' \
+          ${{github.workspace}}/hla/ ${{github.workspace}}/artifacts/hla/
+        rsync -a --exclude='__pycache__' --exclude='*.egg-info' --exclude='build/' \
+          ${{github.workspace}}/hla-audio-stream/ ${{github.workspace}}/artifacts/hla-audio-stream/
+        rsync -a --exclude='__pycache__' --exclude='*.egg-info' --exclude='build/' \
+          ${{github.workspace}}/tools/ ${{github.workspace}}/artifacts/tools/
+        cp ${{github.workspace}}/README.md ${{github.workspace}}/artifacts/
+        cp ${{github.workspace}}/LICENSE ${{github.workspace}}/artifacts/
     - name: zip
       run: |
         cd ${{github.workspace}}/artifacts
