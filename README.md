@@ -171,6 +171,8 @@ extensions on top of the TdmAnalyzer.
 Exports selected TDM slots to a WAV file in real time during capture. This is
 separate from the built-in LLA export — the HLA approach allows slot selection
 and writes incrementally during capture rather than as a post-capture step.
+Note: requires a standard (non-looping) capture — see
+[Known Limitations](#known-limitations).
 
 See the [TDM WAV Export README](hla-wav-export/README.md) for full documentation.
 
@@ -185,7 +187,8 @@ See the [TDM WAV Export README](hla-wav-export/README.md) for full documentation
 
 Streams selected TDM slots as live PCM audio over TCP. A companion CLI tool
 and GUI connect to the stream and play it through any audio output device —
-hear decoded TDM audio in real time.
+hear decoded TDM audio in real time. Note: requires a standard (non-looping)
+capture — see [Known Limitations](#known-limitations).
 
 See the [TDM Audio Stream README](hla-audio-stream/README.md) for full
 documentation, platform-specific setup, test harness, and debugging tips.
