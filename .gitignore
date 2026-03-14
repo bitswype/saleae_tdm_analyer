@@ -6,3 +6,4 @@
 **.vscode-ctags
 __pycache__/
 *.egg-info/
+_version.py
