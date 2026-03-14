@@ -64,10 +64,16 @@ jobs:
     needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
+    - uses: actions/checkout@v4
     - name: download individual builds
       uses: actions/download-artifact@v4
       with:
         path: ${{github.workspace}}/artifacts
+    - name: bundle HLAs and tools
+      run: |
+        cp -r ${{github.workspace}}/hla ${{github.workspace}}/artifacts/hla
+        cp -r ${{github.workspace}}/hla-audio-stream ${{github.workspace}}/artifacts/hla-audio-stream
+        cp -r ${{github.workspace}}/tools ${{github.workspace}}/artifacts/tools
     - name: zip
       run: |
         cd ${{github.workspace}}/artifacts
