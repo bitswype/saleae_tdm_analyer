@@ -205,7 +205,13 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._handshake_sent = False
 
     def _sender_loop(self):
-        """Background thread: drain ring buffer to connected client."""
+        """Background thread: drain ring buffer to connected client.
+
+        Batches multiple frames into a single sendall() call to reduce
+        per-frame overhead (lock acquisitions, syscalls, TCP packets).
+        Without batching, stereo streams generate 44100+ individual 4-byte
+        sends per second, which starves the decode thread of GIL time.
+        """
         while not self._shutdown.is_set():
             self._wake_event.wait(timeout=0.1)
             self._wake_event.clear()
@@ -214,7 +220,13 @@ class TdmAudioStream(HighLevelAnalyzer):
                 with self._ring_lock:
                     if not self._ring:
                         break
-                    frame_bytes = self._ring.popleft()
+                    # Drain up to 1024 frames in one lock acquisition
+                    batch = []
+                    while self._ring and len(batch) < 1024:
+                        batch.append(self._ring.popleft())
+
+                if not batch:
+                    break
 
                 with self._client_lock:
                     client = self._current_client
@@ -222,7 +234,7 @@ class TdmAudioStream(HighLevelAnalyzer):
                         continue
 
                 try:
-                    client.sendall(frame_bytes)
+                    client.sendall(b''.join(batch))
                 except (OSError, BrokenPipeError):
                     with self._client_lock:
                         self._current_client = None
