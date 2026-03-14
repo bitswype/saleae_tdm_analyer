@@ -21,6 +21,20 @@ tdm-audio-bridge listen
 The bridge auto-detects sample rate, channels, and bit depth from the HLA
 handshake — no manual configuration needed.
 
+### GUI Mode
+
+For a no-terminal experience, launch the graphical interface:
+
+```bash
+tdm-audio-bridge gui
+```
+
+On Windows, `tdm-audio-bridge-gui.exe` (installed by pip) can be
+double-clicked directly — no console window appears.
+
+![GUI — disconnected](pictures/gui_disconnected.png)
+![GUI — playing](pictures/gui_playing.png)
+
 ## How It Works
 
 ```
