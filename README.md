@@ -10,12 +10,11 @@ A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and 
 
 ## Table of Contents
 
-- [Features](#features)
-- [Advanced Analysis Features](#advanced-analysis-features)
-- [Settings](#settings)
-  - [Supported Errors and Warnings](#supported-errors-and-warnings)
-  - [Flag values](#flag-values)
-- [Exporting data as a wave file](#exporting-data-as-a-wave-file)
+- [Low Level Analyzer (LLA)](#low-level-analyzer-lla)
+  - [Features](#features)
+  - [Advanced Analysis Features](#advanced-analysis-features)
+  - [Settings](#settings)
+  - [Exporting data as a wave file](#exporting-data-as-a-wave-file)
 - [High Level Analyzers (HLAs)](#high-level-analyzers-hlas)
   - [HLA: TDM WAV Export](#hla-tdm-wav-export)
   - [HLA: TDM Audio Stream](#hla-tdm-audio-stream)
@@ -25,7 +24,12 @@ A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and 
 - [Debugging on Linux](#debugging-on-linux)
 - [Migration Guide](#migration-guide)
 
-# Features
+# Low Level Analyzer (LLA)
+
+The C++ LLA plugin decodes raw TDM signals — bitclock, frame sync, and serial
+data — into structured slot frames with full error detection.
+
+## Features
 
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
@@ -44,16 +48,16 @@ A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and 
 - Generates warnings for truncated slots
 - Searchable warnings and errors in protocol table
 
-# Advanced Analysis Features
+## Advanced Analysis Features
 - Checks for bitclock discrepancies and generates an error
 - Identifies and marks slots with data changing that is not captured by the bitclock
 - Identifies and marks missed frame sync pulses
 
-# Settings
+## Settings
 
 ![Analyzer settings](pictures/analyzer_settings.PNG)
 
-## Supported Errors and Warnings
+### Supported Errors and Warnings
 
 _Note:_ Certain errors and warnings are only available with the `Advanced analysis` option enabled in the analyzer settings.  When advanced analysis is not enabled, each slot will show the sampled bits when zoomed in.  Due to the other markers placed on the serial data, these bits are not shown when advanced analysis is enabled.
 
@@ -63,35 +67,35 @@ _Note:_ Certain errors and warnings are only available with the `Advanced analys
  - `E:` to find errors
  - `W:` to find warnings
 
-### E: Short Slot
+#### E: Short Slot
   - Available all the time
   - Flag `0x08`
   - The expected number of bits for the slot were not captured.  This will occur even if the missing bits are not data bits.  For example, if the expected number of bits per slot is 32, and there are 16 left justified data bits in the slot, you will receive a warning if anything less than 32 bits is counted for the slot.  This error will only ever occur on the last slot of a frame.
 
 ![Example of a short slot error](pictures/short_slot.PNG)
 
-### E: Data Error
+#### E: Data Error
   - Only Available if the `Advanced analysis` option is enabled.
   - Flag `0x04`
   - If the serial data transitions twice between valid bitclock edges (meaning the data change is not detected either bitclock edge), there may be missed data.  The slot will be flagged and a marker will be placed on the suspect data.
 
 ![Example of a data error with marker](pictures/data_error.PNG)
 
-### E: Frame Sync Missed
+#### E: Frame Sync Missed
   - Only Available if the `Advanced analysis` option is enabled.
   - Flag `0x10`
   - The frame sync transitioned twice between valid bitclock edges and a new frame was not detected.  The slot will be flagged and a marker will be placed on the suspect frame sync.
 
 ![Example of a missed frame sync with marker](pictures/missed_framesync.PNG)
 
-### E: Bitclock Error
+#### E: Bitclock Error
   - Only Available if the `Advanced analysis` option is enabled.
   - Flag `0x20`
   - Using the sample rate, number of slots per frame, and slot size, an expected bitclock rate is calculated.  If the bitclock varies outside of this expected frequency by more than 1 Logic analyzer sample, the slot is flagged.
 
 ![Example of a bitclock error](pictures/bitclock_error.PNG)
 
-### W: Extra Slot
+#### W: Extra Slot
   - Available all the time
   - Flag `0x02`
   - If a frame sync has not occurred and the number of slots has increased beyond the number of slots in the analyzer settings, this warning will be placed on all slots greater than the expected number of slots.
@@ -100,7 +104,7 @@ _Note:_ Certain errors and warnings are only available with the `Advanced analys
 
 _Note:_ These errors can also occur because of misconfiguration of the analyzer settings.
 
-## Flag values
+### Flag values
 
 When exporting data as a CSV / TXT file, there will be a flag field.  The flags are defined as:
 
@@ -114,7 +118,7 @@ WARNING                 ( 1 << 6 ) // 0x40
 ERROR                   ( 1 << 7 ) // 0x80
 ```
 
-# Exporting data as a wave file
+## Exporting data as a wave file
 
 Logic 2 does not support custom export types for Low Level Analyzers — the only export mechanism available to analyzer plugins is the `TXT/CSV` export path. This is a confirmed Saleae design decision, not a temporary limitation. This analyzer works around this by adding an export format selector in the analyzer settings: the "Export to TXT/CSV" action produces either CSV or WAV output based on that setting. To export the captured data as a wave file, follow these steps:
 
@@ -123,7 +127,7 @@ Logic 2 does not support custom export types for Low Level Analyzers — the onl
 1. When analysis is complete, click on the three dots next to the analyzer and select "Export to TXT/CSV" ![exporting data](pictures/export_data.PNG)
 1. Once the file is written, the contents of the file will be set based on the export file type in the analyzer settings, but the extension will always be either `.txt` or `.csv` depending on what you selected when you saved the file.  _You must change the extension yourself after the data is exported._
 
-### Things to be aware of when exporting a wav file
+#### Things to be aware of when exporting a wav file
 
 - The sample rate for the exported wave file is set from the sample rate in the analyzer settings
 - The number of channels is set from the number of slots in the analyzer settings.
