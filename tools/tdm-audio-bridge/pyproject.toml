@@ -10,3 +10,6 @@ dependencies = ["click>=8.0", "sounddevice>=0.4", "numpy>=1.20"]
 
 [project.scripts]
 tdm-audio-bridge = "tdm_audio_bridge.cli:main"
+
+[project.gui-scripts]
+tdm-audio-bridge-gui = "tdm_audio_bridge.gui:launch"

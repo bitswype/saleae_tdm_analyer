@@ -14,12 +14,18 @@ import click
 from .client import StreamClient
 from .player import Player, list_output_devices, find_device
 
+try:
+    from ._version import VERSION as __version__
+except ImportError:
+    __version__ = 'unknown'
+
 log = logging.getLogger('tdm-audio-bridge')
 
 
 @click.group()
 @click.option('-v', '--verbose', count=True,
               help='Increase verbosity (-v info, -vv debug)')
+@click.version_option(__version__, '-V', '--version')
 @click.help_option('-h', '--help')
 @click.pass_context
 def cli(ctx, verbose):
@@ -34,6 +40,7 @@ def cli(ctx, verbose):
         level=level,
         format='%(levelname)s: %(message)s',
     )
+    log.info('tdm-audio-bridge %s', __version__)
     ctx.ensure_object(dict)
     ctx.obj['verbose'] = verbose
 
@@ -102,7 +109,7 @@ def listen(host, port, output_device, latency, no_reconnect):
         with player_lock:
             if player is not None:
                 player.feed(data)
-                if not playing_announced and player._started:
+                if not playing_announced and player.is_playing:
                     playing_announced = True
                     click.echo("Playing...")
 
@@ -167,6 +174,24 @@ def devices():
         click.echo(f"  [{d['index']:2d}] {d['name']} ({d['max_channels']} ch)")
     click.echo("")
     click.echo("Use --output <index> or --output <name> with 'listen'.")
+
+
+@cli.command('gui')
+@click.option('--host', default='127.0.0.1', help='HLA TCP server host')
+@click.option('--port', default=4011, type=int, help='HLA TCP server port')
+@click.help_option('-h', '--help')
+def gui_cmd(host, port):
+    """Launch the graphical interface.
+
+    Opens a window for connecting to the HLA and playing audio without
+    a terminal. All settings are configured through the GUI.
+    """
+    from .gui import launch
+    try:
+        launch(host=host, port=port)
+    except RuntimeError as e:
+        click.echo(click.style(f"Error: {e}", fg='red'), err=True)
+        sys.exit(1)
 
 
 def main():
