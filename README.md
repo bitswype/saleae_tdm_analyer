@@ -3,8 +3,6 @@
 TDM Analyzer for decoding TDM data with Saleae Logic 2. Includes two High Level
 Analyzers for audio export and live streaming.
 
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/bitswype)
-
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
 
@@ -28,6 +26,8 @@ Analyzers for audio export and live streaming.
 - Checks for bitclock discrepancies and generates an error
 - Identifies and marks slots with data changing that is not captured by the bitclock
 - Identifies and marks missed frame sync pulses
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/bitswype)
 
 # Settings
 
