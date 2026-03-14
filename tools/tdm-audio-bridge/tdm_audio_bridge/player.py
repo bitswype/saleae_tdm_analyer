@@ -113,6 +113,15 @@ class Player:
     def underruns(self):
         return self._underruns
 
+    @property
+    def is_playing(self):
+        return self._started
+
+    @property
+    def buffer_level(self):
+        with self._lock:
+            return len(self._buf) / max(self._prebuffer_bytes, 1)
+
     def start(self):
         """Mark the player as ready to start.
 
