@@ -42,7 +42,7 @@ Correctly decode TDM audio data from logic analyzer captures with confidence tha
 
 ### Active (v1.5)
 
-- [ ] Python HLA (`hla/`) — slot-filtered WAV export from TDM captures — v1.5
+- [ ] Python HLA (`hla-wav-export/`) — slot-filtered WAV export from TDM captures — v1.5
 - [ ] HLA settings UI: slots (comma/range), output_path (absolute), bit_depth (16/32) — v1.5
 - [ ] WAV writing via Python `wave` module with periodic header refresh — v1.5
 - [ ] README section: HLA installation and usage — v1.5

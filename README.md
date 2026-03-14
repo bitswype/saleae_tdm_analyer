@@ -146,11 +146,11 @@ Exports selected TDM slots to a WAV file in real time during capture. This is
 separate from the built-in LLA export — the HLA approach allows slot selection
 and writes incrementally during capture rather than as a post-capture step.
 
-See the [TDM WAV Export README](hla/README.md) for full documentation.
+See the [TDM WAV Export README](hla-wav-export/README.md) for full documentation.
 
 **Quick start:**
 
-1. Load the extension in Logic 2 (Extensions → Load Existing Extension → `hla/`)
+1. Load the extension in Logic 2 (Extensions → Load Existing Extension → `hla-wav-export/`)
 2. Add **"TDM WAV Export"** after the TdmAnalyzer LLA
 3. Configure slots, output path, and bit depth
 4. Start capturing — the WAV file is written in real time

@@ -11,7 +11,7 @@ than requiring a post-capture export step.
 
 1. In Logic 2, open the **Extensions** panel (right sidebar).
 2. Click the **three-dots** menu icon → **"Load Existing Extension..."**.
-3. Navigate to the `hla/` folder and select `extension.json`.
+3. Navigate to the `hla-wav-export/` folder and select `extension.json`.
 4. Add **"TDM WAV Export"** to your analyzer chain after the **TdmAnalyzer** LLA.
 5. Configure the settings (slots, output path, bit depth).
 6. Start capturing — the WAV file is written as frames arrive.
@@ -141,7 +141,7 @@ TdmWavExport HLA (decode)
 The module includes a self-test that runs outside Logic 2:
 
 ```bash
-cd hla && python TdmWavExport.py
+cd hla-wav-export && python TdmWavExport.py
 ```
 
 This verifies slot parsing, signed conversion, sample rate derivation, and

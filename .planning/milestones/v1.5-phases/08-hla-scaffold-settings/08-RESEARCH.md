@@ -9,9 +9,9 @@
 
 | ID | Description | Research Support |
 |----|-------------|-----------------|
-| REQ-01 | HLA lives in `hla/` subdirectory of this repository | Directory structure pattern confirmed — standard single-dir layout |
-| REQ-02 | `hla/` contains a valid `extension.json` so Logic 2 can load it | extension.json schema fully documented with exact required fields |
-| REQ-03 | User installs by adding `hla/` as a custom extension directory in Logic 2 preferences | UI flow confirmed: Extensions panel → three-dots menu → "Load Existing Extension" → select extension.json |
+| REQ-01 | HLA lives in `hla-wav-export/` subdirectory of this repository | Directory structure pattern confirmed — standard single-dir layout |
+| REQ-02 | `hla-wav-export/` contains a valid `extension.json` so Logic 2 can load it | extension.json schema fully documented with exact required fields |
+| REQ-03 | User installs by adding `hla-wav-export/` as a custom extension directory in Logic 2 preferences | UI flow confirmed: Extensions panel → three-dots menu → "Load Existing Extension" → select extension.json |
 | REQ-04 | HLA appears in Logic 2 as "TDM WAV Export" in the analyzer chain | The `name` field in extensions.json top-level and extensions key controls the displayed name |
 | REQ-05 | HLA exposes a `slots` setting — comma-separated or range notation | Use `StringSetting(label='Slots (e.g. 0,2,4 or 0-3)')` — parsing happens in `__init__` |
 | REQ-06 | HLA exposes an `output_path` setting — absolute path to the desired WAV file | Use `StringSetting(label='Output Path (absolute)')` |
@@ -26,7 +26,7 @@ The TDM LLA already emits FrameV2 frames with a well-defined schema. From readin
 
 For Phase 8 (scaffold only), the `decode()` method can return `None` for all frames — the goal is to verify the extension loads cleanly. The settings must be declared at class level so Logic 2 can surface them in the UI. The `output_path` and `slots` settings must be `StringSetting` because they accept free-form text; `bit_depth` must be `ChoicesSetting` to constrain valid inputs to `"16"` and `"32"`. Defaults cannot be set via constructor kwargs; they require the `.default` attribute pattern post-construction.
 
-**Primary recommendation:** Create `hla/extension.json` + `hla/TdmWavExport.py` with the exact schema shown below. Verify the HLA loads in Logic 2 by adding it via Extensions panel → three-dots → "Load Existing Extension" and selecting the `extension.json` file.
+**Primary recommendation:** Create `hla-wav-export/extension.json` + `hla-wav-export/TdmWavExport.py` with the exact schema shown below. Verify the HLA loads in Logic 2 by adding it via Extensions panel → three-dots → "Load Existing Extension" and selecting the `extension.json` file.
 
 ## Standard Stack
 
@@ -54,7 +54,7 @@ For Phase 8 (scaffold only), the `decode()` method can return `None` for all fra
 
 ### Recommended Project Structure
 ```
-hla/
+hla-wav-export/
 ├── extension.json        # Extension metadata and entry point registration
 └── TdmWavExport.py       # Single Python file containing the HLA class
 ```
@@ -169,7 +169,7 @@ entryPoint: "TdmWavExport.TdmWavExport"
 
 ### Anti-Patterns to Avoid
 
-- **Relative imports in HLA Python file:** The HLA file runs in Logic 2's embedded Python context with `hla/` as the working directory. Standard relative imports work only for sibling files in `hla/`. Do not import from the project root or `src/`.
+- **Relative imports in HLA Python file:** The HLA file runs in Logic 2's embedded Python context with `hla-wav-export/` as the working directory. Standard relative imports work only for sibling files in `hla-wav-export/`. Do not import from the project root or `src/`.
 - **Using `NumberSetting` for bit_depth:** `NumberSetting` accepts any float in range; user could enter 24 which the WAV writer won't support. Use `ChoicesSetting` to constrain to exactly `"16"` or `"32"`.
 - **Non-absolute output_path:** Logic 2's working directory is unpredictable. Relative paths in `output_path` will resolve to somewhere inside the Logic 2 app bundle, not the user's home directory. The `__init__` method must validate the path is absolute.
 - **ChoicesSetting with keyword-only choices list:** From the API docs, `ChoicesSetting(choices, **kwargs)` — `choices` is the first positional argument. The correct form is `ChoicesSetting(['16', '32'], label='Bit Depth')`, NOT `ChoicesSetting(choices=['16', '32'], label='Bit Depth')` (untested whether kwargs form works).
@@ -270,7 +270,7 @@ def decode(self, frame: AnalyzerFrame):
 2. Click the **Extensions** panel icon (right sidebar)
 3. Click the **three-dots (...)** menu icon in the Extensions panel header
 4. Select **"Load Existing Extension..."**
-5. Navigate to `hla/extension.json` and select it
+5. Navigate to `hla-wav-export/extension.json` and select it
 6. The extension appears in the Extensions list as "TDM WAV Export"
 7. Add a TDM analyzer to a capture, then add "TDM WAV Export" as a downstream HLA
 

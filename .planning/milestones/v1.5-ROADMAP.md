@@ -34,14 +34,14 @@ Phase 7: RF64 WAV Export — RF64 handler and conditional dispatch for >4 GiB ex
 ## v1.5 Python HLA WAV Companion
 
 ### Phase 8: HLA Scaffold & Settings
-Set up the `hla/` directory as a valid Logic 2 extension. Create `extension.json`, the main Python class skeleton, and settings definitions (slots, output_path, bit_depth). Verify the HLA loads in Logic 2 without errors.
+Set up the `hla-wav-export/` directory as a valid Logic 2 extension. Create `extension.json`, the main Python class skeleton, and settings definitions (slots, output_path, bit_depth). Verify the HLA loads in Logic 2 without errors.
 
-**Deliverables:** `hla/extension.json`, `hla/TdmWavExport.py` (skeleton), settings wired to Logic 2 UI
+**Deliverables:** `hla-wav-export/extension.json`, `hla-wav-export/TdmWavExport.py` (skeleton), settings wired to Logic 2 UI
 
 **Plans:** 1/1 plans complete
 
 Plans:
-- [x] 08-01-PLAN.md — Create hla/extension.json and TdmWavExport.py scaffold with settings
+- [x] 08-01-PLAN.md — Create hla-wav-export/extension.json and TdmWavExport.py scaffold with settings
 
 ### Phase 9: Core WAV Writing
 Implement slot filtering from the settings, WAV file creation and writing using Python's `wave` module, and periodic header refresh so partial captures are recoverable.
@@ -56,7 +56,7 @@ Plans:
 ### Phase 10: Error Handling & Documentation
 Harden error paths (invalid slots, missing output path, LLA error frames), update README with HLA installation and usage instructions.
 
-**Deliverables:** Error frame emission, graceful error frame handling, README `hla/` section
+**Deliverables:** Error frame emission, graceful error frame handling, README `hla-wav-export/` section
 
 **Plans:** 1/1 plans complete
 
@@ -66,7 +66,7 @@ Plans:
 ### Phase 11: Fix WAV Sample Ordering Bug
 Fix the accumulate-before-flush ordering bug in `decode()` where the incoming slot's sample data is written to the accumulator before `_try_flush()` reads it, causing every WAV output frame's first-arriving slot to carry data from the next TDM frame instead of the current one. Also update REQ-08 through REQ-15 checkboxes in REQUIREMENTS.md.
 
-**Deliverables:** Corrected `decode()` in `hla/TdmWavExport.py`, updated REQUIREMENTS.md traceability
+**Deliverables:** Corrected `decode()` in `hla-wav-export/TdmWavExport.py`, updated REQUIREMENTS.md traceability
 
 **Gap Closure:** Closes REQ-15 gap from v1.5 audit
 

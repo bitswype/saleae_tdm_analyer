@@ -7,7 +7,7 @@ tags: [python, logic2, hla, wav, error-handling, documentation]
 # Dependency graph
 requires:
   - phase: 09-core-wav-writing
-    provides: hla/TdmWavExport.py with full decode() WAV writing machinery
+    provides: hla-wav-export/TdmWavExport.py with full decode() WAV writing machinery
 
 provides:
   - Hardened TdmWavExport __init__ with deferred-error pattern (self._init_error)
@@ -27,7 +27,7 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - hla/TdmWavExport.py
+    - hla-wav-export/TdmWavExport.py
     - README.md
 
 key-decisions:
@@ -76,7 +76,7 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 
-- `/home/chris/gitrepos/saleae_tdm_analyer/hla/TdmWavExport.py` - Added import os, self._init_error deferred-error pattern in __init__, deferred error emission at top of decode(), frame.data.get('data', 0) defensive guard, updated decode() docstring
+- `/home/chris/gitrepos/saleae_tdm_analyer/hla-wav-export/TdmWavExport.py` - Added import os, self._init_error deferred-error pattern in __init__, deferred error emission at top of decode(), frame.data.get('data', 0) defensive guard, updated decode() docstring
 - `/home/chris/gitrepos/saleae_tdm_analyer/README.md` - Added ## HLA: TDM WAV Export section with Installation, Settings table, Absolute Paths Required, and How It Works subsections
 
 ## Decisions Made
@@ -102,7 +102,7 @@ None - no external service configuration required.
 
 - Phase 10 Plan 01 is the final plan of the v1.5 milestone.
 - All v1.5 requirements addressed: REQ-03, REQ-16 through REQ-22.
-- hla/TdmWavExport.py is production-ready: error paths hardened, WAV writing tested, documentation complete.
+- hla-wav-export/TdmWavExport.py is production-ready: error paths hardened, WAV writing tested, documentation complete.
 - README covers HLA installation and usage for end users.
 
 ---

@@ -75,7 +75,7 @@ jobs:
       run: |
         python3 ${{github.workspace}}/tools/tdm-audio-bridge/gen_version.py
         rsync -a --exclude='__pycache__' --exclude='*.egg-info' --exclude='build/' \
-          ${{github.workspace}}/hla/ ${{github.workspace}}/artifacts/hla/
+          ${{github.workspace}}/hla-wav-export/ ${{github.workspace}}/artifacts/hla-wav-export/
         rsync -a --exclude='__pycache__' --exclude='*.egg-info' --exclude='build/' \
           ${{github.workspace}}/hla-audio-stream/ ${{github.workspace}}/artifacts/hla-audio-stream/
         rsync -a --exclude='__pycache__' --exclude='*.egg-info' --exclude='build/' \

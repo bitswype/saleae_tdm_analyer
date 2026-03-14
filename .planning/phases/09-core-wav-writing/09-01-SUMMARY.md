@@ -29,7 +29,7 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - hla/TdmWavExport.py
+    - hla-wav-export/TdmWavExport.py
 
 key-decisions:
   - "Import guard (try/except ImportError) added for saleae.analyzers — allows self-test via plain python3 without Logic 2's embedded runtime"
@@ -80,11 +80,11 @@ Note: Both tasks were implemented in a single write operation, so they share one
 
 ## Files Created/Modified
 
-- `hla/TdmWavExport.py` - Full Phase 9 implementation: parse_slot_spec, _as_signed, _open_wav, _try_derive_sample_rate, _write_wav_frame, _try_flush, complete decode(), ImportError guard for standalone testing
+- `hla-wav-export/TdmWavExport.py` - Full Phase 9 implementation: parse_slot_spec, _as_signed, _open_wav, _try_derive_sample_rate, _write_wav_frame, _try_flush, complete decode(), ImportError guard for standalone testing
 
 ## Decisions Made
 
-- Added try/except ImportError guard around the saleae.analyzers import — the plan's verify step calls `python3 hla/TdmWavExport.py` outside Logic 2's embedded runtime, so stubs are needed for standalone self-testing. Stubs are minimal and only activate when the real module is absent.
+- Added try/except ImportError guard around the saleae.analyzers import — the plan's verify step calls `python3 hla-wav-export/TdmWavExport.py` outside Logic 2's embedded runtime, so stubs are needed for standalone self-testing. Stubs are minimal and only activate when the real module is absent.
 - Used dict.fromkeys() instead of sorted(set()) for deduplication in parse_slot_spec — preserves the user's channel ordering (REQ-09) rather than sorting ascending.
 
 ## Deviations from Plan
@@ -93,10 +93,10 @@ Note: Both tasks were implemented in a single write operation, so they share one
 
 **1. [Rule 3 - Blocking] Added ImportError guard for saleae.analyzers imports**
 - **Found during:** Task 1 (parse_slot_spec and _as_signed)
-- **Issue:** The plan's automated verify step (`python3 hla/TdmWavExport.py`) runs outside Logic 2's embedded Python runtime, where `saleae.analyzers` is not available, causing ModuleNotFoundError before any test could run
+- **Issue:** The plan's automated verify step (`python3 hla-wav-export/TdmWavExport.py`) runs outside Logic 2's embedded Python runtime, where `saleae.analyzers` is not available, causing ModuleNotFoundError before any test could run
 - **Fix:** Added try/except ImportError block at the top of the file with minimal stubs (HighLevelAnalyzer, AnalyzerFrame, StringSetting, ChoicesSetting) so the module can be imported and self-tests executed with plain python3
-- **Files modified:** hla/TdmWavExport.py
-- **Verification:** `python3 hla/TdmWavExport.py` exits 0 with "All self-tests passed."
+- **Files modified:** hla-wav-export/TdmWavExport.py
+- **Verification:** `python3 hla-wav-export/TdmWavExport.py` exits 0 with "All self-tests passed."
 - **Committed in:** 71bab79 (Task 1 commit)
 
 ---
@@ -114,7 +114,7 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- Phase 9 Plan 01 complete — hla/TdmWavExport.py is now a functional Logic 2 HLA that writes multi-channel PCM WAV files
+- Phase 9 Plan 01 complete — hla-wav-export/TdmWavExport.py is now a functional Logic 2 HLA that writes multi-channel PCM WAV files
 - Phase 10 (Error Handling & Docs) can proceed — all core WAV writing logic is in place
 - Open concerns noted in research: sample rate precision at very high sample rates (GraphTime float() precision), and the last partial TDM frame at capture end is silently dropped (documented and accepted per research notes)
 

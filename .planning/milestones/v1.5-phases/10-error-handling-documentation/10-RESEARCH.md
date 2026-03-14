@@ -12,7 +12,7 @@ Phase 10 has two independent sub-domains: (1) hardening the HLA error paths so t
 
 The HLA's `result_types` dict already declares `'error'` and `'status'` frame types, and `AnalyzerFrame(type, start_time, end_time, data)` is the only constructor available. The challenge for error surface is that `__init__` runs before any frames arrive — if `parse_slot_spec` raises there, Logic 2 shows a generic crash rather than a readable error. The correct pattern is to catch exceptions in `__init__`, store an error message, and then emit an `AnalyzerFrame('error', ...)` on the very first call to `decode()`. This is the standard Saleae HLA error pattern and is used in official Saleae examples.
 
-For the README, the install mechanic is: Extensions panel -> three-dots menu -> "Load Existing Extension..." -> navigate to `hla/` -> select `extension.json`. This is a single-step load; no separate directory preference is needed. The README section should cover: install, settings (slots, output_path, bit_depth), absolute path requirement, and a worked example.
+For the README, the install mechanic is: Extensions panel -> three-dots menu -> "Load Existing Extension..." -> navigate to `hla-wav-export/` -> select `extension.json`. This is a single-step load; no separate directory preference is needed. The README section should cover: install, settings (slots, output_path, bit_depth), absolute path requirement, and a worked example.
 
 **Primary recommendation:** Wrap `__init__` logic in try/except; emit a deferred `AnalyzerFrame('error', ...)` on first `decode()` call if init failed. Handle LLA error frames (severity field, short_slot, bitclock_error) as silence already done in Phase 9 — verify REQ-18 and REQ-19 are fully covered. Write README `## HLA: TDM WAV Export` section covering REQ-20, REQ-21, REQ-22.
 
@@ -236,7 +236,7 @@ if not (frame.data.get('short_slot') or frame.data.get('bitclock_error')):
 ```markdown
 ## HLA: TDM WAV Export
 
-The `hla/` directory contains a Logic 2 High Level Analyzer (HLA) that exports
+The `hla-wav-export/` directory contains a Logic 2 High Level Analyzer (HLA) that exports
 selected TDM slots to a WAV file in real time during capture.
 
 ### Installation
@@ -244,7 +244,7 @@ selected TDM slots to a WAV file in real time during capture.
 1. In Logic 2, open the **Extensions** panel (right sidebar).
 2. Click the **three-dots** menu icon (⋮) at the top of the panel.
 3. Select **"Load Existing Extension..."**.
-4. Navigate to the `hla/` folder in this repository.
+4. Navigate to the `hla-wav-export/` folder in this repository.
 5. Select `extension.json` and click **Open**.
 6. The extension appears as **"TDM WAV Export"** in the Extensions panel.
 
@@ -330,7 +330,7 @@ against the Logic 2 application directory, not your working directory.
 ### Primary (HIGH confidence)
 - https://github.com/saleae/hla-i2c-transactions/blob/master/HighLevelAnalyzer.py — Official Saleae HLA example: `AnalyzerFrame` constructor pattern, `result_types` with `'error'` type, deferred error frame pattern
 - Saleae support docs (search results) — "Load Existing Extension..." install mechanic confirmed; "three-dots menu -> select extension.json" pattern
-- `/home/chris/gitrepos/saleae_tdm_analyer/hla/TdmWavExport.py` — Phase 9 implementation: existing error guards for `short_slot`, `bitclock_error`
+- `/home/chris/gitrepos/saleae_tdm_analyer/hla-wav-export/TdmWavExport.py` — Phase 9 implementation: existing error guards for `short_slot`, `bitclock_error`
 - `/home/chris/gitrepos/saleae_tdm_analyer/.planning/REQUIREMENTS.md` — REQ-16 through REQ-22 verbatim
 - `/home/chris/gitrepos/saleae_tdm_analyer/.planning/STATE.md` — Key decisions: absolute paths required, ten-field FrameV2 schema
 

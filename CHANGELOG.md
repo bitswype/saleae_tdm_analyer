@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Python HLA: TDM WAV Export** — a Logic 2 High Level Analyzer (`hla/TdmWavExport.py`) that exports selected TDM slots to a WAV file in real time during capture, with slot selection via comma/range syntax, 16 or 32-bit depth, and auto-derived sample rate from frame timing
+- **Python HLA: TDM WAV Export** — a Logic 2 High Level Analyzer (`hla-wav-export/TdmWavExport.py`) that exports selected TDM slots to a WAV file in real time during capture, with slot selection via comma/range syntax, 16 or 32-bit depth, and auto-derived sample rate from frame timing
 
 ## [2.1.0] - 2026-02-25
 

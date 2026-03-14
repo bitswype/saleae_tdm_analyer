@@ -6,14 +6,14 @@ tags: [bug-fix, wav-writing, tdd, req-closure]
 dependency_graph:
   requires: []
   provides: [correct-wav-sample-ordering]
-  affects: [hla/TdmWavExport.py]
+  affects: [hla-wav-export/TdmWavExport.py]
 tech_stack:
   added: []
   patterns: [tdd-red-green, self-test-in-main-block]
 key_files:
   created: []
   modified:
-    - hla/TdmWavExport.py
+    - hla-wav-export/TdmWavExport.py
     - .planning/REQUIREMENTS.md
 decisions:
   - Flush before accumulate is the correct invariant — _try_flush() clears self._accum so accumulate must run after flush to land in a clean accumulator for the new frame
@@ -70,7 +70,7 @@ REQ-15 updated from `[ ]` to `[x]` — the final unchecked requirement. All 22 r
 
 | Task | Name | Commit | Files |
 |------|------|--------|-------|
-| 1 | Reorder decode() — flush before accumulate (TDD) | 6c03fde (RED), 3bf979e (GREEN) | hla/TdmWavExport.py |
+| 1 | Reorder decode() — flush before accumulate (TDD) | 6c03fde (RED), 3bf979e (GREEN) | hla-wav-export/TdmWavExport.py |
 | 2 | Update REQUIREMENTS.md checkboxes REQ-08 through REQ-15 | 5c728cd | .planning/REQUIREMENTS.md |
 
 ## Verification Results
@@ -93,8 +93,8 @@ All other aspects executed exactly as written.
 
 ## Self-Check: PASSED
 
-- [x] hla/TdmWavExport.py modified with flush-before-accumulate ordering
-- [x] `python3 hla/TdmWavExport.py` exits 0 and prints both expected lines
+- [x] hla-wav-export/TdmWavExport.py modified with flush-before-accumulate ordering
+- [x] `python3 hla-wav-export/TdmWavExport.py` exits 0 and prints both expected lines
 - [x] .planning/REQUIREMENTS.md updated — REQ-15 marked [x]
 - [x] `grep -c "\[x\] REQ-" .planning/REQUIREMENTS.md` returns 22
 - [x] Commits 6c03fde, 3bf979e, 5c728cd exist

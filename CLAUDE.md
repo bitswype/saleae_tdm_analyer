@@ -5,7 +5,7 @@
 Saleae Logic 2 analyzer plugin for decoding TDM (Time Division Multiplexing) audio data. Three layers:
 
 1. **C++ LLA** (`src/`) — Low Level Analyzer plugin, decodes raw signals into FrameV2 slot frames
-2. **Python HLA: WAV Export** (`hla/`) — writes selected slots to a WAV file during capture
+2. **Python HLA: WAV Export** (`hla-wav-export/`) — writes selected slots to a WAV file during capture
 3. **Python HLA: Audio Stream** (`hla-audio-stream/`) — streams selected slots as live PCM over TCP
 
 Plus two companion Python CLI tools in `tools/`.
@@ -19,7 +19,7 @@ src/                          C++ LLA plugin (CMake build)
   TdmAnalyzerResults.cpp/h    FrameV2 output (10 fields per slot frame)
   TdmSimulationDataGenerator.* Simulation data for Logic 2
 
-hla/                          Python HLA — WAV export
+hla-wav-export/               Python HLA — WAV export
   TdmWavExport.py             Writes selected slots to WAV file
   extension.json              Logic 2 extension manifest
 

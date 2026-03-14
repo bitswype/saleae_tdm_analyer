@@ -48,7 +48,7 @@ Progress: [██████████] 100% (All phases 8+9+10+11 complete)
 
 ### Key Decisions
 
-- Python HLA lives in `hla/` subdirectory alongside C++ plugin (same repo)
+- Python HLA lives in `hla-wav-export/` subdirectory alongside C++ plugin (same repo)
 - Milestone version: v1.5
 - HLA configured via Logic 2 settings UI (slots, output_path, bit_depth)
 - WAV written continuously during decode with periodic header refresh
