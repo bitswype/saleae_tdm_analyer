@@ -864,9 +864,18 @@ def quality_sweep(ctx, json_output):
         ('sine:440,880', 48000, 2, '16', None, False, '48kHz stereo 16-bit'),
         ('sine:440', 48000, 1, '32', 440, False, '48kHz mono 32-bit'),
         ('sine:440,880,1320,1760', 48000, 4, '16', None, False, '48kHz 4ch 16-bit'),
-        ('sine:440', 48000, 1, '16', 440, True, '48kHz mono 16-bit looping'),
-        ('sine:440,880', 48000, 2, '16', None, True, '48kHz stereo 16-bit looping'),
     ]
+
+    # Loop boundary tests: short phase-perfect WAV files served with looping.
+    # At 48kHz, 440Hz has exactly 440 cycles/second, so a 1-second signal
+    # loops at a zero crossing with no discontinuity.  Any glitch in the
+    # notch-filter analysis is a genuine pipeline bug, not content mismatch.
+    # (freq, sample_rate, channels, bit_depth, signal_seconds, description)
+    loop_boundary_configs = [
+        (440, 48000, 1, '16', 1.0, '48kHz mono loop boundary'),
+        (440, 48000, 2, '16', 1.0, '48kHz stereo loop boundary'),
+    ]
+    total_tests = len(configs) + len(loop_boundary_configs)
 
     base_port = 14070
     all_results = []
@@ -875,7 +884,7 @@ def quality_sweep(ctx, json_output):
 
     for i, (sig, rate, channels, depth, freq, loop, desc) in enumerate(configs):
         port = base_port + i
-        click.echo(f"\n[{i+1}/{len(configs)}] {desc} ...")
+        click.echo(f"\n[{i+1}/{total_tests}] {desc} ...")
 
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
             wav_path = tmp.name
@@ -992,6 +1001,139 @@ def quality_sweep(ctx, json_output):
                 serve_proc.kill()
             except Exception:
                 pass
+
+    # === Loop boundary tests ===
+    for j, (freq, rate, channels, depth, sig_dur, desc) in enumerate(loop_boundary_configs):
+        test_num = len(configs) + j
+        port = base_port + test_num
+        click.echo(f"\n[{test_num+1}/{total_tests}] {desc} ...")
+
+        wav_signal = None
+        wav_capture = None
+        mono_tmp = None
+        serve_proc = None
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                wav_signal = tmp.name
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                wav_capture = tmp.name
+
+            # Create phase-perfect sine WAV using sox
+            if channels == 1:
+                subprocess.run(
+                    [sox_path, '-n', '-r', str(rate), '-b', depth,
+                     wav_signal, 'synth', str(sig_dur), 'sine', str(freq)],
+                    capture_output=True, timeout=10,
+                )
+            else:
+                # Create mono, then duplicate to N channels
+                mono_tmp = wav_signal + '.mono.wav'
+                subprocess.run(
+                    [sox_path, '-n', '-r', str(rate), '-b', depth,
+                     mono_tmp, 'synth', str(sig_dur), 'sine', str(freq)],
+                    capture_output=True, timeout=10,
+                )
+                remix_args = ['1'] * channels
+                subprocess.run(
+                    [sox_path, mono_tmp, wav_signal, 'remix'] + remix_args,
+                    capture_output=True, timeout=10,
+                )
+
+            # Serve with looping — duration 0 = infinite, we'll kill after capture
+            serve_cmd = [
+                sys.executable, '-m', 'tdm_test_harness.cli',
+                'serve', '--wav-file', wav_signal,
+                '--port', str(port), '--duration', '0', '--loop',
+            ]
+            serve_proc = subprocess.Popen(
+                serve_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            time.sleep(1.5)
+
+            # Capture 3s with 0.5s skip — crosses at least 2 loop boundaries
+            capture_cmd = [
+                sys.executable, '-m', 'tdm_test_harness.cli',
+                'capture', '--port', str(port), '--duration', '3',
+                '--skip', '0.5', '-o', wav_capture,
+            ]
+            cap_proc = subprocess.run(
+                capture_cmd, capture_output=True, text=True, timeout=15,
+            )
+
+            serve_proc.terminate()
+            serve_proc.wait(timeout=5)
+
+            if cap_proc.returncode != 0:
+                result = {'config': desc, 'pass': False, 'error': cap_proc.stderr.strip()}
+                all_results.append(result)
+                fail_count += 1
+                click.echo(click.style(f"  FAIL (capture): {result['error']}", fg='red'))
+                continue
+
+            # Analyze each channel with notch filter at the known frequency
+            if channels > 1:
+                config_pass = True
+                chan_results = []
+                for ch_idx in range(channels):
+                    ch_path = wav_capture + f'.ch{ch_idx}.wav'
+                    try:
+                        subprocess.run(
+                            [sox_path, wav_capture, ch_path, 'remix', str(ch_idx + 1)],
+                            capture_output=True, timeout=10,
+                        )
+                        a_proc = subprocess.run(
+                            [sys.executable, '-m', 'tdm_test_harness.cli',
+                             'analyze', ch_path, '--freq', str(freq), '--json'],
+                            capture_output=True, text=True, timeout=30,
+                        )
+                        ch_result = json.loads(a_proc.stdout) if a_proc.stdout.strip() else {'pass': False}
+                        chan_results.append({'channel': ch_idx, **ch_result})
+                        if not ch_result.get('pass', False):
+                            config_pass = False
+                    finally:
+                        try:
+                            os.unlink(ch_path)
+                        except OSError:
+                            pass
+                result = {'config': desc, 'pass': config_pass, 'channels': chan_results}
+            else:
+                a_proc = subprocess.run(
+                    [sys.executable, '-m', 'tdm_test_harness.cli',
+                     'analyze', wav_capture, '--freq', str(freq), '--json'],
+                    capture_output=True, text=True, timeout=30,
+                )
+                result = json.loads(a_proc.stdout) if a_proc.stdout.strip() else {'pass': False}
+                result['config'] = desc
+
+            all_results.append(result)
+            if result.get('pass', False):
+                pass_count += 1
+                click.echo(click.style(f"  PASS", fg='green'))
+            else:
+                fail_count += 1
+                click.echo(click.style(f"  FAIL", fg='red'))
+                for check in result.get('checks', []):
+                    if not check.get('pass', True):
+                        click.echo(f"    {check['name']}: {check}")
+
+        except Exception as e:
+            result = {'config': desc, 'pass': False, 'error': str(e)}
+            all_results.append(result)
+            fail_count += 1
+            click.echo(click.style(f"  FAIL: {e}", fg='red'))
+        finally:
+            for p in [wav_signal, wav_capture, mono_tmp]:
+                if p:
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
+            if serve_proc:
+                try:
+                    serve_proc.kill()
+                except Exception:
+                    pass
 
     # Summary
     click.echo(f"\n{'='*50}")
