@@ -1,7 +1,29 @@
 # TDM Analyzer
 
-TDM Analyzer for decoding TDM data with Saleae Logic 2. Includes two High Level
-Analyzers for audio export and live streaming.
+A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and frame sync signals to playable audio in real time.
+
+- **Decode** — Supports 1-256 slots, 2-64 bit depth, MSB/LSB, left/right justified, with full error detection
+- **Stream** — Hear decoded audio live through your speakers or route it to a virtual sound card (VB-Cable, BlackHole) for recording in any DAW
+- **Export** — Write selected slots to WAV files in real time during capture, with RF64 support for recordings over 4 GiB
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/bitswype)
+
+## Table of Contents
+
+- [Features](#features)
+- [Advanced Analysis Features](#advanced-analysis-features)
+- [Settings](#settings)
+  - [Supported Errors and Warnings](#supported-errors-and-warnings)
+  - [Flag values](#flag-values)
+- [Exporting data as a wave file](#exporting-data-as-a-wave-file)
+- [High Level Analyzers (HLAs)](#high-level-analyzers-hlas)
+  - [HLA: TDM WAV Export](#hla-tdm-wav-export)
+  - [HLA: TDM Audio Stream](#hla-tdm-audio-stream)
+- [Known Limitations](#known-limitations)
+- [Install instructions](#install-instructions)
+- [Building from source](#building-from-source)
+- [Debugging on Linux](#debugging-on-linux)
+- [Migration Guide](#migration-guide)
 
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
@@ -22,12 +44,10 @@ Analyzers for audio export and live streaming.
 - Generates warnings for truncated slots
 - Searchable warnings and errors in protocol table
 
-# Advanced Analysis features
+# Advanced Analysis Features
 - Checks for bitclock discrepancies and generates an error
 - Identifies and marks slots with data changing that is not captured by the bitclock
 - Identifies and marks missed frame sync pulses
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/bitswype)
 
 # Settings
 
