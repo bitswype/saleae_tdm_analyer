@@ -241,12 +241,11 @@ class BridgeApp:
 
     def _on_data(self, data):
         with self._player_lock:
-            if self._player is not None:
-                self._player.feed(data)
-                if not self._player.is_playing:
-                    return
-        # Signal that playback started (only queued once)
-        self._queue.put(('playing', None))
+            if self._player is None:
+                return
+            self._player.feed(data)
+            if self._player.is_playing and self._state != _PLAYING:
+                self._queue.put(('playing', None))
 
     def _on_disconnect(self):
         self._queue.put(('disconnect', None))
@@ -255,28 +254,33 @@ class BridgeApp:
 
     def _poll(self):
         """Drain the message queue and update widgets."""
-        while True:
-            try:
-                msg_type, payload = self._queue.get_nowait()
-            except queue.Empty:
-                break
-            if msg_type == 'handshake':
-                self._handle_handshake(payload)
-            elif msg_type == 'playing':
-                self._set_state(_PLAYING)
-            elif msg_type == 'disconnect':
-                if self._client is not None:
-                    # Auto-reconnecting
-                    self._set_state(_CONNECTING)
-                    with self._player_lock:
-                        if self._player is not None:
-                            self._player.stop()
-                            self._player = None
-                else:
-                    self._set_state(_DISCONNECTED)
+        try:
+            while True:
+                try:
+                    msg_type, payload = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if msg_type == 'handshake':
+                    self._handle_handshake(payload)
+                elif msg_type == 'playing':
+                    self._set_state(_PLAYING)
+                elif msg_type == 'disconnect':
+                    if self._client is not None:
+                        # Auto-reconnecting
+                        self._set_state(_CONNECTING)
+                        with self._player_lock:
+                            if self._player is not None:
+                                self._player.stop()
+                                self._player = None
+                    else:
+                        self._set_state(_DISCONNECTED)
 
-        self._update_stats()
-        self._root.after(100, self._poll)
+            self._update_stats()
+        except Exception as e:
+            log.error('Error in GUI poll: %s', e, exc_info=True)
+            self._set_state(_DISCONNECTED, f'Error: {e}')
+        finally:
+            self._root.after(100, self._poll)
 
     def _handle_handshake(self, handshake):
         """Process a new handshake on the GUI thread."""
