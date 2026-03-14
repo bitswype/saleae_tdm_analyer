@@ -1,6 +1,6 @@
-/build
-/build-release
-/build-debug
+build/
+build-release/
+build-debug/
 **.vscode
 **.code-workspace
 **.vscode-ctags
