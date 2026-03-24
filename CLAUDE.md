@@ -147,9 +147,7 @@ Slot frames have these fields: `slot`, `data`, `frame_number`, `severity`, `shor
 
 ## Git Conventions
 
-- Tags: `vX.Y.Z` (e.g. v2.0.0, v2.1.0, v2.2.0, v2.3.0) — semantic versioning
-- Linear history, no squash, no amend
-- Feature branches merged via fast-forward only
+- Tags: `vX.Y.Z` (e.g. v2.0.0, v2.1.0, v2.2.0, v2.3.0) - semantic versioning
 - Remote: SSH (`git@github.com:bitswype/saleae_tdm_analyer.git`)
 
 ## CI / Release
