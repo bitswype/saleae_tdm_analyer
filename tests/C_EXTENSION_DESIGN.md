@@ -122,6 +122,23 @@ them to C saves <1% of total time.
 - The 64-test oracle validates correctness
 - If Cython isn't fast enough, we can drop to cffi or raw C for the same scope
 
+## Results
+
+All three approaches were implemented and measured. See `tests/PERFORMANCE.md`
+for full numbers. Summary:
+
+| Approach | Stereo 16-bit | 8-ch 16-bit | 16-ch 16-bit | Verdict |
+|----------|-------------:|------------:|-------------:|---------|
+| Pure Python | 6.2x RT | 1.9x RT | 1.0x RT | Baseline |
+| cffi | 6.6x RT | 1.3x RT | 0.5x RT | Worse at high channels |
+| Raw C ext | 11.8x RT | 3.1x RT | 1.3x RT | Good but not best |
+| **Cython** | **17.5x RT** | **4.0x RT** | **1.6x RT** | **Winner** |
+
+Cython wins because it generates optimized C that accesses Python dicts
+directly from compiled code. cffi loses because per-call Python-to-C
+marshaling overhead dominates at high call frequencies. Raw C is between
+the two. All four backends pass the 64-test oracle.
+
 ## Correctness Oracle
 
 Any implementation must pass all 64 tests in `tests/test_hla_decode.py`:

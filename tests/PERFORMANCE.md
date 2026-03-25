@@ -405,20 +405,52 @@ with manual little-endian PCM byte packing (no struct.pack). Python handles
 TCP threading, ring buffer, and sample rate derivation (first few frames only).
 Falls back to pure Python when the extension is not compiled.
 
-| Config | Python baseline | Python optimized | Cython | vs baseline | vs optimized |
-|--------|---------------:|----------------:|-------:|------------:|-------------:|
-| Stereo 16-bit | 3.5x RT | 7.3x RT | **19.8x RT** | 5.7x | 2.7x |
-| Stereo 32-bit | 2.8x RT | 4.9x RT | **18.5x RT** | 6.6x | 3.8x |
-| 8-ch 16-bit | 0.8x RT | 1.5x RT | **4.1x RT** | 5.1x | 2.7x |
-| 16-ch 16-bit | 0.4x RT | 0.8x RT | **2.0x RT** | 5.0x | 2.5x |
+We implemented all three approaches (Cython, cffi, raw C extension) and
+measured them against the optimized Python baseline.
 
-**16-channel went from 0.4x realtime (unusable) to 2.0x realtime (above
-realtime).** The entire HLA pipeline is now realtime-capable for all
-configurations up to at least 16 channels.
+### Complete four-backend comparison (48 kHz)
 
-The 64-test oracle (`tests/test_hla_decode.py`) validates the Cython
-implementation, including C-specific edge cases (negative ints, integer
-overflow, missing dict keys, ring buffer overflow, large frame numbers).
+| Config | Python | cffi | Raw C | Cython |
+|--------|-------:|-----:|------:|-------:|
+| Stereo 16-bit | 6.2x RT | 6.6x RT | 11.8x RT | **17.5x RT** |
+| Stereo 32-bit | 4.9x RT | 6.9x RT | 14.2x RT | **20.0x RT** |
+| 8-ch 16-bit | 1.9x RT | 1.3x RT | 3.1x RT | **4.0x RT** |
+| 16-ch 16-bit | 1.0x RT | 0.5x RT | 1.3x RT | **1.6x RT** |
+
+### Versus original Python baseline (before any optimization)
+
+| Config | Original baseline | Best (Cython) | Total speedup |
+|--------|------------------:|--------------:|--------------:|
+| Stereo 16-bit | 3.5x RT | 17.5x RT | **5.0x** |
+| Stereo 32-bit | 2.8x RT | 20.0x RT | **7.1x** |
+| 8-ch 16-bit | 0.8x RT | 4.0x RT | **5.0x** |
+| 16-ch 16-bit | 0.4x RT | 1.6x RT | **4.0x** |
+
+### Why Cython wins
+
+**Cython > Raw C > Python > cffi** is the surprising ordering. Cython wins
+because it generates highly optimized C code that accesses Python dicts
+directly from compiled code via `__Pyx_PyDict_GetItem` (which inlines the
+hash lookup). The raw C extension uses the standard `PyDict_GetItemString`
+API, which is correct but has per-call string comparison overhead.
+
+cffi is the slowest for high channel counts because the Python-side dict
+extraction + C function call overhead (5 values marshaled per call) exceeds
+the savings from the C hot loop. At 384K calls/sec for 8 channels, even
+a small per-call penalty adds up.
+
+### Recommendation
+
+**Cython is the clear winner.** The import fallback chain
+(Cython > rawc > cffi > Python) ensures the best available backend is
+used automatically. For distribution:
+- Ship the compiled Cython `.pyd`/`.so` for supported platforms
+- cffi and raw C serve as alternatives when Cython compilation is unavailable
+- Pure Python fallback ensures the HLA always works, just slower
+
+The 64-test oracle (`tests/test_hla_decode.py`) validates all four backends,
+including C-specific edge cases (negative ints, integer overflow, missing
+dict keys, ring buffer overflow, large frame numbers).
 
 ## Document Index
 
