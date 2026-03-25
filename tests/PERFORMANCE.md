@@ -183,6 +183,25 @@ For the primary use case (realtime audio streaming), **Minimal + Slot Markers**
 gives a **3.2-3.3x speedup** over the pre-optimization baseline while retaining
 full HLA support and slot-level waveform annotation.
 
+### Phase 5b: FrameV2 member reuse
+
+Moving the FrameV2 from a per-call local variable to a reused class member
+eliminated the heap alloc/free per slot. After the first call, `AddInteger`
+etc. overwrite existing map entries without allocating new nodes.
+
+| Metric | Before reuse | After reuse |
+|--------|------------:|------------:|
+| FrameV2 per-call (profiled, Minimal) | 1.508 us | 0.956 us |
+| FrameV2 section reduction | - | **37%** |
+| End-to-end (8-ch M+S, non-profiled) | 279 ms | 273 ms |
+| End-to-end improvement | - | **2-8%** |
+
+The modest end-to-end improvement (vs 37% per-section) is because the mock's
+`AddFrameV2` still copies the entire map to the results vector on every call.
+The remaining ~0.96 us is dominated by the copy, not the construction. In the
+real SDK, the benefit may be larger if its `AddFrameV2` implementation is more
+allocation-heavy.
+
 ### End-to-end pipeline (LLA + HLA)
 
 The audio streaming pipeline is serial: LLA decodes TDM -> emits FrameV2 ->
@@ -193,14 +212,28 @@ from the LLA (it reads slot, data, frame_number, short_slot, bitclock_error).
 | Config | LLA (Minimal+Slot) | HLA (Cython) | End-to-end (slower of two) |
 |--------|-------------------:|-------------:|---------------------------:|
 | Stereo 16-bit | 3.2x RT | 17.5x RT | **3.2x RT** (LLA-bound) |
-| 8-ch 16-bit | 0.7x RT | 4.0x RT | **0.7x RT** (LLA-bound) |
+| 8-ch 16-bit | 0.8x RT | 4.0x RT | **0.8x RT** (LLA-bound) |
 | 16-ch 16-bit | - | 1.6x RT | **LLA-bound** |
 
 **The LLA is now the bottleneck in every configuration.** The HLA optimizations
 (batch packing + Cython) successfully moved the bottleneck from the HLA to
-the LLA. Stereo is comfortably realtime at 3.2x. 8-channel at 0.7x is below
-realtime -- further LLA optimization (or reducing FrameV2 field count further)
-would be needed for 8+ channel realtime streaming.
+the LLA. Stereo is comfortably realtime at 3.2x. 8-channel at 0.8x is just
+below realtime.
+
+### Where the remaining LLA time goes (Minimal+Slot, 8-ch 16-bit)
+
+| Section | % of decode | Per-call (us) | Optimizable? |
+|---------|------------:|--------------:|--------------|
+| GetNextBit (SDK channel ops) | 58% | 0.169 | No - inside SDK |
+| FrameV2 (5 fields, reused object) | 23% | 0.956 | No further - AddFrameV2 copy dominates |
+| AddFrame (V1) | 1% | 0.042 | Already minimal |
+| Commit | <1% | 0.031 | Already minimal |
+
+**We have reached the optimization floor for the LLA with the current SDK API.**
+The remaining costs are SDK operations (channel data advances, FrameV2 results
+storage) that cannot be optimized from the analyzer side. Further gains would
+require SDK-level changes (lighter-weight FrameV2 alternative, batch submission
+API, or reduced per-call overhead in channel data operations).
 
 Note: these LLA numbers include the test mock's FrameV2 capture overhead. In
 the real Logic 2 SDK, FrameV2 performance characteristics will differ. The
@@ -376,8 +409,15 @@ level would require the more precise tools listed above.
 
 12. **Always take a baseline before changing code.** We initially forgot to
     capture the HLA baseline before applying Python optimizations, and had
-    to reconstruct it with a separate script. The LLA baseline was captured
-    correctly because we learned this lesson the hard way on the HLA side.
+    to reconstruct it with a separate script. The LLA comparison initially
+    mixed pre-mock and post-mock numbers; we fixed it by measuring the
+    pre-optimization code in a worktree with the same mock active.
+
+13. **Object reuse eliminates alloc/free but not copy.** Reusing the FrameV2
+    member variable cut per-call construction cost 37%, but the `AddFrameV2`
+    copy into results storage remained unchanged. When the dominant cost is
+    the SDK's internal operation (not your object construction), reuse has
+    diminishing returns. Measure the breakdown before and after.
 
 ## Phase 7: HLA (Python) Profiling and Optimization
 
