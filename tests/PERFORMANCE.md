@@ -1,0 +1,218 @@
+# TDM Analyzer Performance Story
+
+This document captures the full journey from "no tests" to measured optimizations,
+including what we learned, what surprised us, and what the data means for users.
+
+## The Starting Point
+
+The TDM analyzer had a benchmark (`tdm_benchmark`) that measured overall decode
+throughput across 16 configurations, but no correctness tests and no visibility
+into where time was being spent. We knew the throughput numbers (3-5 Mbit/s on
+MSVC, 2-4 Mbit/s on GCC/WSL2) but not whether the code was correct or where
+optimization effort should go.
+
+## Phase 1: Build a Safety Net
+
+Before touching any performance-sensitive code, we needed confidence that changes
+wouldn't break decode correctness. The test suite was built over three rounds,
+each driven by independent adversarial audit agents:
+
+**Round 1 (20 tests):** Happy path value correctness, sign conversion unit tests,
+and basic error conditions. Verified decoded values match expected counting
+patterns across all TDM setting combinations.
+
+**Round 2 (50 tests):** Three audit agents identified gaps: counter values never
+exercised high bits, no non-power-of-2 widths, advanced analysis errors never
+triggered, misconfig tests too weak, signed path never tested end-to-end. Also
+found and fixed a 64-bit shift overflow bug (`1ULL << 64` is undefined behavior)
+in the signal generator.
+
+**Round 3 (58 tests):** Three more agents found the dominant blind spot: the
+entire FrameV2 layer was untestable because stubs were no-ops. Any mutation to
+signed conversion, severity strings, error booleans, or frame numbering would
+be invisible. We built a FrameV2 capture mock that records field values during
+test runs, then added 8 verification tests. This was the single highest-impact
+improvement to the test suite.
+
+**Round 4 (cleanup):** Three final agents audited the split and documentation.
+Fixed: cross-file coupling, dead code, fragile signal construction, category
+mismatches, and missing documentation. Tests split into 7 focused files.
+
+**Key lesson:** Building the test suite before optimizing paid for itself
+immediately. The FrameV2 capture mock we created for testing later became
+essential for measuring optimization impact. And the correctness tests caught
+real issues (the 64-bit UB bug) that had been silently wrong.
+
+See [TESTING.md](TESTING.md) for the full test architecture and audit history.
+
+## Phase 2: Instrument to Understand
+
+With 58 tests as a safety net, we added compile-time profiling instrumentation
+(`src/TdmProfiler.h`). The profiling macros expand to nothing when
+`ENABLE_PROFILING` is off -- zero overhead in normal builds. When enabled, scoped
+timers accumulate per-section call counts and elapsed time.
+
+We instrumented 9 sections of the decode pipeline:
+
+| Section | What it measures |
+|---------|-----------------|
+| GetTdmFrame | Overall per-frame orchestration |
+| GetNextBit | Per-bit hot loop (called millions of times) |
+| GetNextBit::ChannelAdvance | SDK channel data operations |
+| GetNextBit::Markers | AddMarker calls |
+| GetNextBit::AdvancedAnalysis | Extra error detection checks |
+| AnalyzeTdmSlot | Per-slot processing |
+| AnalyzeTdmSlot::AddFrame | V1 Frame output |
+| AnalyzeTdmSlot::FrameV2 | FrameV2 construction + output |
+| AnalyzeTdmSlot::Commit | CommitResults + ReportProgress |
+
+## Phase 3: The Profiling Surprise
+
+The profiling results were not what we expected.
+
+**What we assumed:** The decode algorithm (bit assembly, shift order, alignment
+indexing) would be the bottleneck, with SDK channel operations close behind.
+
+**What the data showed:**
+
+| Component | % of decode time | Per-call cost |
+|-----------|----------------:|-------------:|
+| **FrameV2 construction** | **60-90%** | 3.7-118.5 us |
+| AddMarker | 8-16% | 0.078-0.091 us |
+| Channel advances (SDK) | ~8% | 0.07-0.09 us |
+| Bit assembly + decode | **<1%** | 0.1 us |
+| V1 AddFrame | <0.5% | 0.05-0.08 us |
+| CommitResults | <0.1% | 0.03 us |
+
+**The actual decode algorithm -- the thing we were writing tests for -- was
+essentially free.** All the cost was in producing output, not in computing it.
+
+The FrameV2 cost was particularly striking:
+- 10 field additions per slot (3 integers, 1 string, 6 booleans)
+- Each involves a std::map insertion with string key allocation
+- Constructor/destructor allocates and frees a FrameV2Data heap object per slot
+- V1 AddFrame does the same work for 0.05-0.08 us -- **100-1500x cheaper**
+
+The 32x variation in FrameV2 per-call cost (3.7 us for stereo 32-bit vs 118.5 us
+for 96 kHz 16-ch 32-bit) turned out to be a test mock artifact: the capture
+vector growing to 768K entries caused cache thrashing and reallocation spikes.
+This is mock-specific and the real SDK will have different scaling characteristics.
+
+**Key lesson:** Profile before optimizing. Our intuition about where time was
+spent was wrong by an order of magnitude. Without profiling, we would have spent
+effort optimizing the bit assembly loop (saving <1%) instead of addressing the
+FrameV2 construction (saving 60-90%).
+
+See [PROFILING_RESULTS.md](PROFILING_RESULTS.md) for the full 16-config breakdown.
+
+## Phase 4: Targeted Optimization
+
+With profiling data showing exactly where time went, three brainstorming agents
+proposed optimizations from different angles: FrameV2-focused, hot-loop-focused,
+and architectural. All three converged on the same priorities.
+
+### What we implemented
+
+**1. FrameV2 detail level setting (biggest impact)**
+
+A three-level user setting:
+
+- **Full:** All 10 FrameV2 fields. Default. Complete data table display.
+- **Minimal:** 5 fields needed by audio HLAs (`slot`, `data`, `frame_number`,
+  `short_slot`, `bitclock_error`). Sufficient for WAV export and audio streaming.
+- **Off:** No FrameV2 output. Maximum speed. V1 Frame still emitted for bubble
+  text and CSV. Emits an advisory warning that HLAs won't receive data.
+
+The minimal set was determined by auditing both HLAs -- 5 of the 10 fields
+(`severity`, `extra_slot`, `missed_data`, `missed_frame_sync`, `low_sample_rate`)
+are never read by either HLA. They exist only for the Logic 2 protocol table.
+
+**2. Marker density setting (second biggest impact)**
+
+- **All bits:** Per-bit clock arrows + data dots. Current behavior.
+- **Slot boundaries:** One marker per slot start. 16x fewer for 16-bit slots.
+- **None:** No markers. Fastest.
+
+**3. Batch CommitResults per frame**
+
+Moved CommitResults + ReportProgress from per-slot to per-TDM-frame. Trivial
+change, negligible measured impact from profiling but may matter more in the
+real SDK where CommitResults could trigger internal processing.
+
+**4. Structural cleanup**
+
+- Vector capacity reserved upfront (prevents first-frame reallocation)
+- Member variables reordered for cache locality (hot decode state contiguous)
+
+### What we considered but did not implement
+
+- **Two-pass decode:** Infeasible with the SDK's forward-only channel API
+- **Clock advance by sample count:** Too risky -- crystal drift would accumulate
+  and corrupt decode after a few seconds
+- **GetNextBit inlining:** Virtual dispatch on SDK methods limits the benefit to
+  0-1%, not worth the readability cost
+- **Counted bit loop with hoisted FS check:** Changes error detection semantics
+  for malformed frames -- not worth the <1% gain
+
+## Phase 5: Measured Results
+
+| Config | Default | Minimal+Slot | Off+None | Speedup |
+|--------|--------:|-------------:|---------:|--------:|
+| Stereo 16-bit | 1.2x RT | 2.3x RT | 3.0x RT | **1.9-2.5x** |
+| 8-channel 16-bit | 0.3x RT | 0.5x RT | 0.8x RT | **1.5-2.3x** |
+| 8-channel 32-bit | 0.2x RT | 0.3x RT | 0.4x RT | **1.6-2.2x** |
+
+For the primary use case (realtime audio streaming), **Minimal + Slot Markers**
+gives 1.5-1.9x speedup while retaining full HLA support and slot-level
+waveform annotation.
+
+See [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) for the full mode comparison.
+
+## What We Learned
+
+### About the code
+1. **Output dominates decode.** The analyzer spends 60-90% of its time telling
+   Logic 2 what it found, and <1% actually finding it. Any future optimization
+   work should focus on the output path.
+
+2. **FrameV2 is dramatically more expensive than V1 Frame.** 100-1500x more
+   expensive per call. This is inherent to the FrameV2 API design (string-keyed
+   map insertions vs fixed-field struct copy). The V1 Frame is the right choice
+   for high-frequency data; FrameV2 adds flexibility at significant cost.
+
+3. **AddMarker adds up.** At 0.08 us per call and millions of calls per capture,
+   per-bit markers contribute 8-16% of decode time. Most are never rendered
+   since the user only sees a small window of the waveform at a time.
+
+4. **The test mock is not the real SDK.** The FrameV2 capture mock's std::vector
+   of std::maps has different scaling characteristics than Logic 2's internal
+   storage. Absolute timings from the benchmark should not be taken as
+   production performance -- only relative comparisons between modes are valid.
+
+### About the process
+5. **Profile before optimizing.** Our intuition was wrong. Without data, we
+   would have optimized the wrong thing.
+
+6. **Tests enable optimization.** The 58-test safety net gave confidence to
+   restructure the hot path. The FrameV2 capture mock built for testing became
+   essential infrastructure for measuring the optimization.
+
+7. **Adversarial auditing finds real gaps.** Three independent agents found the
+   FrameV2 blind spot that manual review missed. The approach of launching
+   multiple agents with different perspectives (coverage, assertion quality,
+   mutation testing) was more effective than a single thorough review.
+
+8. **Make speed a user choice, not a forced tradeoff.** Rather than permanently
+   removing FrameV2 fields (which would break future HLAs), we made verbosity
+   a setting. Users who need complete diagnostics get them; users who need
+   realtime performance choose the minimal set.
+
+## Document Index
+
+| Document | What it contains |
+|----------|-----------------|
+| [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md) | Raw throughput: MSVC vs GCC, 16 configs, WSL2 vs native Windows |
+| [PROFILING_RESULTS.md](PROFILING_RESULTS.md) | Per-function timing breakdown, 16 configs, 9 instrumented sections |
+| [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) | Mode comparison: Full/Minimal/Off x All/Slot/None, 3 configs |
+| [TESTING.md](TESTING.md) | Test architecture, 58 tests across 7 files, audit history |
+| [../CLAUDE.md](../CLAUDE.md) | Project-level: build commands, settings, critical patterns |

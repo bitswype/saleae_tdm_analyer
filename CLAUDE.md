@@ -154,7 +154,7 @@ Two user-facing settings control the speed/detail tradeoff:
 - **Data Table / HLA Output** (`mFrameV2Detail`): Full (all 10 FrameV2 fields), Minimal (5 fields needed by audio HLAs), or Off (no FrameV2, maximum speed). Default: Full.
 - **Waveform Markers** (`mMarkerDensity`): All bits (per-bit arrows + data dots), Slot boundaries only, or None. Default: All bits.
 
-Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries. See `tests/PROFILING_RESULTS.md` for detailed analysis.
+Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries (1.5-1.9x speedup). See `tests/PERFORMANCE.md` for the full story from baseline through profiling to optimization.
 
 ### Sender batching optimization
 
