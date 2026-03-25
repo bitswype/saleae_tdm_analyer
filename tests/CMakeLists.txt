@@ -45,6 +45,12 @@ target_compile_definitions(tdm_benchmark PRIVATE LOGIC2)
 
 add_executable(tdm_correctness
     tdm_correctness.cpp
+    test_decode_values.cpp
+    test_sign_conversion.cpp
+    test_error_conditions.cpp
+    test_advanced_analysis.cpp
+    test_generator_blindspots.cpp
+    test_framev2.cpp
     extra_stubs.cpp
     ${TESTLIB_SOURCES}
     ${ANALYZER_SOURCES}
