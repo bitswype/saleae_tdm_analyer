@@ -147,6 +147,15 @@ Profiling uses compile-time instrumentation (`src/TdmProfiler.h`) that expands t
 
 **Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
 
+### Performance tuning settings
+
+Two user-facing settings control the speed/detail tradeoff:
+
+- **Data Table / HLA Output** (`mFrameV2Detail`): Full (all 10 FrameV2 fields), Minimal (5 fields needed by audio HLAs), or Off (no FrameV2, maximum speed). Default: Full.
+- **Waveform Markers** (`mMarkerDensity`): All bits (per-bit arrows + data dots), Slot boundaries only, or None. Default: All bits.
+
+Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries. See `tests/PROFILING_RESULTS.md` for detailed analysis.
+
 ### Sender batching optimization
 
 The HLA's `_sender_loop` batches up to 1024 frames per `sendall()` call. Without batching, stereo streams generate 44100+ individual 4-byte TCP sends per second, starving the decode thread of GIL time.

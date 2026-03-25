@@ -26,6 +26,20 @@ enum ExportFileType
   WAV,
 };
 
+enum TdmFrameV2Detail
+{
+    FV2_FULL,      // All 10 FrameV2 fields (default)
+    FV2_MINIMAL,   // Only: slot, data, frame_number, short_slot, bitclock_error
+    FV2_OFF        // No FrameV2 output (V1 Frame only)
+};
+
+enum TdmMarkerDensity
+{
+    MARKERS_ALL,        // Per-bit markers (current behavior, default)
+    MARKERS_SLOT_ONLY,  // One marker per slot boundary
+    MARKERS_NONE        // No markers
+};
+
 // Sample rate validation thresholds (Phase 6)
 static constexpr U64 kMaxBitClockHz = 500000000ULL;   // 500 MHz — Logic 2 Pro maximum
 static constexpr U32 kMinOversampleRatio = 4;          // 4x oversampling for reliable edge detection
@@ -62,6 +76,9 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     bool mEnableAdvancedAnalysis;
     ExportFileType mExportFileType;
 
+    TdmFrameV2Detail mFrameV2Detail;
+    TdmMarkerDensity mMarkerDensity;
+
   protected:
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mFrameChannelInterface;
@@ -82,5 +99,8 @@ class TdmAnalyzerSettings : public AnalyzerSettings
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameSyncInvertedInterface;
     std::unique_ptr<AnalyzerSettingInterfaceBool> mEnableAdvancedAnalysisInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mExportFileTypeInterface;
+
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameV2DetailInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mMarkerDensityInterface;
 };
 #endif // TDM_ANALYZER_SETTINGS

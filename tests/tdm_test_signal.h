@@ -39,6 +39,8 @@ struct Config
     TdmDataAlignment data_alignment;
     AnalyzerEnums::Sign sign;
     AnalyzerEnums::EdgeDirection data_valid_edge;
+    TdmFrameV2Detail framev2_detail;
+    TdmMarkerDensity marker_density;
 };
 
 inline Config DefaultConfig( const char* label, U32 num_frames )
@@ -59,6 +61,8 @@ inline Config DefaultConfig( const char* label, U32 num_frames )
     c.data_alignment = LEFT_ALIGNED;
     c.sign = AnalyzerEnums::UnsignedInteger;
     c.data_valid_edge = AnalyzerEnums::PosEdge;
+    c.framev2_detail = FV2_FULL;
+    c.marker_density = MARKERS_ALL;
     return c;
 }
 

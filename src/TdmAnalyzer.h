@@ -32,14 +32,9 @@ class TdmAnalyzer : public Analyzer2
     void GetNextBit( BitState& data, BitState& frame, U64& sample_number );
 
   protected:
+    // Hot-path decode state — grouped for cache locality
     std::unique_ptr<TdmAnalyzerSettings> mSettings;
     std::unique_ptr<TdmAnalyzerResults> mResults;
-    U64 mSampleRate;
-    double mDesiredBitClockPeriod;
-    Frame mResultsFrame;
-    bool mSimulationInitilized;
-    bool mLowSampleRate;
-    TdmSimulationDataGenerator mSimulationDataGenerator;
 
     AnalyzerChannelData* mClock;
     AnalyzerChannelData* mFrame;
@@ -61,6 +56,15 @@ class TdmAnalyzer : public Analyzer2
     std::vector<BitState> mDataBits;
     std::vector<U64> mDataValidEdges;
     std::vector<U8> mDataFlags;
+
+    Frame mResultsFrame;
+    U64 mSampleRate;
+    double mDesiredBitClockPeriod;
+    bool mLowSampleRate;
+
+    // Cold members — simulation support
+    bool mSimulationInitilized;
+    TdmSimulationDataGenerator mSimulationDataGenerator;
 #pragma warning( pop )
 };
 

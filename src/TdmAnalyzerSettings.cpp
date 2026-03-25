@@ -22,7 +22,9 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mSigned( AnalyzerEnums::UnsignedInteger ),
       mFrameSyncInverted( FS_NOT_INVERTED ),
       mExportFileType( CSV ),
-      mEnableAdvancedAnalysis( false )
+      mEnableAdvancedAnalysis( false ),
+      mFrameV2Detail( FV2_FULL ),
+      mMarkerDensity( MARKERS_ALL )
 {
     mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
     mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka TDM SCK or BCLK - Continuous Serial Clock, aka Bit Clock" );
@@ -134,6 +136,37 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     mExportFileTypeInterface->AddNumber( 1, "WAV", "Export data as a wave file");
     mExportFileTypeInterface->SetNumber( mExportFileType );
 
+    mFrameV2DetailInterface.reset(new AnalyzerSettingInterfaceNumberList());
+    mFrameV2DetailInterface->SetTitleAndTooltip(
+        "Data Table / HLA Output",
+        "Controls FrameV2 output for the data table and HLA extensions (WAV export, audio streaming). "
+        "'Full' includes all diagnostic fields. "
+        "'Minimal' includes only fields needed by audio HLAs (faster decode). "
+        "'Off' disables FrameV2 entirely for maximum decode speed -- HLA extensions will not receive data.");
+    mFrameV2DetailInterface->AddNumber(FV2_FULL, "Full (all diagnostic fields)",
+        "All 10 fields including severity, all error booleans, and low sample rate. "
+        "Required for complete data table display.");
+    mFrameV2DetailInterface->AddNumber(FV2_MINIMAL, "Minimal (audio HLA fields only)",
+        "Only slot, data, frame_number, short_slot, and bitclock_error. "
+        "Sufficient for WAV export and audio streaming HLAs. Faster decode.");
+    mFrameV2DetailInterface->AddNumber(FV2_OFF, "Off (maximum speed, no HLA support)",
+        "No FrameV2 output. Bubble text and CSV export still work. "
+        "HLA extensions (WAV export, audio streaming) will not receive data.");
+    mFrameV2DetailInterface->SetNumber(mFrameV2Detail);
+
+    mMarkerDensityInterface.reset(new AnalyzerSettingInterfaceNumberList());
+    mMarkerDensityInterface->SetTitleAndTooltip(
+        "Waveform Markers",
+        "Controls how many markers are placed on the waveform. "
+        "Fewer markers = faster decode. Markers are visual only and do not affect data output.");
+    mMarkerDensityInterface->AddNumber(MARKERS_ALL, "All bits (arrows + data dots on every clock edge)",
+        "Full annotation: clock arrows and data value dots on every bit. Most detailed but slowest.");
+    mMarkerDensityInterface->AddNumber(MARKERS_SLOT_ONLY, "Slot boundaries only",
+        "One arrow marker at the start of each slot. 16x fewer markers for 16-bit slots.");
+    mMarkerDensityInterface->AddNumber(MARKERS_NONE, "None (fastest)",
+        "No waveform markers. Data table and HLA output still work.");
+    mMarkerDensityInterface->SetNumber(mMarkerDensity);
+
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
     AddInterface( mDataChannelInterface.get() );
@@ -149,6 +182,8 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mFrameSyncInvertedInterface.get() );
     AddInterface( mExportFileTypeInterface.get() );
     AddInterface( mEnableAdvancedAnalysisInterface.get() );
+    AddInterface( mFrameV2DetailInterface.get() );
+    AddInterface( mMarkerDensityInterface.get() );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
     AddExportOption( 0, "Export as text/csv file" );
@@ -189,6 +224,8 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mFrameSyncInvertedInterface->SetNumber( mFrameSyncInverted );
     mExportFileTypeInterface->SetNumber( mExportFileType );
     mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
+    mFrameV2DetailInterface->SetNumber(mFrameV2Detail);
+    mMarkerDensityInterface->SetNumber(mMarkerDensity);
 }
 
 static void FormatHzString( char* buf, size_t buf_size, U64 hz )
@@ -292,6 +329,8 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mFrameSyncInverted = TdmFrameSelectInverted( U32( mFrameSyncInvertedInterface->GetNumber() ) );
     mExportFileType = ExportFileType( U32( mExportFileTypeInterface->GetNumber() ) );
     mEnableAdvancedAnalysis = bool(mEnableAdvancedAnalysisInterface->GetValue() );
+    mFrameV2Detail = TdmFrameV2Detail(U32(mFrameV2DetailInterface->GetNumber()));
+    mMarkerDensity = TdmMarkerDensity(U32(mMarkerDensityInterface->GetNumber()));
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
 
@@ -405,6 +444,18 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
         mEnableAdvancedAnalysis = enable_advanced;
     }
 
+    U32 fv2_detail;
+    if (text_archive >> fv2_detail)
+    {
+        mFrameV2Detail = TdmFrameV2Detail(fv2_detail);
+    }
+
+    U32 marker_density;
+    if (text_archive >> marker_density)
+    {
+        mMarkerDensity = TdmMarkerDensity(marker_density);
+    }
+
     ClearChannels();
     AddChannel( mClockChannel, "TDM CLOCK", true );
     AddChannel( mFrameChannel, "TDM FRAME", true );
@@ -438,6 +489,8 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mFrameSyncInverted;
     text_archive << mExportFileType;
     text_archive << mEnableAdvancedAnalysis;
+    text_archive << mFrameV2Detail;
+    text_archive << mMarkerDensity;
 
     return SetReturnString( text_archive.GetString() );
 }

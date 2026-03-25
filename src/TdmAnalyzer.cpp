@@ -7,8 +7,8 @@
 TdmAnalyzer::TdmAnalyzer()
   : Analyzer2(),
     mSettings( new TdmAnalyzerSettings() ),
-    mSimulationInitilized( false ),
-    mLowSampleRate( false )
+    mLowSampleRate( false ),
+    mSimulationInitilized( false )
 {
     SetAnalyzerSettings( mSettings.get() );
     // Required: registers this analyzer as a FrameV2 producer.
@@ -78,6 +78,22 @@ void TdmAnalyzer::WorkerThread()
         mResults->AddFrameV2( advisory, "advisory", 0, 0 );
         mResults->CommitResults();
     }
+
+    if( mSettings->mFrameV2Detail == FV2_OFF )
+    {
+        FrameV2 advisory;
+        advisory.AddString( "severity", "warning" );
+        advisory.AddString( "message",
+            "FrameV2 output is disabled (Data Table / HLA Output = Off). "
+            "HLA extensions (WAV export, audio streaming) will not receive data. "
+            "Change this setting to 'Full' or 'Minimal' to enable HLA support." );
+        mResults->AddFrameV2( advisory, "advisory", 0, 0 );
+        mResults->CommitResults();
+    }
+
+    mDataBits.reserve( mSettings->mBitsPerSlot );
+    mDataValidEdges.reserve( mSettings->mBitsPerSlot );
+    mDataFlags.reserve( mSettings->mBitsPerSlot );
 
     SetupForGettingFirstBit();
     SetupForGettingFirstTdmFrame();
@@ -188,6 +204,13 @@ void TdmAnalyzer::GetTdmFrame()
             }
             
             mFrameNum++;
+
+            {
+                TDM_PROFILE_SCOPE( "GetTdmFrame::Commit" );
+                mResults->CommitResults();
+                ReportProgress( mClock->GetSampleNumber() );
+            }
+
             return;
         }
 
@@ -221,16 +244,18 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
 
     {
         TDM_PROFILE_SCOPE( "GetNextBit::Markers" );
-        if( mSettings->mEnableAdvancedAnalysis == false)
+        if( mSettings->mMarkerDensity == MARKERS_ALL )
         {
-            mResults->AddMarker(data_valid_sample,
-            data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero,
-            mSettings->mDataChannel);
+            if( mSettings->mEnableAdvancedAnalysis == false )
+            {
+                mResults->AddMarker(data_valid_sample,
+                    data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero,
+                    mSettings->mDataChannel);
+            }
+            mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
         }
 
         sample_number = data_valid_sample;
-
-        mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
     }
 
     mClock->AdvanceToNextEdge(); // R: high -> low / F: low -> high, advance one more, so we're ready for next time this function is called.
@@ -345,11 +370,17 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mResultsFrame.mStartingSampleInclusive = mDataValidEdges[ starting_index ];
     mResultsFrame.mEndingSampleInclusive = mDataValidEdges[ num_bits_to_process - 1 ];
 
+    if( mSettings->mMarkerDensity == MARKERS_SLOT_ONLY )
+    {
+        mResults->AddMarker( mResultsFrame.mStartingSampleInclusive, mArrowMarker, mSettings->mClockChannel );
+    }
+
     {
         TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::AddFrame" );
         mResults->AddFrame( mResultsFrame );
     }
 
+    if( mSettings->mFrameV2Detail != FV2_OFF )
     {
         TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::FrameV2" );
         FrameV2 frame_v2;
@@ -363,34 +394,33 @@ void TdmAnalyzer::AnalyzeTdmSlot()
         frame_v2.AddInteger( "data", adjusted_value );
         frame_v2.AddInteger( "frame_number", mFrameNum );
 
-        bool is_short_slot      = (mResultsFrame.mFlags & SHORT_SLOT) != 0;
-        bool is_extra_slot      = (mResultsFrame.mFlags & UNEXPECTED_BITS) != 0;
-        bool is_bitclock_error  = (mResultsFrame.mFlags & BITCLOCK_ERROR) != 0;
-        bool is_missed_data     = (mResultsFrame.mFlags & MISSED_DATA) != 0;
-        bool is_missed_frame_sync = (mResultsFrame.mFlags & MISSED_FRAME_SYNC) != 0;
-
-        const char* severity;
-        if( is_short_slot || is_bitclock_error || is_missed_data || is_missed_frame_sync )
-            severity = "error";
-        else if( is_extra_slot || mLowSampleRate )
-            severity = "warning";
-        else
-            severity = "ok";
-
-        frame_v2.AddString( "severity", severity );
+        bool is_short_slot = (mResultsFrame.mFlags & SHORT_SLOT) != 0;
+        bool is_bitclock_error = (mResultsFrame.mFlags & BITCLOCK_ERROR) != 0;
         frame_v2.AddBoolean( "short_slot", is_short_slot );
-        frame_v2.AddBoolean( "extra_slot", is_extra_slot );
         frame_v2.AddBoolean( "bitclock_error", is_bitclock_error );
-        frame_v2.AddBoolean( "missed_data", is_missed_data );
-        frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
-        frame_v2.AddBoolean( "low_sample_rate", mLowSampleRate );
-        mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
-    }
 
-    {
-        TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::Commit" );
-        mResults->CommitResults();
-        ReportProgress( mClock->GetSampleNumber() );
+        if( mSettings->mFrameV2Detail == FV2_FULL )
+        {
+            bool is_extra_slot = (mResultsFrame.mFlags & UNEXPECTED_BITS) != 0;
+            bool is_missed_data = (mResultsFrame.mFlags & MISSED_DATA) != 0;
+            bool is_missed_frame_sync = (mResultsFrame.mFlags & MISSED_FRAME_SYNC) != 0;
+
+            const char* severity;
+            if( is_short_slot || is_bitclock_error || is_missed_data || is_missed_frame_sync )
+                severity = "error";
+            else if( is_extra_slot || mLowSampleRate )
+                severity = "warning";
+            else
+                severity = "ok";
+
+            frame_v2.AddString( "severity", severity );
+            frame_v2.AddBoolean( "extra_slot", is_extra_slot );
+            frame_v2.AddBoolean( "missed_data", is_missed_data );
+            frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
+            frame_v2.AddBoolean( "low_sample_rate", mLowSampleRate );
+        }
+
+        mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     }
 
     mDataBits.clear();

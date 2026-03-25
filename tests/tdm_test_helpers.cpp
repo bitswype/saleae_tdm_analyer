@@ -46,6 +46,8 @@ std::vector<DecodedFrame> RunAndCollect( const Config& cfg )
     settings->mSigned = cfg.sign;
     settings->mFrameSyncInverted = cfg.fs_inverted;
     settings->mEnableAdvancedAnalysis = cfg.advanced_analysis;
+    settings->mFrameV2Detail = cfg.framev2_detail;
+    settings->mMarkerDensity = cfg.marker_density;
 
     instance.RunAnalyzerWorker();
 

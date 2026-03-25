@@ -78,6 +78,8 @@ static BenchResult RunBenchmark( const Config& cfg )
     settings->mSigned = cfg.sign;
     settings->mFrameSyncInverted = cfg.fs_inverted;
     settings->mEnableAdvancedAnalysis = cfg.advanced_analysis;
+    settings->mFrameV2Detail = cfg.framev2_detail;
+    settings->mMarkerDensity = cfg.marker_density;
 
     // Run the analyzer and time it
     auto decode_start = std::chrono::steady_clock::now();
