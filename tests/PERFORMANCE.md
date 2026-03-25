@@ -396,21 +396,29 @@ is inlined. The remaining decode() overhead is:
 These are fundamental Python interpreter costs. Further optimization at the
 Python level would yield diminishing returns.
 
-### Future: C extension for decode hot path
+### Phase 8: Cython Fast Decode Path (Implemented)
 
-The most impactful next step would be moving the `decode()` hot path to a C
-extension module. The inner loop (extract slot/frame_num from frame.data, check
-slot membership, apply sign conversion, accumulate sample, detect frame boundary,
-pack PCM) is ~10 operations that could be a single C function call receiving a
-batch of frames. This would eliminate the 1 us per-call Python overhead entirely,
-potentially achieving 10-50x throughput improvement for high-channel-count
-configurations.
+Moved the entire decode() body to a Cython extension module (`_decode_fast.pyx`)
+per the medium-scope design in `tests/C_EXTENSION_DESIGN.md`. The FastDecoder
+cdef class uses C-level arrays for slot set, accumulator, and batch buffer,
+with manual little-endian PCM byte packing (no struct.pack). Python handles
+TCP threading, ring buffer, and sample rate derivation (first few frames only).
+Falls back to pure Python when the extension is not compiled.
 
-This is tracked as a future optimization opportunity. A 64-test unit test
-suite (`tests/test_hla_decode.py`) serves as the correctness oracle for any
-reimplementation, covering every branch of decode() including C-port-specific
-edge cases (negative ints, integer overflow, missing dict keys, ring buffer
-overflow, large frame numbers).
+| Config | Python baseline | Python optimized | Cython | vs baseline | vs optimized |
+|--------|---------------:|----------------:|-------:|------------:|-------------:|
+| Stereo 16-bit | 3.5x RT | 7.3x RT | **19.8x RT** | 5.7x | 2.7x |
+| Stereo 32-bit | 2.8x RT | 4.9x RT | **18.5x RT** | 6.6x | 3.8x |
+| 8-ch 16-bit | 0.8x RT | 1.5x RT | **4.1x RT** | 5.1x | 2.7x |
+| 16-ch 16-bit | 0.4x RT | 0.8x RT | **2.0x RT** | 5.0x | 2.5x |
+
+**16-channel went from 0.4x realtime (unusable) to 2.0x realtime (above
+realtime).** The entire HLA pipeline is now realtime-capable for all
+configurations up to at least 16 channels.
+
+The 64-test oracle (`tests/test_hla_decode.py`) validates the Cython
+implementation, including C-specific edge cases (negative ints, integer
+overflow, missing dict keys, ring buffer overflow, large frame numbers).
 
 ## Document Index
 
