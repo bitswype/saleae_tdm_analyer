@@ -12,7 +12,7 @@
 // Happy Path Tests — Value Correctness
 // ===================================================================
 
-// Test 1: Stereo 16-bit MSB-first left-aligned (baseline)
+// Stereo 16-bit MSB-first left-aligned (baseline)
 void test_stereo_16bit_baseline()
 {
     Config c = DefaultConfig( "stereo-16bit", TEST_FRAMES );
@@ -20,7 +20,7 @@ void test_stereo_16bit_baseline()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 2: LSB-first decode
+// LSB-first decode
 void test_lsb_first()
 {
     Config c = DefaultConfig( "lsb-first", TEST_FRAMES );
@@ -29,7 +29,7 @@ void test_lsb_first()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 3: Right-aligned 24-bit data in 32-bit slot
+// Right-aligned 24-bit data in 32-bit slot
 void test_right_aligned_24in32()
 {
     Config c = DefaultConfig( "right-aligned-24in32", TEST_FRAMES );
@@ -41,7 +41,7 @@ void test_right_aligned_24in32()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 4: Left-aligned 24-bit data in 32-bit slot
+// Left-aligned 24-bit data in 32-bit slot
 void test_left_aligned_24in32()
 {
     Config c = DefaultConfig( "left-aligned-24in32", TEST_FRAMES );
@@ -53,7 +53,7 @@ void test_left_aligned_24in32()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 5: 8-channel slot numbering
+// 8-channel slot numbering
 void test_8channel_slot_numbering()
 {
     Config c = DefaultConfig( "8channel", TEST_FRAMES );
@@ -63,7 +63,7 @@ void test_8channel_slot_numbering()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 6: DSP Mode B
+// DSP Mode B
 void test_dsp_mode_b()
 {
     Config c = DefaultConfig( "dsp-mode-b", TEST_FRAMES );
@@ -72,7 +72,7 @@ void test_dsp_mode_b()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 7: Frame sync inverted
+// Frame sync inverted
 void test_frame_sync_inverted()
 {
     Config c = DefaultConfig( "fs-inverted", TEST_FRAMES );
@@ -81,7 +81,7 @@ void test_frame_sync_inverted()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 8: Negative edge sampling
+// Negative edge sampling
 void test_neg_edge_sampling()
 {
     Config c = DefaultConfig( "neg-edge", TEST_FRAMES );
@@ -90,7 +90,7 @@ void test_neg_edge_sampling()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 9: 32-bit data
+// 32-bit data
 void test_32bit_data()
 {
     Config c = DefaultConfig( "32bit", TEST_FRAMES );
@@ -101,7 +101,7 @@ void test_32bit_data()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 10: 64-bit data
+// 64-bit data
 void test_64bit_data()
 {
     Config c = DefaultConfig( "64bit", TEST_FRAMES );
@@ -112,7 +112,7 @@ void test_64bit_data()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Test 11: Mono (single slot per frame)
+// Mono (single slot per frame)
 void test_mono_single_slot()
 {
     Config c = DefaultConfig( "mono", TEST_FRAMES );
@@ -210,7 +210,7 @@ void test_combo_4ch_24in32_advanced()
 // Boundary Value Tests
 // ===================================================================
 
-// Task 1: 8-bit counter wraps through all 256 values (0x00-0xFF)
+// 8-bit counter wraps through all 256 values (0x00-0xFF)
 void test_counter_wrap_8bit()
 {
     Config c = DefaultConfig( "counter-wrap-8bit", 200 );
@@ -223,7 +223,7 @@ void test_counter_wrap_8bit()
     VerifyCountingPattern( frames, c, 200 );
 }
 
-// Task 2a: 3-bit slots (non-power-of-2)
+// 3-bit slots (non-power-of-2)
 void test_3bit_slots()
 {
     Config c = DefaultConfig( "3bit-slots", TEST_FRAMES );
@@ -234,7 +234,7 @@ void test_3bit_slots()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Task 2b: 8-bit slots (byte-aligned, common in practice)
+// 8-bit slots (byte-aligned, common in practice)
 void test_8bit_slots()
 {
     Config c = DefaultConfig( "8bit-slots", TEST_FRAMES );
@@ -245,7 +245,7 @@ void test_8bit_slots()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Task 3a: LSB-first + right-aligned (8 data in 16-bit slot)
+// LSB-first + right-aligned (8 data in 16-bit slot)
 void test_lsb_right_aligned_8in16()
 {
     Config c = DefaultConfig( "lsb-right-8in16", TEST_FRAMES );
@@ -258,7 +258,7 @@ void test_lsb_right_aligned_8in16()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Task 3b: LSB-first + left-aligned (8 data in 16-bit slot)
+// LSB-first + left-aligned (8 data in 16-bit slot)
 void test_lsb_left_aligned_8in16()
 {
     Config c = DefaultConfig( "lsb-left-8in16", TEST_FRAMES );
@@ -271,7 +271,7 @@ void test_lsb_left_aligned_8in16()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Task 4a: Extreme padding, 2 data bits in 64-bit slot, right-aligned
+// Extreme padding, 2 data bits in 64-bit slot, right-aligned
 void test_extreme_padding_right_2in64()
 {
     Config c = DefaultConfig( "extreme-pad-right-2in64", TEST_FRAMES );
@@ -283,7 +283,7 @@ void test_extreme_padding_right_2in64()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Task 4b: Extreme padding, 2 data bits in 64-bit slot, left-aligned
+// Extreme padding, 2 data bits in 64-bit slot, left-aligned
 void test_extreme_padding_left_2in64()
 {
     Config c = DefaultConfig( "extreme-pad-left-2in64", TEST_FRAMES );
@@ -295,7 +295,7 @@ void test_extreme_padding_left_2in64()
     VerifyCountingPattern( frames, c, TEST_FRAMES );
 }
 
-// Task 5: 63 data bits in 64-bit slot (1 bit of padding)
+// 63 data bits in 64-bit slot (1 bit of padding)
 void test_63in64_right()
 {
     Config c = DefaultConfig( "63in64-right", 20 );
@@ -307,7 +307,7 @@ void test_63in64_right()
     VerifyCountingPattern( frames, c, 20 );
 }
 
-// Task 6: 256 slots (U8 mType boundary)
+// 256 slots (U8 mType boundary)
 void test_256_slots()
 {
     Config c = DefaultConfig( "256-slots", 3 );
@@ -339,7 +339,7 @@ void test_256_slots()
     }
 }
 
-// Task 7: Right-aligned with zero padding (data_bits == bits_per_slot)
+// Right-aligned with zero padding (data_bits == bits_per_slot)
 void test_right_aligned_zero_padding()
 {
     Config c = DefaultConfig( "right-zero-pad", TEST_FRAMES );

@@ -45,6 +45,7 @@ target_compile_definitions(tdm_benchmark PRIVATE LOGIC2)
 
 add_executable(tdm_correctness
     tdm_correctness.cpp
+    tdm_test_helpers.cpp
     test_decode_values.cpp
     test_sign_conversion.cpp
     test_error_conditions.cpp

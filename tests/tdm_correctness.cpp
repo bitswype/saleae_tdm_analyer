@@ -140,6 +140,8 @@ int main()
     RunTest( "test_sign_24bit_negative", test_sign_24bit_negative );
     RunTest( "test_sign_32bit_min", test_sign_32bit_min );
     RunTest( "test_sign_edge_cases", test_sign_edge_cases );
+    RunTest( "test_signed_4bit_end_to_end", test_signed_4bit_end_to_end );
+    RunTest( "test_sign_64bit_after_fix", test_sign_64bit_after_fix );
     std::cout << std::endl;
 
     std::cout << "Error Conditions:" << std::endl;
@@ -180,7 +182,6 @@ int main()
     RunTest( "test_63in64_right", test_63in64_right );
     RunTest( "test_256_slots", test_256_slots );
     RunTest( "test_right_aligned_zero_padding", test_right_aligned_zero_padding );
-    RunTest( "test_signed_4bit_end_to_end", test_signed_4bit_end_to_end );
     std::cout << std::endl;
 
     std::cout << "Advanced Analysis Error Detection:" << std::endl;
@@ -193,7 +194,6 @@ int main()
     RunTest( "test_padding_bits_high", test_padding_bits_high );
     RunTest( "test_dsp_mode_a_offset_bit_high", test_dsp_mode_a_offset_bit_high );
     RunTest( "test_low_sample_rate", test_low_sample_rate );
-    RunTest( "test_sign_64bit_after_fix", test_sign_64bit_after_fix );
     std::cout << std::endl;
 
     std::cout << "FrameV2 Field Verification:" << std::endl;

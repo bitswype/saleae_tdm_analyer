@@ -8,13 +8,58 @@ The C++ correctness test suite verifies the TDM Low Level Analyzer's decode logi
 
 **What it does not test:** GenerateBubbleText/GenerateTabularText (formatting logic), CSV/WAV export, settings validation (SetSettingsFromInterfaces), LoadSettings/SaveSettings serialization, or the Python HLA layer.
 
+## Building and Running
+
+```bash
+# Configure (first time or after CMakeLists.txt changes)
+cmake -B build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release    # Linux/macOS
+cmake -B build-test -DBUILD_TESTS=ON -A x64                         # Windows
+
+# Build
+cmake --build build-test --target tdm_correctness                    # Linux/macOS
+cmake --build build-test --config Release --target tdm_correctness   # Windows
+
+# Run (exit code 0 = all pass, 1 = any failure)
+./build-test/tests/tdm_correctness                                   # Linux/macOS
+build-test\bin\Release\tdm_correctness.exe                           # Windows
+```
+
+## TDM Protocol Primer
+
+TDM (Time Division Multiplexing) is a serial audio protocol with three signal lines:
+
+- **Bit clock:** Square wave that defines when data bits are valid. Data is sampled on either the rising edge (PosEdge) or falling edge (NegEdge).
+- **Frame sync (FS):** A pulse that marks the start of a new TDM frame. Each frame contains N time slots, one per audio channel. The pulse is one clock cycle wide. FS can be active-HIGH (normal) or active-LOW (inverted).
+- **Data:** Serial audio sample bits, transmitted MSB-first or LSB-first.
+
+**DSP Mode A vs B:** In DSP Mode A (most common), data is delayed by one clock cycle relative to the FS pulse - the bit at the FS edge is the last bit of the previous frame, and the new frame's data starts on the next clock cycle. In DSP Mode B, data starts on the same clock cycle as the FS pulse (no delay).
+
+**Oversampling:** The Logic 2 capture sample rate must be at least 4x the bit clock frequency for reliable edge detection. The bit clock frequency is `frame_rate * slots_per_frame * bits_per_slot`.
+
+**Preamble:** The signal generator prepends 16 idle clock cycles before the first FS pulse so the analyzer can synchronize before the first data arrives.
+
+### Error flag constants
+
+Defined in `src/TdmAnalyzerResults.h`, masked by `ERROR_FLAG_MASK` (0x3F) in tests:
+
+| Flag | Bit | Value | Meaning |
+|------|-----|-------|---------|
+| `TOO_FEW_BITS_PER_FRAME` | 0 | 0x01 | (Unused) |
+| `UNEXPECTED_BITS` | 1 | 0x02 | More slots in frame than configured |
+| `MISSED_DATA` | 2 | 0x04 | Data line transitioned between clock edges (advanced analysis) |
+| `SHORT_SLOT` | 3 | 0x08 | Fewer bits in slot than configured |
+| `MISSED_FRAME_SYNC` | 4 | 0x10 | Frame sync transitioned between clock edges (advanced analysis) |
+| `BITCLOCK_ERROR` | 5 | 0x20 | Clock period deviates from expected by more than +/-1 sample (advanced analysis) |
+
+Bits 6-7 are display flags (DISPLAY_AS_WARNING_FLAG, DISPLAY_AS_ERROR_FLAG) used by Logic 2's UI. Tests mask these out with `ERROR_FLAG_MASK`.
+
 ## Architecture
 
 ### Signal generation
 
-`tdm_test_signal.h` provides `GenerateTdmSignal()`, which builds synthetic TDM signals as MockChannelData transitions. Signals use a counting pattern: slot values are 0, 1, 2, 3, ... wrapping at `2^data_bits_per_slot`. The `Config` struct controls all TDM parameters (frame rate, channel count, bit depth, alignment, shift order, DSP mode, etc.).
+`tdm_test_signal.h` provides `GenerateTdmSignal()`, which builds synthetic TDM signals as MockChannelData transitions. Signals use a counting pattern: each slot value increments sequentially across all slots (not per-slot) wrapping at `2^data_bits_per_slot`. For example, with 2 slots: frame 0 = [0, 1], frame 1 = [2, 3], frame 2 = [4, 5], etc. The `Config` struct controls all TDM parameters.
 
-For error condition tests, hand-crafted signals bypass the generator entirely and place clock/data/frame transitions at exact sample positions.
+For error condition and blind spot tests, hand-crafted signals bypass the generator entirely and place clock/data/frame transitions at exact sample positions using `EmitBitDescSignal()` or `RunHandcraftedSignal()`.
 
 ### Two assertion layers
 
@@ -26,26 +71,33 @@ Before the capture mock existed, all FrameV2 stubs were no-ops, making the entir
 
 ### Test helpers
 
-`tdm_test_helpers.h` provides shared infrastructure used by all test files:
+`tdm_test_helpers.h` declares shared infrastructure; implementations live in `tdm_test_helpers.cpp`:
 
 - **CHECK / CHECK_EQ macros** - assert with descriptive failure messages, abort test on first failure
 - **RunTest()** - runs a test function, tracks pass/fail counts
 - **DecodedFrame** - struct wrapping V1 Frame fields (data, slot, flags)
+- **ERROR_FLAG_MASK** - named constant (0x3F) for masking V1 Frame error bits
+- **BitDesc** - struct for per-bit signal description (data state, frame state)
 - **RunAndCollect()** - generates signal from Config, runs analyzer, returns vector of DecodedFrame
-- **VerifyCountingPattern()** - verifies decoded values match the counting pattern for a given Config
-- **RunHandcraftedSignal()** - runs analyzer with manually constructed channel transitions
-- **RunShortSlotTest() / RunExtraSlotsTest()** - shared error signal generators
+- **VerifyCountingPattern()** - verifies decoded values match the counting pattern
+- **EmitBitDescSignal()** - converts a BitDesc vector into MockChannelData transitions
+- **RunHandcraftedSignal()** - runs analyzer with manually constructed transition lists. NOTE: hardcodes MSB-first, PosEdge, LEFT_ALIGNED, DSP_MODE_A, UnsignedInteger, FS_NOT_INVERTED. Callers needing other settings must build their own Instance setup.
+- **RunShortSlotTest() / RunExtraSlotsTest()** - error signal generators for SHORT_SLOT and UNEXPECTED_BITS
+- **RunBitclockErrorSignal() / RunMissedDataSignal() / RunMissedFrameSyncSignal()** - error signal generators for advanced analysis flags
+- **RunWithMismatch()** - generates signal from one Config but configures analyzer from another (for misconfig tests)
 
 ## File Organization
 
 | File | Tests | Purpose |
 |------|------:|---------|
-| `test_decode_values.cpp` | 28 | Value correctness: happy path (11), combination (6), boundary values (10), bit pattern (1) |
+| `test_decode_values.cpp` | 27 | Value correctness: happy path (11), combination (6), boundary values (9), bit pattern (1) |
 | `test_sign_conversion.cpp` | 9 | Sign conversion: unit tests (6), end-to-end (1), UB fix (1), FrameV2 signed decode (1) |
 | `test_error_conditions.cpp` | 9 | Error flags (SHORT_SLOT, UNEXPECTED_BITS) and robustness under misconfig |
 | `test_advanced_analysis.cpp` | 3 | Hand-crafted signals for BITCLOCK_ERROR, MISSED_DATA, MISSED_FRAME_SYNC |
 | `test_generator_blindspots.cpp` | 3 | Padding bits HIGH, DSP Mode A offset bit, low sample rate |
 | `test_framev2.cpp` | 7 | FrameV2 severity, error booleans, frame numbering, low SR advisory |
+| `tdm_test_helpers.h` | - | Declarations and macros (inline RunTest, CHECK) |
+| `tdm_test_helpers.cpp` | - | Helper implementations and shared signal generators |
 | `tdm_correctness.cpp` | - | Test runner: main() with forward declarations |
 | **Total** | **58** | |
 
@@ -61,11 +113,15 @@ Each test varies one setting from the baseline (stereo 16-bit MSB-first left-ali
 
 Vary multiple settings simultaneously. These catch interaction bugs that single-setting tests miss. For example, `test_combo_8ch_24in32_right_lsb` combines 8 channels, 24-in-32 right-aligned, and LSB-first - the starting_index skip and bit-weight assignment interact differently than either setting alone.
 
-### Boundary values (10 tests) - `test_decode_values.cpp`
+### Boundary values (9 tests) - `test_decode_values.cpp`
 
-Test edge values for numeric parameters: non-power-of-2 bit widths (3-bit, 8-bit), extreme padding (2 data bits in 64-bit slot), 63-in-64 (1-bit padding), 256-slot U8 mType boundary, right-aligned with zero padding, and 8-bit counter wrapping through all 256 values to exercise high bit positions (0xFF, 0x80, 0xAA, 0x55) that the low-count counting pattern never reaches.
+Test edge values for numeric parameters: non-power-of-2 bit widths (3-bit, 8-bit), extreme padding (2 data bits in 64-bit slot), 63-in-64 (1-bit padding), 256-slot U8 mType boundary, and right-aligned with zero padding.
 
-**Why the counter wrap test matters:** With 100 frames and 2 slots, the counter only reaches 199 for 16-bit data - less than 0.3% of the value space, never setting any bit above position 7. The 8-bit counter wrap test exercises all 256 values.
+### Bit pattern coverage (1 test) - `test_decode_values.cpp`
+
+8-bit counter wrapping through all 256 values (0x00-0xFF), exercising high bit positions (0xFF, 0x80, 0xAA, 0x55) that the low-count counting pattern never reaches.
+
+**Why this matters:** With 100 frames and 2 slots, the counter only reaches 199 for 16-bit data - less than 0.3% of the value space, never setting any bit above position 7.
 
 ### Sign conversion (9 tests) - `test_sign_conversion.cpp`
 
@@ -75,15 +131,15 @@ The FrameV2 test is critical - without it, the `ConvertToSignedNumber` call in `
 
 ### Error conditions (9 tests) - `test_error_conditions.cpp`
 
-Tests error flag detection (SHORT_SLOT flag with data=0 and post-error recovery, UNEXPECTED_BITS flag on excess slots) and robustness under misconfigured settings (fewer/more slots than expected, wrong bit depth, wrong DSP mode, wrong FS polarity). Error tests verify specific flags; misconfig tests verify no crash and check appropriate flags or valid output ranges.
+Tests error flag detection (SHORT_SLOT flag with data=0 and post-error recovery, UNEXPECTED_BITS flag on excess slots) and robustness under misconfigured settings (fewer/more slots than expected, wrong bit depth, wrong DSP mode, wrong FS polarity). Error tests verify specific flags; misconfig tests use `RunWithMismatch()` and verify no crash plus appropriate flags.
 
 ### Advanced analysis (3 tests) - `test_advanced_analysis.cpp`
 
 Hand-crafted signals with deliberate timing defects, using 8x oversampling (half-period = 4 samples) to provide room for placing transitions between clock edges:
 
-- **BITCLOCK_ERROR:** One clock cycle stretched to 2x normal period. The analyzer checks `next_rising - current_rising` against `mDesiredBitClockPeriod +/- 1`.
-- **MISSED_DATA:** Data line glitch (two extra transitions) between clock edges, plus a pending transition after the falling edge to satisfy the two-part detection condition.
-- **MISSED_FRAME_SYNC:** Same pattern on the frame sync line.
+- **BITCLOCK_ERROR:** One clock cycle stretched to 2x normal period (16 samples vs expected 8). The analyzer checks `next_rising - current_rising` against `mDesiredBitClockPeriod +/- 1`.
+- **MISSED_DATA:** Data line glitch (two extra transitions) between clock edges, plus a pending transition after the falling edge. The analyzer requires both conditions: transitions in the first half-period AND a pending transition before the next rising edge.
+- **MISSED_FRAME_SYNC:** Same two-part pattern on the frame sync line.
 
 ### Generator blind spots (3 tests) - `test_generator_blindspots.cpp`
 
@@ -101,27 +157,44 @@ Verify FrameV2 output fields that are invisible to V1 Frame inspection:
 - **Error severity:** SHORT_SLOT produces "error", EXTRA_SLOT produces "warning", BITCLOCK_ERROR/MISSED_DATA/MISSED_FRAME_SYNC produce "error"
 - **Low sample rate:** Advisory FrameV2 emitted with severity="warning" and message, slot FrameV2s have low_sample_rate=true
 
+Note: `test_framev2_signed_decode` (1 test) lives in `test_sign_conversion.cpp` since it verifies signed conversion correctness, and runs under the "FrameV2 Field Verification" section in the runner.
+
 ## How to Add Tests
+
+### DefaultConfig baseline
+
+`DefaultConfig(label, num_frames)` produces: stereo (2 slots), 16-bit, 48 kHz, MSB-first, left-aligned, DSP Mode A, unsigned, PosEdge, FS not inverted, 4x oversampling.
+
+**Sample rate formula:** When you change `slots_per_frame`, `bits_per_slot`, or `frame_rate`, you must recalculate:
+
+```
+sample_rate = frame_rate * slots_per_frame * bits_per_slot * oversampling
+```
+
+Use 4x oversampling for standard tests. Use 8x for hand-crafted advanced analysis tests (more room between clock edges).
 
 ### Config-based test (most common)
 
 1. Create a `Config` with `DefaultConfig()` and override the settings you want to test
-2. Call `RunAndCollect(cfg)` to get decoded frames
-3. Call `VerifyCountingPattern(frames, cfg, num_frames)` if testing value correctness
-4. Or inspect `frames[i].data`, `frames[i].slot`, `frames[i].flags` directly
-5. Add a `RunTest("test_name", test_function)` call in `tdm_correctness.cpp`
-6. Add the function to the appropriate test file and forward-declare in `tdm_correctness.cpp`
+2. Recalculate `c.sample_rate` if you changed frame_rate, slots_per_frame, or bits_per_slot
+3. Call `RunAndCollect(cfg)` to get decoded frames
+4. Call `VerifyCountingPattern(frames, cfg, num_frames)` if testing value correctness
+5. Or inspect `frames[i].data`, `frames[i].slot`, `frames[i].flags` directly
+6. Add the function to the appropriate test `.cpp` file
+7. Add a forward declaration and `RunTest()` call in `tdm_correctness.cpp` under the matching category
 
 ### Hand-crafted signal test
 
-1. Define transitions for clock, frame, and data channels as `vector<U64>`
-2. Call `RunHandcraftedSignal()` with a `HandcraftedConfig`
-3. Inspect the returned `DecodedFrame` vector
-4. For FrameV2 inspection, call `ClearCapturedFrameV2s()` before and `GetCapturedFrameV2s()` after
+For tests that need non-standard signal construction (error injection, non-zero padding, etc.):
+
+1. Build a `vector<BitDesc>` describing each clock cycle's data and frame state
+2. Call `EmitBitDescSignal(clk, frm, dat, stream, half_samples)` to convert to MockChannelData
+3. Or use `RunHandcraftedSignal()` for simpler cases (note: it hardcodes several settings)
+4. If adding a reusable signal generator, put it in `tdm_test_helpers.cpp` with a declaration in `.h`
 
 ### FrameV2 assertion test
 
-1. Call `ClearCapturedFrameV2s()` before running the analyzer
+1. Call `ClearCapturedFrameV2s()` before running the analyzer (any prior test's capture data persists in the global buffer otherwise)
 2. Run via `RunAndCollect()` or a signal generator function
 3. Iterate `GetCapturedFrameV2s()` and use `GetInteger()`, `GetString()`, `GetBoolean()` accessors
 4. Filter by `fv2.type == "slot"` (data frames) or `fv2.type == "advisory"` (informational)
@@ -134,7 +207,9 @@ The test suite was built over three rounds, each driven by independent adversari
 
 **Round 2 (+30 = 50 tests):** Three agents identified: counter only reaching 0-199, no non-power-of-2 widths, no LSB+padding combos, advanced analysis errors never triggered, misconfig tests too weak, padding always zero, signed path never tested end-to-end, ConvertToSignedNumber UB for 64-bit. All gaps addressed.
 
-**Round 3 (+8 = 58 tests):** Three agents found the FrameV2 layer was the dominant blind spot - all FrameV2 stubs were no-ops, making signed conversion, severity, error booleans, and frame numbering completely untestable. Implemented FrameV2 capture mock and 8 verification tests. Also fixed fragile `test_padding_bits_high` signal construction and strengthened `test_256_slots` data assertions.
+**Round 3 (+8 = 58 tests):** Three agents found the FrameV2 layer was the dominant blind spot - all FrameV2 stubs were no-ops, making signed conversion, severity, error booleans, and frame numbering completely untestable. Implemented FrameV2 capture mock and verification tests. Also fixed fragile `test_padding_bits_high` signal construction and strengthened `test_256_slots` data assertions.
+
+**Round 4 (cleanup):** Three more agents audited the split and documentation. Fixes: extracted signal generators to eliminate cross-file coupling, moved large functions from header to .cpp, deduplicated BitDesc conversion and misconfig boilerplate, added ERROR_FLAG_MASK constant, fixed runner category groupings, removed dead code (RunWithoutCrash), and added this documentation.
 
 ## Known Remaining Gaps
 

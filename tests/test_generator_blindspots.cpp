@@ -21,7 +21,6 @@ void test_padding_bits_high()
     const double bit_freq = double( frame_rate ) * bpf;
     const double half_samples = double( sample_rate ) / ( 2.0 * bit_freq );
 
-    struct BitDesc { BitState data; BitState frame; };
     std::vector<BitDesc> stream;
 
     // Preamble
@@ -63,42 +62,7 @@ void test_padding_bits_high()
     AnalyzerTest::MockChannelData* frm = new AnalyzerTest::MockChannelData( &instance );
     AnalyzerTest::MockChannelData* dat = new AnalyzerTest::MockChannelData( &instance );
 
-    clk->TestSetInitialBitState( BIT_LOW );
-    frm->TestSetInitialBitState( stream[ 0 ].frame );
-    dat->TestSetInitialBitState( stream[ 0 ].data );
-
-    BitState cur_dat = stream[ 0 ].data;
-    BitState cur_frm = stream[ 0 ].frame;
-    double err = 0.0;
-    U64 pos = 0;
-
-    for( size_t i = 0; i < stream.size(); i++ )
-    {
-        double target = half_samples + err;
-        U32 n = static_cast<U32>( std::lround( target ) );
-        err = target - double( n );
-        pos += n;
-        clk->TestAppendTransitionAtSamples( pos );
-        target = half_samples + err;
-        n = static_cast<U32>( std::lround( target ) );
-        err = target - double( n );
-        pos += n;
-        clk->TestAppendTransitionAtSamples( pos );
-
-        if( i + 1 < stream.size() )
-        {
-            if( stream[ i + 1 ].data != cur_dat )
-            {
-                dat->TestAppendTransitionAtSamples( pos );
-                cur_dat = stream[ i + 1 ].data;
-            }
-            if( stream[ i + 1 ].frame != cur_frm )
-            {
-                frm->TestAppendTransitionAtSamples( pos );
-                cur_frm = stream[ i + 1 ].frame;
-            }
-        }
-    }
+    EmitBitDescSignal( clk, frm, dat, stream, half_samples );
 
     clk->ResetCurrentSample();
     frm->ResetCurrentSample();
@@ -146,7 +110,7 @@ void test_padding_bits_high()
     }
 }
 
-// Task 16: DSP Mode A offset bit = HIGH -- verify it's excluded from data.
+// DSP Mode A offset bit = HIGH -- verify it's excluded from data.
 // In DSP Mode A, the very first FS-coincident data bit is skipped by
 // SetupForGettingFirstTdmFrame. Subsequent FS-coincident bits are the last
 // bit of the previous frame. This test verifies the setup skip works:
@@ -165,7 +129,6 @@ void test_dsp_mode_a_offset_bit_high()
     const double bit_freq = double( frame_rate ) * bpf;
     const double half_samples = double( sample_rate ) / ( 2.0 * bit_freq );
 
-    struct BitDesc { BitState data; BitState frame; };
     std::vector<BitDesc> stream;
 
     // Preamble
@@ -200,42 +163,7 @@ void test_dsp_mode_a_offset_bit_high()
     AnalyzerTest::MockChannelData* frm = new AnalyzerTest::MockChannelData( &instance );
     AnalyzerTest::MockChannelData* dat = new AnalyzerTest::MockChannelData( &instance );
 
-    clk->TestSetInitialBitState( BIT_LOW );
-    frm->TestSetInitialBitState( stream[ 0 ].frame );
-    dat->TestSetInitialBitState( stream[ 0 ].data );
-
-    BitState cur_dat = stream[ 0 ].data;
-    BitState cur_frm = stream[ 0 ].frame;
-    double err = 0.0;
-    U64 pos = 0;
-
-    for( size_t i = 0; i < stream.size(); i++ )
-    {
-        double target = half_samples + err;
-        U32 n = static_cast<U32>( std::lround( target ) );
-        err = target - double( n );
-        pos += n;
-        clk->TestAppendTransitionAtSamples( pos );
-        target = half_samples + err;
-        n = static_cast<U32>( std::lround( target ) );
-        err = target - double( n );
-        pos += n;
-        clk->TestAppendTransitionAtSamples( pos );
-
-        if( i + 1 < stream.size() )
-        {
-            if( stream[ i + 1 ].data != cur_dat )
-            {
-                dat->TestAppendTransitionAtSamples( pos );
-                cur_dat = stream[ i + 1 ].data;
-            }
-            if( stream[ i + 1 ].frame != cur_frm )
-            {
-                frm->TestAppendTransitionAtSamples( pos );
-                cur_frm = stream[ i + 1 ].frame;
-            }
-        }
-    }
+    EmitBitDescSignal( clk, frm, dat, stream, half_samples );
 
     clk->ResetCurrentSample();
     frm->ResetCurrentSample();
@@ -283,7 +211,7 @@ void test_dsp_mode_a_offset_bit_high()
     }
 }
 
-// Task 17: Low sample rate detection (below 4x oversampling)
+// Low sample rate detection (below 4x oversampling)
 void test_low_sample_rate()
 {
     Config c = DefaultConfig( "low-sample-rate", 50 );

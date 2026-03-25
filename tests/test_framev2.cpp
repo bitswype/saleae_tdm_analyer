@@ -8,11 +8,6 @@
 
 #include "tdm_test_helpers.h"
 
-// Defined in test_advanced_analysis.cpp
-void test_bitclock_error_detection();
-void test_missed_data_detection();
-void test_missed_frame_sync_detection();
-
 void test_framev2_happy_path()
 {
     ClearCapturedFrameV2s();
@@ -65,7 +60,6 @@ void test_framev2_happy_path()
     CHECK( checked >= 10, "Should have verified at least 10 slot FrameV2 records" );
 }
 
-// Task 21: Verify FrameV2 fields on error condition tests
 void test_framev2_short_slot_severity()
 {
     ClearCapturedFrameV2s();
@@ -109,7 +103,7 @@ void test_framev2_extra_slot_severity()
 void test_framev2_bitclock_error_severity()
 {
     ClearCapturedFrameV2s();
-    test_bitclock_error_detection(); // re-run to populate capture
+    RunBitclockErrorSignal();
 
     auto& fv2s = GetCapturedFrameV2s();
     bool found = false;
@@ -129,7 +123,7 @@ void test_framev2_bitclock_error_severity()
 void test_framev2_missed_data_severity()
 {
     ClearCapturedFrameV2s();
-    test_missed_data_detection();
+    RunMissedDataSignal();
 
     auto& fv2s = GetCapturedFrameV2s();
     bool found = false;
@@ -149,7 +143,7 @@ void test_framev2_missed_data_severity()
 void test_framev2_missed_frame_sync_severity()
 {
     ClearCapturedFrameV2s();
-    test_missed_frame_sync_detection();
+    RunMissedFrameSyncSignal();
 
     auto& fv2s = GetCapturedFrameV2s();
     bool found = false;
@@ -166,7 +160,6 @@ void test_framev2_missed_frame_sync_severity()
     CHECK( found, "Should find a FrameV2 with missed_frame_sync=true" );
 }
 
-// Task 23: Verify low sample rate advisory and slot severity
 void test_framev2_low_sample_rate()
 {
     ClearCapturedFrameV2s();
