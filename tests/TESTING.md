@@ -2,11 +2,17 @@
 
 ## Overview
 
-The C++ correctness test suite verifies the TDM Low Level Analyzer's decode logic by generating synthetic TDM signals, running the analyzer via the SDK testlib, and asserting decoded output matches expected values.
+Two test suites cover the TDM analyzer decode pipeline:
 
-**What it tests:** LLA decode accuracy - value correctness, error flag detection, FrameV2 field population, and robustness under misconfiguration.
+**C++ LLA correctness tests** (`tests/tdm_correctness`) -- 58 tests verifying the Low Level Analyzer's decode logic via the SDK testlib. See detailed documentation below.
 
-**What it does not test:** GenerateBubbleText/GenerateTabularText (formatting logic), CSV/WAV export, settings validation (SetSettingsFromInterfaces), LoadSettings/SaveSettings serialization, or the Python HLA layer.
+**Python HLA decode tests** (`tests/test_hla_decode.py`) -- 64 pytest tests verifying both HLAs (audio stream and WAV export) at the unit level. Covers every branch of decode(): frame/slot filtering, sign conversion, error handling, frame boundary detection, accumulator behavior, PCM packing via TCP, batch buffer mechanics, sample rate derivation, WAV output, and C-port safety (negative ints, overflow, missing keys, ring buffer overflow, large frame numbers). Run with `pytest tests/test_hla_decode.py -v`. This suite serves as the correctness oracle for any future C/Cython reimplementation of the decode() hot path.
+
+**What is not tested:** GenerateBubbleText/GenerateTabularText (formatting logic), CSV/WAV export format details, settings validation (SetSettingsFromInterfaces), LoadSettings/SaveSettings serialization.
+
+## Building and Running
+
+### C++ LLA tests
 
 ## Building and Running
 
@@ -22,6 +28,14 @@ cmake --build build-test --config Release --target tdm_correctness   # Windows
 # Run (exit code 0 = all pass, 1 = any failure)
 ./build-test/tests/tdm_correctness                                   # Linux/macOS
 build-test\bin\Release\tdm_correctness.exe                           # Windows
+```
+
+### Python HLA tests
+
+```bash
+pip install pytest
+pip install -e tools/tdm-test-harness/
+pytest tests/test_hla_decode.py -v
 ```
 
 ## TDM Protocol Primer
@@ -211,13 +225,25 @@ The test suite was built over three rounds, each driven by independent adversari
 
 **Round 4 (cleanup):** Three more agents audited the split and documentation. Fixes: extracted signal generators to eliminate cross-file coupling, moved large functions from header to .cpp, deduplicated BitDesc conversion and misconfig boilerplate, added ERROR_FLAG_MASK constant, fixed runner category groupings, removed dead code (RunWithoutCrash), and added this documentation.
 
+**HLA Round 1 (42 tests):** Initial Python HLA decode() unit test suite covering frame/slot filtering, sign conversion, error handling, frame boundaries, accumulator behavior, PCM packing via TCP, batch mechanics, sample rate derivation, init errors, and WAV export.
+
+**HLA Round 2 (+22 = 64 tests):** Three adversarial agents found: hollow tests (silence test checked count not PCM, shutdown test called flush manually), missing C port safety (negative ints, overflow, missing keys, ring overflow, large frame_nums, zero delta), weak tests (error substitution unverified, batch flush not ring-verified), missing WAV edge cases, and missing parse_slot_spec edge cases. All addressed.
+
 ## Known Remaining Gaps
 
-Per the latest audit, these areas are not covered by the correctness test suite:
+Per the latest audits, these areas are not covered:
 
+### C++ LLA
 - **GenerateBubbleText / GenerateTabularText / CSV / WAV export** (~500 lines of formatting logic in TdmAnalyzerResults.cpp)
 - **Settings validation** (SetSettingsFromInterfaces: duplicate channels, data_bits > bits_per_slot, zero parameters, max bit clock)
 - **LoadSettings / SaveSettings** serialization round-trip
 - **SetupForGettingFirstBit** with clock starting HIGH (all tests start clock LOW)
 - **The `<= 1` silent drop path** at AnalyzeTdmSlot line 289 (no test uses 1-bit data slots)
 - **Visual markers** (channel assignments for arrows and stop markers) are not inspected
+
+### Python HLA
+- **Sender thread error handling** (client disconnect mid-drain, sendall failure)
+- **Shutdown stopping message** (JSON `{"type":"stopping"}` sent to client)
+- **Concurrent producer/consumer stress** (high-throughput ring buffer under active sender thread)
+- **WAV file open failure** (unwritable path propagates exception from decode)
+- **Deferred handshake timing** (client connects before sample rate known, handshake sent later)

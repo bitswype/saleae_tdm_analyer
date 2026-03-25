@@ -406,7 +406,11 @@ batch of frames. This would eliminate the 1 us per-call Python overhead entirely
 potentially achieving 10-50x throughput improvement for high-channel-count
 configurations.
 
-This is tracked as a future optimization opportunity.
+This is tracked as a future optimization opportunity. A 64-test unit test
+suite (`tests/test_hla_decode.py`) serves as the correctness oracle for any
+reimplementation, covering every branch of decode() including C-port-specific
+edge cases (negative ints, integer overflow, missing dict keys, ring buffer
+overflow, large frame numbers).
 
 ## Document Index
 
@@ -415,5 +419,5 @@ This is tracked as a future optimization opportunity.
 | [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md) | Raw throughput: MSVC vs GCC, 16 configs, WSL2 vs native Windows |
 | [PROFILING_RESULTS.md](PROFILING_RESULTS.md) | Per-function timing breakdown, 16 configs, 9 instrumented sections |
 | [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) | Mode comparison: Full/Minimal/Off x All/Slot/None, 3 configs |
-| [TESTING.md](TESTING.md) | Test architecture, 58 tests across 7 files, audit history |
+| [TESTING.md](TESTING.md) | Test architecture: 58 C++ LLA tests + 64 Python HLA tests, audit history |
 | [../CLAUDE.md](../CLAUDE.md) | Project-level: build commands, settings, critical patterns |
