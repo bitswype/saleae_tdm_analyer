@@ -135,7 +135,7 @@ build-test\bin\Release\tdm_correctness.exe       # Windows
 build-test\bin\Release\tdm_benchmark.exe 48000   # Windows
 ```
 
-**Correctness tests** (`tdm_correctness`): 20 tests covering decode value accuracy across all setting combinations (MSB/LSB-first, left/right-aligned, DSP Mode A/B, FS polarity, sampling edge, 16/32/64-bit, mono through 8-channel), sign conversion unit tests, and error condition detection (short slot, extra slot).
+**Correctness tests** (`tdm_correctness`): 32 tests in four categories: happy path value correctness (11 tests, one setting varied at a time), sign conversion unit tests (6), error condition detection (3), combination tests (6 tests varying multiple settings together), and robustness/misconfig tests (6 tests with wrong configs to verify no crashes).
 
 **Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
 

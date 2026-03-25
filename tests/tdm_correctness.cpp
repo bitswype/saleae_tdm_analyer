@@ -702,6 +702,440 @@ void test_clean_signal_no_errors()
 }
 
 // ===================================================================
+// Combination Tests — Multiple Settings Varied Together
+// ===================================================================
+
+// 8-channel, 24-in-32, right-aligned, LSB-first
+void test_combo_8ch_24in32_right_lsb()
+{
+    Config c = DefaultConfig( "combo-8ch-24in32-right-lsb", TEST_FRAMES );
+    c.slots_per_frame = 8;
+    c.bits_per_slot = 32;
+    c.data_bits_per_slot = 24;
+    c.data_alignment = RIGHT_ALIGNED;
+    c.shift_order = AnalyzerEnums::LsbFirst;
+    c.sample_rate = U64( 48000 ) * 8 * 32 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// DSP Mode B + frame sync inverted + negative edge
+void test_combo_modeb_fsinv_negedge()
+{
+    Config c = DefaultConfig( "combo-modeb-fsinv-negedge", TEST_FRAMES );
+    c.bit_alignment = DSP_MODE_B;
+    c.fs_inverted = FS_INVERTED;
+    c.data_valid_edge = AnalyzerEnums::NegEdge;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// 32-channel, 32-bit, left-aligned, LSB-first, DSP Mode B
+void test_combo_32ch_32bit_lsb_modeb()
+{
+    Config c = DefaultConfig( "combo-32ch-32bit-lsb-modeb", TEST_FRAMES );
+    c.slots_per_frame = 32;
+    c.bits_per_slot = 32;
+    c.data_bits_per_slot = 32;
+    c.shift_order = AnalyzerEnums::LsbFirst;
+    c.bit_alignment = DSP_MODE_B;
+    c.sample_rate = U64( 48000 ) * 32 * 32 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Mono, 24-in-32, right-aligned, FS inverted, 96 kHz
+void test_combo_mono_24in32_right_fsinv_96k()
+{
+    Config c = DefaultConfig( "combo-mono-24in32-right-fsinv-96k", TEST_FRAMES );
+    c.slots_per_frame = 1;
+    c.frame_rate = 96000;
+    c.bits_per_slot = 32;
+    c.data_bits_per_slot = 24;
+    c.data_alignment = RIGHT_ALIGNED;
+    c.fs_inverted = FS_INVERTED;
+    c.sample_rate = U64( 96000 ) * 1 * 32 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Stereo, 16-bit, LSB-first, FS inverted, DSP Mode B, neg edge
+void test_combo_all_nondefault()
+{
+    Config c = DefaultConfig( "combo-all-nondefault", TEST_FRAMES );
+    c.shift_order = AnalyzerEnums::LsbFirst;
+    c.fs_inverted = FS_INVERTED;
+    c.bit_alignment = DSP_MODE_B;
+    c.data_valid_edge = AnalyzerEnums::NegEdge;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// 4-channel, 24-in-32, left-aligned, with advanced analysis
+void test_combo_4ch_24in32_advanced()
+{
+    Config c = DefaultConfig( "combo-4ch-24in32-advanced", TEST_FRAMES );
+    c.slots_per_frame = 4;
+    c.bits_per_slot = 32;
+    c.data_bits_per_slot = 24;
+    c.data_alignment = LEFT_ALIGNED;
+    c.advanced_analysis = true;
+    c.sample_rate = U64( 48000 ) * 4 * 32 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// ===================================================================
+// Robustness Tests — Misconfig and Edge Cases (no crashes)
+// ===================================================================
+
+// Helper: run analyzer with given config, return true if it completes
+// without crashing (regardless of output correctness).
+static bool RunWithoutCrash( const Config& cfg )
+{
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat_mock = new AnalyzerTest::MockChannelData( &instance );
+
+    GenerateTdmSignal( clk_mock, frm_mock, dat_mock, cfg );
+
+    clk_mock->ResetCurrentSample();
+    frm_mock->ResetCurrentSample();
+    dat_mock->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk_mock );
+    instance.SetChannelData( FRM_CH, frm_mock );
+    instance.SetChannelData( DAT_CH, dat_mock );
+    instance.SetSampleRate( cfg.sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = cfg.frame_rate;
+    settings->mSlotsPerFrame = cfg.slots_per_frame;
+    settings->mBitsPerSlot = cfg.bits_per_slot;
+    settings->mDataBitsPerSlot = cfg.data_bits_per_slot;
+    settings->mShiftOrder = cfg.shift_order;
+    settings->mDataValidEdge = cfg.data_valid_edge;
+    settings->mDataAlignment = cfg.data_alignment;
+    settings->mBitAlignment = cfg.bit_alignment;
+    settings->mSigned = cfg.sign;
+    settings->mFrameSyncInverted = cfg.fs_inverted;
+    settings->mEnableAdvancedAnalysis = cfg.advanced_analysis;
+
+    instance.RunAnalyzerWorker();
+    return true; // if we got here, no crash
+}
+
+// Signal generated for 2 slots, analyzer configured for 8.
+// Analyzer should see fewer slots than expected but not crash.
+void test_misconfig_fewer_slots_than_expected()
+{
+    Config gen_cfg = DefaultConfig( "misconfig-fewer-slots", 50 );
+    gen_cfg.slots_per_frame = 2; // signal has 2 slots
+
+    // But we'll configure the analyzer to expect 8 slots
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat_mock = new AnalyzerTest::MockChannelData( &instance );
+
+    GenerateTdmSignal( clk_mock, frm_mock, dat_mock, gen_cfg );
+
+    clk_mock->ResetCurrentSample();
+    frm_mock->ResetCurrentSample();
+    dat_mock->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk_mock );
+    instance.SetChannelData( FRM_CH, frm_mock );
+    instance.SetChannelData( DAT_CH, dat_mock );
+    instance.SetSampleRate( gen_cfg.sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = gen_cfg.frame_rate;
+    settings->mSlotsPerFrame = 8; // mismatch: expect 8, signal has 2
+    settings->mBitsPerSlot = gen_cfg.bits_per_slot;
+    settings->mDataBitsPerSlot = gen_cfg.data_bits_per_slot;
+    settings->mShiftOrder = gen_cfg.shift_order;
+    settings->mDataValidEdge = gen_cfg.data_valid_edge;
+    settings->mDataAlignment = gen_cfg.data_alignment;
+    settings->mBitAlignment = gen_cfg.bit_alignment;
+    settings->mSigned = gen_cfg.sign;
+    settings->mFrameSyncInverted = gen_cfg.fs_inverted;
+    settings->mEnableAdvancedAnalysis = false;
+
+    instance.RunAnalyzerWorker();
+
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+
+    // Should produce frames (short slots) without crashing
+    CHECK( mock_results->TotalFrameCount() > 0, "Should decode some frames even with misconfig" );
+}
+
+// Signal generated for 8 slots, analyzer configured for 2.
+// Analyzer should flag extra slots but not crash.
+void test_misconfig_more_slots_than_expected()
+{
+    Config gen_cfg = DefaultConfig( "misconfig-more-slots", 50 );
+    gen_cfg.slots_per_frame = 8; // signal has 8 slots
+    gen_cfg.sample_rate = U64( 48000 ) * 8 * 16 * 4;
+
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat_mock = new AnalyzerTest::MockChannelData( &instance );
+
+    GenerateTdmSignal( clk_mock, frm_mock, dat_mock, gen_cfg );
+
+    clk_mock->ResetCurrentSample();
+    frm_mock->ResetCurrentSample();
+    dat_mock->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk_mock );
+    instance.SetChannelData( FRM_CH, frm_mock );
+    instance.SetChannelData( DAT_CH, dat_mock );
+    instance.SetSampleRate( gen_cfg.sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = gen_cfg.frame_rate;
+    settings->mSlotsPerFrame = 2; // mismatch: expect 2, signal has 8
+    settings->mBitsPerSlot = gen_cfg.bits_per_slot;
+    settings->mDataBitsPerSlot = gen_cfg.data_bits_per_slot;
+    settings->mShiftOrder = gen_cfg.shift_order;
+    settings->mDataValidEdge = gen_cfg.data_valid_edge;
+    settings->mDataAlignment = gen_cfg.data_alignment;
+    settings->mBitAlignment = gen_cfg.bit_alignment;
+    settings->mSigned = gen_cfg.sign;
+    settings->mFrameSyncInverted = gen_cfg.fs_inverted;
+    settings->mEnableAdvancedAnalysis = false;
+
+    instance.RunAnalyzerWorker();
+
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+
+    U64 count = mock_results->TotalFrameCount();
+    CHECK( count > 0, "Should decode frames even with slot count mismatch" );
+
+    // Should have UNEXPECTED_BITS on excess slots
+    bool found_extra = false;
+    for( U64 i = 0; i < count; i++ )
+    {
+        const Frame& f = mock_results->GetFrame( i );
+        if( f.mFlags & UNEXPECTED_BITS )
+        {
+            found_extra = true;
+            break;
+        }
+    }
+    CHECK( found_extra, "Should flag extra slots with UNEXPECTED_BITS" );
+}
+
+// Wrong bit depth: signal has 32-bit slots, analyzer configured for 16-bit.
+// Analyzer sees 2x the expected slots per frame (each 32-bit slot looks
+// like two 16-bit slots). Should not crash.
+void test_misconfig_wrong_bit_depth()
+{
+    Config gen_cfg = DefaultConfig( "misconfig-bitdepth", 50 );
+    gen_cfg.bits_per_slot = 32;
+    gen_cfg.data_bits_per_slot = 32;
+    gen_cfg.sample_rate = U64( 48000 ) * 2 * 32 * 4;
+
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat_mock = new AnalyzerTest::MockChannelData( &instance );
+
+    GenerateTdmSignal( clk_mock, frm_mock, dat_mock, gen_cfg );
+
+    clk_mock->ResetCurrentSample();
+    frm_mock->ResetCurrentSample();
+    dat_mock->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk_mock );
+    instance.SetChannelData( FRM_CH, frm_mock );
+    instance.SetChannelData( DAT_CH, dat_mock );
+    instance.SetSampleRate( gen_cfg.sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = gen_cfg.frame_rate;
+    settings->mSlotsPerFrame = 2;
+    settings->mBitsPerSlot = 16;       // mismatch: analyzer expects 16-bit
+    settings->mDataBitsPerSlot = 16;   // but signal is 32-bit
+    settings->mShiftOrder = gen_cfg.shift_order;
+    settings->mDataValidEdge = gen_cfg.data_valid_edge;
+    settings->mDataAlignment = gen_cfg.data_alignment;
+    settings->mBitAlignment = gen_cfg.bit_alignment;
+    settings->mSigned = gen_cfg.sign;
+    settings->mFrameSyncInverted = gen_cfg.fs_inverted;
+    settings->mEnableAdvancedAnalysis = false;
+
+    instance.RunAnalyzerWorker();
+
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+
+    // Should produce frames (will see extra slots) without crashing
+    CHECK( mock_results->TotalFrameCount() > 0, "Should decode frames with wrong bit depth config" );
+}
+
+// Wrong DSP mode: signal generated as Mode A, analyzer set to Mode B.
+// Data will be offset by one bit. Should not crash, just produce
+// different (wrong) values.
+void test_misconfig_wrong_dsp_mode()
+{
+    Config gen_cfg = DefaultConfig( "misconfig-dsp-mode", 50 );
+    gen_cfg.bit_alignment = DSP_MODE_A; // signal is Mode A
+
+    // Run analyzer with Mode B (mismatch)
+    Config analyze_cfg = gen_cfg;
+    analyze_cfg.bit_alignment = DSP_MODE_B;
+
+    // We can't use RunAndCollect directly since gen and analyze configs differ.
+    // Use RunWithoutCrash with the gen signal but override the analyzer setting.
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat_mock = new AnalyzerTest::MockChannelData( &instance );
+
+    GenerateTdmSignal( clk_mock, frm_mock, dat_mock, gen_cfg );
+
+    clk_mock->ResetCurrentSample();
+    frm_mock->ResetCurrentSample();
+    dat_mock->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk_mock );
+    instance.SetChannelData( FRM_CH, frm_mock );
+    instance.SetChannelData( DAT_CH, dat_mock );
+    instance.SetSampleRate( gen_cfg.sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = gen_cfg.frame_rate;
+    settings->mSlotsPerFrame = gen_cfg.slots_per_frame;
+    settings->mBitsPerSlot = gen_cfg.bits_per_slot;
+    settings->mDataBitsPerSlot = gen_cfg.data_bits_per_slot;
+    settings->mShiftOrder = gen_cfg.shift_order;
+    settings->mDataValidEdge = gen_cfg.data_valid_edge;
+    settings->mDataAlignment = gen_cfg.data_alignment;
+    settings->mBitAlignment = DSP_MODE_B; // mismatch
+    settings->mSigned = gen_cfg.sign;
+    settings->mFrameSyncInverted = gen_cfg.fs_inverted;
+    settings->mEnableAdvancedAnalysis = false;
+
+    instance.RunAnalyzerWorker();
+
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+
+    CHECK( mock_results->TotalFrameCount() > 0,
+           "Should decode frames even with wrong DSP mode" );
+}
+
+// Wrong frame sync polarity: signal uses non-inverted, analyzer set to inverted.
+// Analyzer will look for the wrong edge. Should not crash.
+void test_misconfig_wrong_fs_polarity()
+{
+    Config gen_cfg = DefaultConfig( "misconfig-fs-polarity", 50 );
+    gen_cfg.fs_inverted = FS_NOT_INVERTED; // signal is non-inverted
+
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm_mock = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat_mock = new AnalyzerTest::MockChannelData( &instance );
+
+    GenerateTdmSignal( clk_mock, frm_mock, dat_mock, gen_cfg );
+
+    clk_mock->ResetCurrentSample();
+    frm_mock->ResetCurrentSample();
+    dat_mock->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk_mock );
+    instance.SetChannelData( FRM_CH, frm_mock );
+    instance.SetChannelData( DAT_CH, dat_mock );
+    instance.SetSampleRate( gen_cfg.sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = gen_cfg.frame_rate;
+    settings->mSlotsPerFrame = gen_cfg.slots_per_frame;
+    settings->mBitsPerSlot = gen_cfg.bits_per_slot;
+    settings->mDataBitsPerSlot = gen_cfg.data_bits_per_slot;
+    settings->mShiftOrder = gen_cfg.shift_order;
+    settings->mDataValidEdge = gen_cfg.data_valid_edge;
+    settings->mDataAlignment = gen_cfg.data_alignment;
+    settings->mBitAlignment = gen_cfg.bit_alignment;
+    settings->mSigned = gen_cfg.sign;
+    settings->mFrameSyncInverted = FS_INVERTED; // mismatch
+    settings->mEnableAdvancedAnalysis = false;
+
+    instance.RunAnalyzerWorker();
+
+    // Just verifying no crash. With wrong polarity, the analyzer will
+    // sync on the wrong edge and produce garbage data, but it should
+    // still terminate normally.
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+    CHECK( mock_results->TotalFrameCount() > 0,
+           "Should decode frames even with wrong FS polarity" );
+}
+
+// Minimum-size configuration: 1 channel, 2-bit slots
+void test_minimum_config()
+{
+    Config c = DefaultConfig( "minimum-config", TEST_FRAMES );
+    c.slots_per_frame = 1;
+    c.bits_per_slot = 2;
+    c.data_bits_per_slot = 2;
+    c.sample_rate = U64( 48000 ) * 1 * 2 * 4;
+    auto frames = RunAndCollect( c );
+
+    // 2-bit data wraps at 4, so pattern is 0,1,2,3,0,1,...
+    CHECK( frames.size() >= TEST_FRAMES, "Should have enough decoded frames" );
+    U32 counter = 0;
+    for( U32 i = 0; i < TEST_FRAMES; i++ )
+    {
+        U64 expected = counter % 4;
+        std::ostringstream oss;
+        if( frames[ i ].data != expected )
+        {
+            oss << "Frame " << i << ": expected " << expected
+                << ", got " << frames[ i ].data;
+            CHECK( false, oss.str() );
+        }
+        counter++;
+    }
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 
@@ -738,6 +1172,24 @@ int main()
     RunTest( "test_short_slot_detection", test_short_slot_detection );
     RunTest( "test_extra_slot_detection", test_extra_slot_detection );
     RunTest( "test_clean_signal_no_errors", test_clean_signal_no_errors );
+    std::cout << std::endl;
+
+    std::cout << "Combination Tests:" << std::endl;
+    RunTest( "test_combo_8ch_24in32_right_lsb", test_combo_8ch_24in32_right_lsb );
+    RunTest( "test_combo_modeb_fsinv_negedge", test_combo_modeb_fsinv_negedge );
+    RunTest( "test_combo_32ch_32bit_lsb_modeb", test_combo_32ch_32bit_lsb_modeb );
+    RunTest( "test_combo_mono_24in32_right_fsinv_96k", test_combo_mono_24in32_right_fsinv_96k );
+    RunTest( "test_combo_all_nondefault", test_combo_all_nondefault );
+    RunTest( "test_combo_4ch_24in32_advanced", test_combo_4ch_24in32_advanced );
+    std::cout << std::endl;
+
+    std::cout << "Robustness — Misconfig / Edge Cases:" << std::endl;
+    RunTest( "test_misconfig_fewer_slots_than_expected", test_misconfig_fewer_slots_than_expected );
+    RunTest( "test_misconfig_more_slots_than_expected", test_misconfig_more_slots_than_expected );
+    RunTest( "test_misconfig_wrong_bit_depth", test_misconfig_wrong_bit_depth );
+    RunTest( "test_misconfig_wrong_dsp_mode", test_misconfig_wrong_dsp_mode );
+    RunTest( "test_misconfig_wrong_fs_polarity", test_misconfig_wrong_fs_polarity );
+    RunTest( "test_minimum_config", test_minimum_config );
     std::cout << std::endl;
 
     std::cout << "==============================" << std::endl;
