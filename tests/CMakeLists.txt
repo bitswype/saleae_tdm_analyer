@@ -49,4 +49,7 @@ target_compile_definitions(tdm_benchmark PRIVATE LOGIC2)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set_source_files_properties(${TESTLIB_DIR}/SettingsStubs.cpp
         PROPERTIES COMPILE_FLAGS "-include stdexcept")
+elseif(MSVC)
+    set_source_files_properties(${TESTLIB_DIR}/SettingsStubs.cpp
+        PROPERTIES COMPILE_FLAGS "/FI stdexcept")
 endif()
