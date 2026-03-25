@@ -43,6 +43,21 @@ target_include_directories(tdm_benchmark PRIVATE
 
 target_compile_definitions(tdm_benchmark PRIVATE LOGIC2)
 
+add_executable(tdm_correctness
+    tdm_correctness.cpp
+    extra_stubs.cpp
+    ${TESTLIB_SOURCES}
+    ${ANALYZER_SOURCES}
+)
+
+target_include_directories(tdm_correctness PRIVATE
+    ${SDK_INCLUDE_DIR}
+    ${TESTLIB_DIR}
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_compile_definitions(tdm_correctness PRIVATE LOGIC2)
+
 # The SDK testlib's SettingsStubs.cpp uses std::runtime_error without
 # including <stdexcept>.  GCC 13+ no longer transitively provides it.
 # Force-include the header to work around the upstream bug.

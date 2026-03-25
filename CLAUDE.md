@@ -115,23 +115,29 @@ The `analyze` command uses sox to:
 5. Reconnection resilience: disconnect mid-stream, reconnect, verify clean handshake + data
 6. Buffer pressure: 32-frame ring buffer, verify data integrity (frame alignment, amplitude, sign balance) despite heavy overflow
 
-### C++ benchmark (decode performance)
+### C++ tests (correctness + benchmark)
 
 ```bash
 # Build (Linux/macOS)
 cmake -B build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build-test --target tdm_benchmark
+cmake --build build-test --target tdm_correctness --target tdm_benchmark
 
 # Build (Windows — from Developer Command Prompt)
 cmake -B build-test -DBUILD_TESTS=ON -A x64
-cmake --build build-test --config Release --target tdm_benchmark
+cmake --build build-test --config Release --target tdm_correctness --target tdm_benchmark
 
-# Run (48000 frames = 1 second at 48 kHz)
-./build-test/tests/tdm_benchmark 48000        # Linux/macOS
-build-test\bin\Release\tdm_benchmark.exe 48000 # Windows
+# Correctness tests (exit code 0 = pass)
+./build-test/tests/tdm_correctness              # Linux/macOS
+build-test\bin\Release\tdm_correctness.exe       # Windows
+
+# Performance benchmark (48000 frames = 1 second at 48 kHz)
+./build-test/tests/tdm_benchmark 48000           # Linux/macOS
+build-test\bin\Release\tdm_benchmark.exe 48000   # Windows
 ```
 
-Runs 16 configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
+**Correctness tests** (`tdm_correctness`): 20 tests covering decode value accuracy across all setting combinations (MSB/LSB-first, left/right-aligned, DSP Mode A/B, FS polarity, sampling edge, 16/32/64-bit, mono through 8-channel), sign conversion unit tests, and error condition detection (short slot, extra slot).
+
+**Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
 
 ### Sender batching optimization
 
