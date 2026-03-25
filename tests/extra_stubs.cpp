@@ -63,6 +63,8 @@ S64 AnalyzerHelpers::ConvertToSignedNumber( U64 number, U32 num_bits )
     U64 sign_bit = 1ULL << ( num_bits - 1 );
     if( number & sign_bit )
     {
+        if( num_bits == 64 )
+            return static_cast<S64>( number ); // already fills all 64 bits
         U64 mask = ~( ( 1ULL << num_bits ) - 1 );
         return static_cast<S64>( number | mask );
     }

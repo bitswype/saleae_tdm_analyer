@@ -529,17 +529,36 @@ void test_short_slot_detection()
     auto frames = RunShortSlotTest();
     CHECK( frames.size() >= 6, "Should have at least 6 decoded slots" );
 
-    // Find a frame with SHORT_SLOT flag
+    // Find a frame with SHORT_SLOT flag and verify its data is 0
     bool found_short = false;
     for( const auto& f : frames )
     {
         if( f.flags & SHORT_SLOT )
         {
             found_short = true;
+            // Task 14: When SHORT_SLOT is set, bit assembly is skipped,
+            // so decoded value should be 0.
+            CHECK_EQ( f.data, U64( 0 ), "SHORT_SLOT frame data should be 0" );
             break;
         }
     }
     CHECK( found_short, "Expected at least one SHORT_SLOT flag in decoded frames" );
+
+    // Verify frames after the short slot still decode (post-error recovery)
+    // There should be clean frames (no error flags) after the short one
+    bool found_clean_after_short = false;
+    bool past_short = false;
+    for( const auto& f : frames )
+    {
+        if( f.flags & SHORT_SLOT )
+            past_short = true;
+        else if( past_short && ( f.flags & 0x3F ) == 0 )
+        {
+            found_clean_after_short = true;
+            break;
+        }
+    }
+    CHECK( found_clean_after_short, "Should have clean frames after SHORT_SLOT (post-error recovery)" );
 }
 
 // Helper: generate a signal configured for 2 slots/frame but with 3 slots
@@ -878,8 +897,18 @@ void test_misconfig_fewer_slots_than_expected()
     AnalyzerTest::MockResultData* mock_results =
         AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
 
-    // Should produce frames (short slots) without crashing
-    CHECK( mock_results->TotalFrameCount() > 0, "Should decode some frames even with misconfig" );
+    U64 count = mock_results->TotalFrameCount();
+    CHECK( count > 0, "Should decode some frames even with misconfig" );
+
+    // With 2-slot signal and 8-slot config, the analyzer sees 2 complete
+    // slots per frame then hits the next FS. Slot 2 gets partial bits
+    // (SHORT_SLOT) or the frame just has fewer slots than expected. Either
+    // way verify all decoded slot numbers are in valid range.
+    for( U64 i = 0; i < count; i++ )
+    {
+        const Frame& f = mock_results->GetFrame( i );
+        CHECK( f.mType <= 255, "Slot number should be valid U8" );
+    }
 }
 
 // Signal generated for 8 slots, analyzer configured for 2.
@@ -995,8 +1024,22 @@ void test_misconfig_wrong_bit_depth()
     AnalyzerTest::MockResultData* mock_results =
         AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
 
-    // Should produce frames (will see extra slots) without crashing
-    CHECK( mock_results->TotalFrameCount() > 0, "Should decode frames with wrong bit depth config" );
+    U64 count = mock_results->TotalFrameCount();
+    CHECK( count > 0, "Should decode frames with wrong bit depth config" );
+
+    // With 32-bit signal and 16-bit config, analyzer sees 2x slots per frame.
+    // Extra slots should be flagged with UNEXPECTED_BITS.
+    bool found_extra = false;
+    for( U64 i = 0; i < count; i++ )
+    {
+        const Frame& f = mock_results->GetFrame( i );
+        if( f.mFlags & UNEXPECTED_BITS )
+        {
+            found_extra = true;
+            break;
+        }
+    }
+    CHECK( found_extra, "Should flag extra slots when bit depth is narrower than signal" );
 }
 
 // Wrong DSP mode: signal generated as Mode A, analyzer set to Mode B.
@@ -1052,8 +1095,12 @@ void test_misconfig_wrong_dsp_mode()
     AnalyzerTest::MockResultData* mock_results =
         AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
 
-    CHECK( mock_results->TotalFrameCount() > 0,
-           "Should decode frames even with wrong DSP mode" );
+    U64 count = mock_results->TotalFrameCount();
+    CHECK( count > 0, "Should decode frames even with wrong DSP mode" );
+    // With wrong mode, data is off by 1 bit, but frame count should be
+    // in the neighborhood of expected (not wildly different)
+    U64 expected_approx = U64( 50 ) * gen_cfg.slots_per_frame;
+    CHECK( count >= expected_approx / 2, "Frame count should be reasonable even with wrong DSP mode" );
 }
 
 // Wrong frame sync polarity: signal uses non-inverted, analyzer set to inverted.
@@ -1099,13 +1146,17 @@ void test_misconfig_wrong_fs_polarity()
 
     instance.RunAnalyzerWorker();
 
-    // Just verifying no crash. With wrong polarity, the analyzer will
-    // sync on the wrong edge and produce garbage data, but it should
-    // still terminate normally.
     AnalyzerTest::MockResultData* mock_results =
         AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
-    CHECK( mock_results->TotalFrameCount() > 0,
-           "Should decode frames even with wrong FS polarity" );
+    U64 count = mock_results->TotalFrameCount();
+    CHECK( count > 0, "Should decode frames even with wrong FS polarity" );
+    // With wrong polarity, analyzer syncs on the wrong edge. Verify all
+    // slot numbers are in valid U8 range (no memory corruption).
+    for( U64 i = 0; i < count; i++ )
+    {
+        const Frame& f = mock_results->GetFrame( i );
+        CHECK( f.mType <= 255, "Slot number should be valid U8" );
+    }
 }
 
 // Minimum-size configuration: 1 channel, 2-bit slots
@@ -1133,6 +1184,883 @@ void test_minimum_config()
         }
         counter++;
     }
+}
+
+// ===================================================================
+// Round 2: Bit Pattern Coverage
+// ===================================================================
+
+// Task 1: 8-bit counter wraps through all 256 values (0x00-0xFF)
+void test_counter_wrap_8bit()
+{
+    Config c = DefaultConfig( "counter-wrap-8bit", 200 );
+    c.bits_per_slot = 8;
+    c.data_bits_per_slot = 8;
+    c.sample_rate = U64( 48000 ) * 2 * 8 * 4;
+    auto frames = RunAndCollect( c );
+    // 200 frames * 2 slots = 400 values, counter wraps at 256
+    // Exercises 0xFF(255), 0x80(128), 0xAA(170), 0x55(85)
+    VerifyCountingPattern( frames, c, 200 );
+}
+
+// ===================================================================
+// Round 2: Boundary Value Tests
+// ===================================================================
+
+// Task 2a: 3-bit slots (non-power-of-2)
+void test_3bit_slots()
+{
+    Config c = DefaultConfig( "3bit-slots", TEST_FRAMES );
+    c.bits_per_slot = 3;
+    c.data_bits_per_slot = 3;
+    c.sample_rate = U64( 48000 ) * 2 * 3 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Task 2b: 8-bit slots (byte-aligned, common in practice)
+void test_8bit_slots()
+{
+    Config c = DefaultConfig( "8bit-slots", TEST_FRAMES );
+    c.bits_per_slot = 8;
+    c.data_bits_per_slot = 8;
+    c.sample_rate = U64( 48000 ) * 2 * 8 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Task 3a: LSB-first + right-aligned (8 data in 16-bit slot)
+void test_lsb_right_aligned_8in16()
+{
+    Config c = DefaultConfig( "lsb-right-8in16", TEST_FRAMES );
+    c.bits_per_slot = 16;
+    c.data_bits_per_slot = 8;
+    c.data_alignment = RIGHT_ALIGNED;
+    c.shift_order = AnalyzerEnums::LsbFirst;
+    c.sample_rate = U64( 48000 ) * 2 * 16 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Task 3b: LSB-first + left-aligned (8 data in 16-bit slot)
+void test_lsb_left_aligned_8in16()
+{
+    Config c = DefaultConfig( "lsb-left-8in16", TEST_FRAMES );
+    c.bits_per_slot = 16;
+    c.data_bits_per_slot = 8;
+    c.data_alignment = LEFT_ALIGNED;
+    c.shift_order = AnalyzerEnums::LsbFirst;
+    c.sample_rate = U64( 48000 ) * 2 * 16 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Task 4a: Extreme padding, 2 data bits in 64-bit slot, right-aligned
+void test_extreme_padding_right_2in64()
+{
+    Config c = DefaultConfig( "extreme-pad-right-2in64", TEST_FRAMES );
+    c.bits_per_slot = 64;
+    c.data_bits_per_slot = 2;
+    c.data_alignment = RIGHT_ALIGNED;
+    c.sample_rate = U64( 48000 ) * 2 * 64 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Task 4b: Extreme padding, 2 data bits in 64-bit slot, left-aligned
+void test_extreme_padding_left_2in64()
+{
+    Config c = DefaultConfig( "extreme-pad-left-2in64", TEST_FRAMES );
+    c.bits_per_slot = 64;
+    c.data_bits_per_slot = 2;
+    c.data_alignment = LEFT_ALIGNED;
+    c.sample_rate = U64( 48000 ) * 2 * 64 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Task 5: 63 data bits in 64-bit slot (1 bit of padding)
+void test_63in64_right()
+{
+    Config c = DefaultConfig( "63in64-right", 20 );
+    c.bits_per_slot = 64;
+    c.data_bits_per_slot = 63;
+    c.data_alignment = RIGHT_ALIGNED;
+    c.sample_rate = U64( 48000 ) * 2 * 64 * 4;
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, 20 );
+}
+
+// Task 6: 256 slots (U8 mType boundary)
+void test_256_slots()
+{
+    Config c = DefaultConfig( "256-slots", 3 );
+    c.slots_per_frame = 256;
+    c.bits_per_slot = 2;
+    c.data_bits_per_slot = 2;
+    c.sample_rate = U64( 48000 ) * 256 * 2 * 4;
+    auto frames = RunAndCollect( c );
+
+    // Verify slot numbers cycle 0-255 correctly
+    CHECK( frames.size() >= 256, "Should have at least one full frame of 256 slots" );
+    for( U32 i = 0; i < 256; i++ )
+    {
+        U8 expected_slot = U8( i );
+        std::ostringstream oss;
+        if( frames[ i ].slot != expected_slot )
+        {
+            oss << "Slot " << i << ": expected slot number " << (int)expected_slot
+                << ", got " << (int)frames[ i ].slot;
+            CHECK( false, oss.str() );
+        }
+    }
+}
+
+// Task 7: Right-aligned with zero padding (data_bits == bits_per_slot)
+void test_right_aligned_zero_padding()
+{
+    Config c = DefaultConfig( "right-zero-pad", TEST_FRAMES );
+    c.data_alignment = RIGHT_ALIGNED;
+    // bits_per_slot = data_bits_per_slot = 16 (default), so padding = 0
+    auto frames = RunAndCollect( c );
+    VerifyCountingPattern( frames, c, TEST_FRAMES );
+}
+
+// Task 8: Signed integer end-to-end (4-bit, counter wraps through signed range)
+void test_signed_4bit_end_to_end()
+{
+    Config c = DefaultConfig( "signed-4bit-e2e", TEST_FRAMES );
+    c.bits_per_slot = 4;
+    c.data_bits_per_slot = 4;
+    c.sign = AnalyzerEnums::SignedInteger;
+    c.sample_rate = U64( 48000 ) * 2 * 4 * 4;
+    auto frames = RunAndCollect( c );
+
+    // mData1 stores the RAW UNSIGNED value regardless of sign setting.
+    // Counter wraps at 16 (2^4). Verify the unsigned values are still correct.
+    // The signed conversion only affects FrameV2 (not inspectable), but this
+    // exercises the code path without crashing.
+    CHECK( frames.size() >= TEST_FRAMES * 2, "Should have enough frames" );
+    U32 counter = 0;
+    for( U32 i = 0; i < TEST_FRAMES * 2; i++ )
+    {
+        U64 expected = counter % 16;
+        std::ostringstream oss;
+        if( frames[ i ].data != expected )
+        {
+            oss << "Frame " << i << ": unsigned data mismatch (expected "
+                << expected << ", got " << frames[ i ].data << ")";
+            CHECK( false, oss.str() );
+        }
+        counter++;
+    }
+}
+
+// ===================================================================
+// Round 2: Advanced Analysis Error Detection
+// ===================================================================
+
+// Helper: build a hand-crafted signal from a bit-level description.
+// Uses 8x oversampling for room to inject glitches.
+struct HandcraftedConfig
+{
+    U32 frame_rate;
+    U32 slots_per_frame;
+    U32 bits_per_slot;
+    U64 sample_rate;
+};
+
+static std::vector<DecodedFrame> RunHandcraftedSignal(
+    const HandcraftedConfig& hcfg,
+    const std::vector<U64>& clk_transitions,
+    const std::vector<U64>& frm_transitions,
+    const std::vector<U64>& dat_transitions,
+    BitState clk_init, BitState frm_init, BitState dat_init,
+    bool advanced_analysis )
+{
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat = new AnalyzerTest::MockChannelData( &instance );
+
+    clk->TestSetInitialBitState( clk_init );
+    frm->TestSetInitialBitState( frm_init );
+    dat->TestSetInitialBitState( dat_init );
+
+    for( auto s : clk_transitions ) clk->TestAppendTransitionAtSamples( s );
+    for( auto s : frm_transitions ) frm->TestAppendTransitionAtSamples( s );
+    for( auto s : dat_transitions ) dat->TestAppendTransitionAtSamples( s );
+
+    clk->ResetCurrentSample();
+    frm->ResetCurrentSample();
+    dat->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk );
+    instance.SetChannelData( FRM_CH, frm );
+    instance.SetChannelData( DAT_CH, dat );
+    instance.SetSampleRate( hcfg.sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = hcfg.frame_rate;
+    settings->mSlotsPerFrame = hcfg.slots_per_frame;
+    settings->mBitsPerSlot = hcfg.bits_per_slot;
+    settings->mDataBitsPerSlot = hcfg.bits_per_slot;
+    settings->mShiftOrder = AnalyzerEnums::MsbFirst;
+    settings->mDataValidEdge = AnalyzerEnums::PosEdge;
+    settings->mDataAlignment = LEFT_ALIGNED;
+    settings->mBitAlignment = DSP_MODE_A;
+    settings->mSigned = AnalyzerEnums::UnsignedInteger;
+    settings->mFrameSyncInverted = FS_NOT_INVERTED;
+    settings->mEnableAdvancedAnalysis = advanced_analysis;
+
+    instance.RunAnalyzerWorker();
+
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+
+    std::vector<DecodedFrame> frames;
+    U64 count = mock_results->TotalFrameCount();
+    for( U64 i = 0; i < count; i++ )
+    {
+        const Frame& f = mock_results->GetFrame( i );
+        DecodedFrame df;
+        df.data = f.mData1;
+        df.slot = f.mType;
+        df.flags = f.mFlags;
+        frames.push_back( df );
+    }
+    return frames;
+}
+
+// Task 9: BITCLOCK_ERROR detection
+// Generate a clean signal but stretch one clock cycle to 2x normal period.
+void test_bitclock_error_detection()
+{
+    // Mono 4-bit, 8x oversampling, DSP Mode A
+    // bit_freq = 48000 * 1 * 4 = 192000
+    // sample_rate = 192000 * 8 = 1,536,000
+    // half_period = 4 samples, full_period = 8 samples
+    // mDesiredBitClockPeriod = 1536000 / (1 * 4 * 48000) = 8
+    const U32 HP = 4; // half-period in samples
+
+    HandcraftedConfig hcfg = { 48000, 1, 4, 1536000 };
+
+    std::vector<U64> clk_trans, frm_trans, dat_trans;
+    U64 pos = 0;
+
+    // Preamble: 8 normal clock cycles with frame LOW, data LOW
+    for( int i = 0; i < 8; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos ); // rising
+        pos += HP; clk_trans.push_back( pos ); // falling
+    }
+
+    // Frame 1: FS pulse at rising edge, then 4 data bits (DSP Mode A: +1 offset)
+    // FS goes HIGH at next rising edge
+    pos += HP;
+    clk_trans.push_back( pos ); // rising - FS active here
+    frm_trans.push_back( pos ); // FS goes HIGH
+    pos += HP;
+    clk_trans.push_back( pos ); // falling
+    frm_trans.push_back( pos ); // FS goes LOW
+
+    // 4 data bits (offset bit + 4 bits = 5 clock cycles)
+    for( int i = 0; i < 5; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos ); // rising
+        pos += HP; clk_trans.push_back( pos ); // falling
+    }
+
+    // Frame 2: normal FS pulse
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos ); // FS HIGH
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos ); // FS LOW
+
+    // 2 normal bits
+    for( int i = 0; i < 2; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // 1 STRETCHED clock cycle: 2x normal period (half-period = 2*HP)
+    pos += HP * 2; clk_trans.push_back( pos ); // rising (late)
+    pos += HP * 2; clk_trans.push_back( pos ); // falling (late)
+
+    // 2 more normal bits
+    for( int i = 0; i < 2; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Frame 3: another normal frame
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+
+    for( int i = 0; i < 5; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Trailing idle
+    for( int i = 0; i < 16; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    auto frames = RunHandcraftedSignal( hcfg, clk_trans, frm_trans, dat_trans,
+                                         BIT_LOW, BIT_LOW, BIT_LOW, true );
+
+    bool found = false;
+    for( const auto& f : frames )
+    {
+        if( f.flags & BITCLOCK_ERROR )
+        {
+            found = true;
+            break;
+        }
+    }
+    CHECK( found, "Expected BITCLOCK_ERROR flag from stretched clock cycle" );
+}
+
+// Task 10: MISSED_DATA detection
+// Generate a clean signal but inject a glitch (extra transition) on the data
+// line between clock edges.
+void test_missed_data_detection()
+{
+    // Mono 4-bit, 8x oversampling
+    const U32 HP = 4;
+    HandcraftedConfig hcfg = { 48000, 1, 4, 1536000 };
+
+    std::vector<U64> clk_trans, frm_trans, dat_trans;
+    U64 pos = 0;
+
+    // Preamble
+    for( int i = 0; i < 8; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Frame 1 FS
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+
+    // 5 normal bits
+    for( int i = 0; i < 5; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Frame 2 FS
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+
+    // Bit 0 (offset bit): normal
+    pos += HP;
+    U64 rising1 = pos;
+    clk_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos ); // falling
+
+    // Bit 1: inject data glitch between rising and falling edge
+    pos += HP;
+    U64 rising2 = pos;
+    clk_trans.push_back( pos ); // rising at pos
+
+    // Data glitch: transition at rising+1, then back at rising+2
+    // This creates 2 transitions between rising and falling edges
+    dat_trans.push_back( rising2 + 1 ); // LOW -> HIGH
+    dat_trans.push_back( rising2 + 2 ); // HIGH -> LOW
+    // Another transition after falling edge for WouldAdvancing check
+    pos += HP;
+    clk_trans.push_back( pos ); // falling
+    dat_trans.push_back( pos + 1 ); // transition after falling edge
+
+    // 3 more normal bits
+    for( int i = 0; i < 3; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Frame 3 FS
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+
+    for( int i = 0; i < 5; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Trailing
+    for( int i = 0; i < 16; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    auto frames = RunHandcraftedSignal( hcfg, clk_trans, frm_trans, dat_trans,
+                                         BIT_LOW, BIT_LOW, BIT_LOW, true );
+
+    bool found = false;
+    for( const auto& f : frames )
+    {
+        if( f.flags & MISSED_DATA )
+        {
+            found = true;
+            break;
+        }
+    }
+    CHECK( found, "Expected MISSED_DATA flag from data glitch between clock edges" );
+}
+
+// Task 11: MISSED_FRAME_SYNC detection
+// Same as MISSED_DATA but glitch on the frame sync line.
+void test_missed_frame_sync_detection()
+{
+    const U32 HP = 4;
+    HandcraftedConfig hcfg = { 48000, 1, 4, 1536000 };
+
+    std::vector<U64> clk_trans, frm_trans, dat_trans;
+    U64 pos = 0;
+
+    // Preamble
+    for( int i = 0; i < 8; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Frame 1 FS
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+
+    for( int i = 0; i < 5; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Frame 2 FS
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+
+    // Offset bit
+    pos += HP;
+    clk_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+
+    // Bit 1: inject frame sync glitch
+    pos += HP;
+    U64 rising = pos;
+    clk_trans.push_back( pos );
+
+    // Frame sync glitch between rising and falling
+    frm_trans.push_back( rising + 1 ); // LOW -> HIGH
+    frm_trans.push_back( rising + 2 ); // HIGH -> LOW
+    pos += HP;
+    clk_trans.push_back( pos );
+    // Another FS transition after falling for WouldAdvancing check
+    frm_trans.push_back( pos + 1 ); // transition after falling
+
+    // 3 more normal bits
+    for( int i = 0; i < 3; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    // Frame 3
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+    pos += HP;
+    clk_trans.push_back( pos );
+    frm_trans.push_back( pos );
+
+    for( int i = 0; i < 5; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    for( int i = 0; i < 16; i++ )
+    {
+        pos += HP; clk_trans.push_back( pos );
+        pos += HP; clk_trans.push_back( pos );
+    }
+
+    auto frames = RunHandcraftedSignal( hcfg, clk_trans, frm_trans, dat_trans,
+                                         BIT_LOW, BIT_LOW, BIT_LOW, true );
+
+    bool found = false;
+    for( const auto& f : frames )
+    {
+        if( f.flags & MISSED_FRAME_SYNC )
+        {
+            found = true;
+            break;
+        }
+    }
+    CHECK( found, "Expected MISSED_FRAME_SYNC flag from FS glitch between clock edges" );
+}
+
+// ===================================================================
+// Round 2: Generator Blind Spot Tests
+// ===================================================================
+
+// Task 12: Padding bits set to HIGH -- verify analyzer ignores them.
+// Hand-craft a stereo 8-in-16 signal where padding bits are all ones.
+void test_padding_bits_high()
+{
+    // Stereo, 8 data bits in 16-bit slot, right-aligned.
+    // First 8 bits = padding (HIGH), last 8 bits = data (value 0x42 = 66).
+    // Expected decoded value: 0x42, not 0xFF42.
+    const U32 slots = 2;
+    const U32 bps = 16;
+    const U32 dbps = 8;
+    const U32 bpf = slots * bps;
+    const U32 frame_rate = 48000;
+    const U64 sample_rate = U64( frame_rate ) * bpf * 4;
+    const double bit_freq = double( frame_rate ) * bpf;
+    const double half_samples = double( sample_rate ) / ( 2.0 * bit_freq );
+
+    struct BitDesc { BitState data; BitState frame; };
+    std::vector<BitDesc> stream;
+
+    // Preamble
+    for( int i = 0; i < 16; i++ )
+        stream.push_back( { BIT_LOW, BIT_LOW } );
+
+    // Generate 4 frames (DSP Mode A)
+    // Value for each slot: 0x42 (MSB-first: 01000010)
+    // RIGHT_ALIGNED: 8 padding bits (HIGH) + 8 data bits
+    for( int f = 0; f < 4; f++ )
+    {
+        // FS active + offset bit
+        stream.push_back( { BIT_LOW, BIT_HIGH } );
+
+        for( U32 s = 0; s < slots; s++ )
+        {
+            // 8 padding bits = HIGH
+            for( U32 b = 0; b < bps - dbps; b++ )
+                stream.push_back( { BIT_HIGH, BIT_LOW } );
+
+            // 8 data bits = 0x42 (MSB-first: 01000010)
+            U8 val = 0x42;
+            for( U32 b = 0; b < dbps; b++ )
+            {
+                BitState bit = ( val & ( 1 << ( dbps - 1 - b ) ) ) ? BIT_HIGH : BIT_LOW;
+                stream.push_back( { bit, BIT_LOW } );
+            }
+        }
+
+        // Remove the offset bit's effect: data_stream is shifted by 1,
+        // so strip the last bit (it belongs to the next frame's offset)
+        stream.pop_back();
+    }
+
+    // Trailing idle
+    for( int i = 0; i < 32; i++ )
+        stream.push_back( { BIT_LOW, BIT_LOW } );
+
+    // Convert to mock channel data
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat = new AnalyzerTest::MockChannelData( &instance );
+
+    clk->TestSetInitialBitState( BIT_LOW );
+    frm->TestSetInitialBitState( stream[ 0 ].frame );
+    dat->TestSetInitialBitState( stream[ 0 ].data );
+
+    BitState cur_dat = stream[ 0 ].data;
+    BitState cur_frm = stream[ 0 ].frame;
+    double err = 0.0;
+    U64 pos = 0;
+
+    for( size_t i = 0; i < stream.size(); i++ )
+    {
+        double target = half_samples + err;
+        U32 n = static_cast<U32>( std::lround( target ) );
+        err = target - double( n );
+        pos += n;
+        clk->TestAppendTransitionAtSamples( pos );
+        target = half_samples + err;
+        n = static_cast<U32>( std::lround( target ) );
+        err = target - double( n );
+        pos += n;
+        clk->TestAppendTransitionAtSamples( pos );
+
+        if( i + 1 < stream.size() )
+        {
+            if( stream[ i + 1 ].data != cur_dat )
+            {
+                dat->TestAppendTransitionAtSamples( pos );
+                cur_dat = stream[ i + 1 ].data;
+            }
+            if( stream[ i + 1 ].frame != cur_frm )
+            {
+                frm->TestAppendTransitionAtSamples( pos );
+                cur_frm = stream[ i + 1 ].frame;
+            }
+        }
+    }
+
+    clk->ResetCurrentSample();
+    frm->ResetCurrentSample();
+    dat->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk );
+    instance.SetChannelData( FRM_CH, frm );
+    instance.SetChannelData( DAT_CH, dat );
+    instance.SetSampleRate( sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = frame_rate;
+    settings->mSlotsPerFrame = slots;
+    settings->mBitsPerSlot = bps;
+    settings->mDataBitsPerSlot = dbps;
+    settings->mShiftOrder = AnalyzerEnums::MsbFirst;
+    settings->mDataValidEdge = AnalyzerEnums::PosEdge;
+    settings->mDataAlignment = RIGHT_ALIGNED;
+    settings->mBitAlignment = DSP_MODE_A;
+    settings->mSigned = AnalyzerEnums::UnsignedInteger;
+    settings->mFrameSyncInverted = FS_NOT_INVERTED;
+    settings->mEnableAdvancedAnalysis = false;
+
+    instance.RunAnalyzerWorker();
+
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+
+    U64 count = mock_results->TotalFrameCount();
+    CHECK( count >= 2, "Should have at least 2 decoded slots" );
+
+    // Verify decoded value is 0x42, NOT 0xFF42 or anything else
+    for( U64 i = 0; i < std::min( count, U64( 4 ) ); i++ )
+    {
+        const Frame& f = mock_results->GetFrame( i );
+        std::ostringstream oss;
+        if( f.mData1 != 0x42 )
+        {
+            oss << "Slot " << i << ": expected 0x42 (66), got " << f.mData1
+                << " -- padding bits may have leaked into decoded value";
+            CHECK( false, oss.str() );
+        }
+    }
+}
+
+// Task 16: DSP Mode A offset bit = HIGH -- verify it's excluded from data.
+// In DSP Mode A, the very first FS-coincident data bit is skipped by
+// SetupForGettingFirstTdmFrame. Subsequent FS-coincident bits are the last
+// bit of the previous frame. This test verifies the setup skip works:
+// we set data=HIGH at the first FS position and verify it doesn't appear
+// in the first decoded slot.
+void test_dsp_mode_a_offset_bit_high()
+{
+    // Mono 4-bit. First FS offset bit = HIGH (should be skipped).
+    // All actual frame data = LOW (value 0).
+    // At each subsequent FS boundary, data = LOW (last bit of prev frame).
+    const U32 slots = 1;
+    const U32 bps = 4;
+    const U32 bpf = slots * bps;
+    const U32 frame_rate = 48000;
+    const U64 sample_rate = U64( frame_rate ) * bpf * 4;
+    const double bit_freq = double( frame_rate ) * bpf;
+    const double half_samples = double( sample_rate ) / ( 2.0 * bit_freq );
+
+    struct BitDesc { BitState data; BitState frame; };
+    std::vector<BitDesc> stream;
+
+    // Preamble
+    for( int i = 0; i < 16; i++ )
+        stream.push_back( { BIT_LOW, BIT_LOW } );
+
+    // First FS: offset bit = HIGH (this should be skipped by setup)
+    stream.push_back( { BIT_HIGH, BIT_HIGH } );
+
+    // Frame 0 data: 3 bits (positions 1-3), then FS at position 4
+    // In DSP Mode A: frame 0 has bits at positions 1,2,3 + last bit at
+    // position 4 (FS boundary) = 4 bits total
+    for( U32 b = 0; b < bpf - 1; b++ )
+        stream.push_back( { BIT_LOW, BIT_LOW } );
+
+    // Subsequent frames: FS with data=LOW (last bit of prev frame = LOW)
+    for( int f = 1; f < 5; f++ )
+    {
+        stream.push_back( { BIT_LOW, BIT_HIGH } ); // FS active, data=LOW
+        for( U32 b = 0; b < bpf - 1; b++ )
+            stream.push_back( { BIT_LOW, BIT_LOW } );
+    }
+
+    // Trailing
+    for( int i = 0; i < 32; i++ )
+        stream.push_back( { BIT_LOW, BIT_LOW } );
+
+    AnalyzerTest::Instance instance;
+    instance.CreatePlugin( "TDM" );
+
+    AnalyzerTest::MockChannelData* clk = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* frm = new AnalyzerTest::MockChannelData( &instance );
+    AnalyzerTest::MockChannelData* dat = new AnalyzerTest::MockChannelData( &instance );
+
+    clk->TestSetInitialBitState( BIT_LOW );
+    frm->TestSetInitialBitState( stream[ 0 ].frame );
+    dat->TestSetInitialBitState( stream[ 0 ].data );
+
+    BitState cur_dat = stream[ 0 ].data;
+    BitState cur_frm = stream[ 0 ].frame;
+    double err = 0.0;
+    U64 pos = 0;
+
+    for( size_t i = 0; i < stream.size(); i++ )
+    {
+        double target = half_samples + err;
+        U32 n = static_cast<U32>( std::lround( target ) );
+        err = target - double( n );
+        pos += n;
+        clk->TestAppendTransitionAtSamples( pos );
+        target = half_samples + err;
+        n = static_cast<U32>( std::lround( target ) );
+        err = target - double( n );
+        pos += n;
+        clk->TestAppendTransitionAtSamples( pos );
+
+        if( i + 1 < stream.size() )
+        {
+            if( stream[ i + 1 ].data != cur_dat )
+            {
+                dat->TestAppendTransitionAtSamples( pos );
+                cur_dat = stream[ i + 1 ].data;
+            }
+            if( stream[ i + 1 ].frame != cur_frm )
+            {
+                frm->TestAppendTransitionAtSamples( pos );
+                cur_frm = stream[ i + 1 ].frame;
+            }
+        }
+    }
+
+    clk->ResetCurrentSample();
+    frm->ResetCurrentSample();
+    dat->ResetCurrentSample();
+
+    instance.SetChannelData( CLK_CH, clk );
+    instance.SetChannelData( FRM_CH, frm );
+    instance.SetChannelData( DAT_CH, dat );
+    instance.SetSampleRate( sample_rate );
+
+    TdmAnalyzerSettings* settings = dynamic_cast<TdmAnalyzerSettings*>( instance.GetSettings() );
+    settings->mClockChannel = CLK_CH;
+    settings->mFrameChannel = FRM_CH;
+    settings->mDataChannel = DAT_CH;
+    settings->mTdmFrameRate = frame_rate;
+    settings->mSlotsPerFrame = slots;
+    settings->mBitsPerSlot = bps;
+    settings->mDataBitsPerSlot = bps;
+    settings->mShiftOrder = AnalyzerEnums::MsbFirst;
+    settings->mDataValidEdge = AnalyzerEnums::PosEdge;
+    settings->mDataAlignment = LEFT_ALIGNED;
+    settings->mBitAlignment = DSP_MODE_A;
+    settings->mSigned = AnalyzerEnums::UnsignedInteger;
+    settings->mFrameSyncInverted = FS_NOT_INVERTED;
+    settings->mEnableAdvancedAnalysis = false;
+
+    instance.RunAnalyzerWorker();
+
+    AnalyzerTest::MockResultData* mock_results =
+        AnalyzerTest::MockResultData::MockFromResults( instance.GetResults() );
+
+    U64 count = mock_results->TotalFrameCount();
+    CHECK( count >= 1, "Should have decoded at least one slot" );
+
+    for( U64 i = 0; i < std::min( count, U64( 3 ) ); i++ )
+    {
+        const Frame& f = mock_results->GetFrame( i );
+        std::ostringstream oss;
+        if( f.mData1 != 0 )
+        {
+            oss << "Slot " << i << ": expected 0 but got " << f.mData1
+                << " -- DSP Mode A offset bit leaked into decoded value";
+            CHECK( false, oss.str() );
+        }
+    }
+}
+
+// Task 17: Low sample rate detection (below 4x oversampling)
+void test_low_sample_rate()
+{
+    Config c = DefaultConfig( "low-sample-rate", 50 );
+    // bit_clock_hz = 48000 * 2 * 16 = 1,536,000
+    // recommended_min = 1,536,000 * 4 = 6,144,000
+    // Use 2x oversampling (below threshold)
+    c.sample_rate = U64( 48000 ) * 2 * 16 * 2;
+    // The analyzer should still decode (mLowSampleRate only affects FrameV2
+    // advisory and severity), but the path must not crash.
+    auto frames = RunAndCollect( c );
+    CHECK( frames.size() > 0, "Should decode frames even with low sample rate" );
+}
+
+// Task 15 (additional): 64-bit signed conversion after UB fix
+void test_sign_64bit_after_fix()
+{
+    // Positive 64-bit
+    S64 r1 = AnalyzerHelpers::ConvertToSignedNumber( 0x7FFFFFFFFFFFFFFFULL, 64 );
+    CHECK_EQ( r1, S64( 0x7FFFFFFFFFFFFFFFLL ), "64-bit max positive" );
+
+    // Negative 64-bit (MSB set) -- was UB before fix
+    S64 r2 = AnalyzerHelpers::ConvertToSignedNumber( 0x8000000000000000ULL, 64 );
+    CHECK( r2 < 0, "64-bit MSB set should be negative" );
+    CHECK_EQ( r2, S64( -9223372036854775807LL - 1 ), "64-bit min negative" );
+
+    // All ones = -1
+    S64 r3 = AnalyzerHelpers::ConvertToSignedNumber( 0xFFFFFFFFFFFFFFFFULL, 64 );
+    CHECK_EQ( r3, S64( -1 ), "64-bit all ones = -1" );
 }
 
 // ===================================================================
@@ -1190,6 +2118,36 @@ int main()
     RunTest( "test_misconfig_wrong_dsp_mode", test_misconfig_wrong_dsp_mode );
     RunTest( "test_misconfig_wrong_fs_polarity", test_misconfig_wrong_fs_polarity );
     RunTest( "test_minimum_config", test_minimum_config );
+    std::cout << std::endl;
+
+    std::cout << "Bit Pattern Coverage:" << std::endl;
+    RunTest( "test_counter_wrap_8bit", test_counter_wrap_8bit );
+    std::cout << std::endl;
+
+    std::cout << "Boundary Values:" << std::endl;
+    RunTest( "test_3bit_slots", test_3bit_slots );
+    RunTest( "test_8bit_slots", test_8bit_slots );
+    RunTest( "test_lsb_right_aligned_8in16", test_lsb_right_aligned_8in16 );
+    RunTest( "test_lsb_left_aligned_8in16", test_lsb_left_aligned_8in16 );
+    RunTest( "test_extreme_padding_right_2in64", test_extreme_padding_right_2in64 );
+    RunTest( "test_extreme_padding_left_2in64", test_extreme_padding_left_2in64 );
+    RunTest( "test_63in64_right", test_63in64_right );
+    RunTest( "test_256_slots", test_256_slots );
+    RunTest( "test_right_aligned_zero_padding", test_right_aligned_zero_padding );
+    RunTest( "test_signed_4bit_end_to_end", test_signed_4bit_end_to_end );
+    std::cout << std::endl;
+
+    std::cout << "Advanced Analysis Error Detection:" << std::endl;
+    RunTest( "test_bitclock_error_detection", test_bitclock_error_detection );
+    RunTest( "test_missed_data_detection", test_missed_data_detection );
+    RunTest( "test_missed_frame_sync_detection", test_missed_frame_sync_detection );
+    std::cout << std::endl;
+
+    std::cout << "Generator Blind Spots:" << std::endl;
+    RunTest( "test_padding_bits_high", test_padding_bits_high );
+    RunTest( "test_dsp_mode_a_offset_bit_high", test_dsp_mode_a_offset_bit_high );
+    RunTest( "test_low_sample_rate", test_low_sample_rate );
+    RunTest( "test_sign_64bit_after_fix", test_sign_64bit_after_fix );
     std::cout << std::endl;
 
     std::cout << "==============================" << std::endl;
