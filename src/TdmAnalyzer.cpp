@@ -381,21 +381,22 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     if( mSettings->mFrameV2Detail != FV2_OFF )
     {
         TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::FrameV2" );
-        FrameV2 frame_v2;
-
-        frame_v2.AddInteger( "slot", mResultsFrame.mType );
+        // Reuse mFrameV2 member to avoid per-call heap alloc/free.
+        // After the first call, Add* overwrites existing map entries
+        // without allocating new nodes.
+        mFrameV2.AddInteger( "slot", mResultsFrame.mType );
         S64 adjusted_value = result;
         if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
         {
             adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( mResultsFrame.mData1, mSettings->mDataBitsPerSlot );
         }
-        frame_v2.AddInteger( "data", adjusted_value );
-        frame_v2.AddInteger( "frame_number", mFrameNum );
+        mFrameV2.AddInteger( "data", adjusted_value );
+        mFrameV2.AddInteger( "frame_number", mFrameNum );
 
         bool is_short_slot = (mResultsFrame.mFlags & SHORT_SLOT) != 0;
         bool is_bitclock_error = (mResultsFrame.mFlags & BITCLOCK_ERROR) != 0;
-        frame_v2.AddBoolean( "short_slot", is_short_slot );
-        frame_v2.AddBoolean( "bitclock_error", is_bitclock_error );
+        mFrameV2.AddBoolean( "short_slot", is_short_slot );
+        mFrameV2.AddBoolean( "bitclock_error", is_bitclock_error );
 
         if( mSettings->mFrameV2Detail == FV2_FULL )
         {
@@ -411,14 +412,14 @@ void TdmAnalyzer::AnalyzeTdmSlot()
             else
                 severity = "ok";
 
-            frame_v2.AddString( "severity", severity );
-            frame_v2.AddBoolean( "extra_slot", is_extra_slot );
-            frame_v2.AddBoolean( "missed_data", is_missed_data );
-            frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
-            frame_v2.AddBoolean( "low_sample_rate", mLowSampleRate );
+            mFrameV2.AddString( "severity", severity );
+            mFrameV2.AddBoolean( "extra_slot", is_extra_slot );
+            mFrameV2.AddBoolean( "missed_data", is_missed_data );
+            mFrameV2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
+            mFrameV2.AddBoolean( "low_sample_rate", mLowSampleRate );
         }
 
-        mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
+        mResults->AddFrameV2( mFrameV2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     }
 
     mDataBits.clear();

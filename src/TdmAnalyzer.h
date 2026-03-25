@@ -58,6 +58,7 @@ class TdmAnalyzer : public Analyzer2
     std::vector<U8> mDataFlags;
 
     Frame mResultsFrame;
+    FrameV2 mFrameV2;  // Reused across slots to avoid per-call heap alloc/free
     U64 mSampleRate;
     double mDesiredBitClockPeriod;
     bool mLowSampleRate;
