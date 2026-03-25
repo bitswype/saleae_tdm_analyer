@@ -20,6 +20,7 @@
 
 #include "tdm_test_signal.h"
 #include "TdmProfiler.h"
+#include "framev2_capture.h"
 
 // ---------------------------------------------------------------------------
 // Benchmark runner
@@ -34,6 +35,7 @@ struct BenchResult
 
 static BenchResult RunBenchmark( const Config& cfg )
 {
+    ClearCapturedFrameV2s(); // prevent FrameV2 mock accumulation across runs
     BenchResult result = {};
 
     AnalyzerTest::Instance instance;
@@ -291,6 +293,64 @@ int main( int argc, char** argv )
         c.sample_rate = U64( 48000 ) * 32 * 32 * 4;
         c.advanced_analysis = true;
         PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // -----------------------------------------------------------------------
+    // Performance mode comparison
+    // -----------------------------------------------------------------------
+
+    std::cout << "Performance Mode Comparison" << std::endl;
+    std::cout << "==========================" << std::endl;
+    std::cout << std::endl;
+
+    // Compare all FV2 + marker combos on a few representative configs
+    struct ModeLabel { TdmFrameV2Detail fv2; TdmMarkerDensity markers; const char* name; };
+    ModeLabel modes[] = {
+        { FV2_FULL,    MARKERS_ALL,       "Full + AllMarkers (default)" },
+        { FV2_FULL,    MARKERS_SLOT_ONLY, "Full + SlotMarkers" },
+        { FV2_FULL,    MARKERS_NONE,      "Full + NoMarkers" },
+        { FV2_MINIMAL, MARKERS_ALL,       "Minimal + AllMarkers" },
+        { FV2_MINIMAL, MARKERS_SLOT_ONLY, "Minimal + SlotMarkers" },
+        { FV2_MINIMAL, MARKERS_NONE,      "Minimal + NoMarkers" },
+        { FV2_OFF,     MARKERS_ALL,       "Off + AllMarkers" },
+        { FV2_OFF,     MARKERS_NONE,      "Off + NoMarkers (fastest)" },
+    };
+
+    struct CompareConfig { const char* label; U32 slots; U32 bits; U32 data_bits; U32 rate; };
+    CompareConfig compare_cfgs[] = {
+        { "Stereo 16-bit",    2,  16, 16, 48000 },
+        { "8-channel 16-bit", 8,  16, 16, 48000 },
+        { "8-channel 32-bit", 8,  32, 32, 48000 },
+    };
+
+    for( const auto& cc : compare_cfgs )
+    {
+        std::cout << "  " << cc.label << ":" << std::endl;
+        for( const auto& mode : modes )
+        {
+            Config c = DefaultConfig( cc.label, num_frames );
+            c.slots_per_frame = cc.slots;
+            c.bits_per_slot = cc.bits;
+            c.data_bits_per_slot = cc.data_bits;
+            c.frame_rate = cc.rate;
+            c.sample_rate = U64( cc.rate ) * cc.slots * cc.bits * 4;
+            c.framev2_detail = mode.fv2;
+            c.marker_density = mode.markers;
+
+            BenchResult r = RunBenchmark( c );
+            U64 total_bits = r.slots_decoded * cc.data_bits;
+            double decode_sec = r.decode_ms / 1000.0;
+            double mbits = ( decode_sec > 0 ) ? ( double( total_bits ) / decode_sec / 1e6 ) : 0;
+            double rtx = ( cc.rate > 0 ) ? ( double( r.slots_decoded / cc.slots ) / decode_sec / cc.rate ) : 0;
+
+            std::cout << std::fixed << std::setprecision( 1 );
+            std::cout << "    " << std::setw( 35 ) << std::left << mode.name
+                      << "  " << std::setw( 8 ) << std::right << r.decode_ms << " ms"
+                      << "  " << std::setw( 5 ) << mbits << " Mbit/s"
+                      << "  " << std::setw( 5 ) << rtx << "x RT" << std::endl;
+            TDM_PROFILE_RESET();
+        }
+        std::cout << std::endl;
     }
 
     return 0;

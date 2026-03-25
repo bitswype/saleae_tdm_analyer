@@ -242,20 +242,18 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
         frame = mFrame->GetBitState();
     }
 
+    sample_number = data_valid_sample;
+
+    if( mSettings->mMarkerDensity == MARKERS_ALL )
     {
         TDM_PROFILE_SCOPE( "GetNextBit::Markers" );
-        if( mSettings->mMarkerDensity == MARKERS_ALL )
+        if( mSettings->mEnableAdvancedAnalysis == false )
         {
-            if( mSettings->mEnableAdvancedAnalysis == false )
-            {
-                mResults->AddMarker(data_valid_sample,
-                    data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero,
-                    mSettings->mDataChannel);
-            }
-            mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
+            mResults->AddMarker(data_valid_sample,
+                data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero,
+                mSettings->mDataChannel);
         }
-
-        sample_number = data_valid_sample;
+        mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
     }
 
     mClock->AdvanceToNextEdge(); // R: high -> low / F: low -> high, advance one more, so we're ready for next time this function is called.
