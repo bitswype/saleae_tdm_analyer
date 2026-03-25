@@ -156,6 +156,21 @@ Two user-facing settings control the speed/detail tradeoff:
 
 Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries (1.5-1.9x speedup). See `tests/PERFORMANCE.md` for the full story from baseline through profiling to optimization.
 
+### HLA Cython fast decode
+
+The audio stream HLA has a Cython-compiled fast decode path (`_decode_fast.pyx`) that moves the entire decode() body to C: field extraction, slot filtering, frame boundary detection, sign conversion, sample accumulation, and PCM packing. Falls back gracefully to pure Python when the extension is not compiled.
+
+```bash
+# Build the Cython extension
+cd hla-audio-stream
+pip install cython
+python setup_cython.py build_ext --inplace
+```
+
+Four backends were implemented and compared (Cython, raw C extension, cffi, pure Python). Cython is the fastest (4-7x over baseline), with a four-tier fallback chain: Cython > rawc > cffi > Python. See `tests/PERFORMANCE.md` for the full comparison and `tests/C_EXTENSION_DESIGN.md` for the design rationale.
+
+All backends validated by a 64-test oracle (`tests/test_hla_decode.py`) covering every branch of decode() including C-port-specific edge cases.
+
 ### Sender batching optimization
 
 The HLA's `_sender_loop` batches up to 1024 frames per `sendall()` call. Without batching, stereo streams generate 44100+ individual 4-byte TCP sends per second, starving the decode thread of GIL time.

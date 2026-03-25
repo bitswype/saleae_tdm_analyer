@@ -312,6 +312,33 @@ level would require the more precise tools listed above.
    a setting. Users who need complete diagnostics get them; users who need
    realtime performance choose the minimal set.
 
+### About the C extension comparison
+9. **Cython beats hand-written C.** This was the most counterintuitive finding.
+   Cython's generated C code uses `__Pyx_PyDict_GetItem` which inlines the
+   hash lookup and avoids string comparison overhead. Our hand-written C
+   extension used `PyDict_GetItemString` which does a `strcmp` per lookup.
+   The lesson: code generators that understand the Python C API's internals
+   can outperform manual C that uses the documented public API.
+
+10. **cffi is the wrong tool for high-frequency per-call dispatch.** cffi excels
+    when you call C functions infrequently with large data payloads. For our
+    workload (384K-768K calls/sec with 5 scalar arguments each), the
+    Python-side marshaling overhead exceeded the C hot loop savings. cffi was
+    actually slower than pure Python for 16-channel. The overhead comes from
+    converting 5 Python objects to C types and making the cffi function call,
+    which is more expensive than just doing the work in Python.
+
+11. **Test before you optimize, measure after.** The 64-test oracle caught
+    subtle bugs in each C implementation during development (signed/unsigned
+    handling, missing dict key defaults, batch buffer offset arithmetic).
+    And measuring all four backends revealed the cffi antipattern that would
+    have been invisible if we'd only tried one approach.
+
+12. **Always take a baseline before changing code.** We initially forgot to
+    capture the HLA baseline before applying Python optimizations, and had
+    to reconstruct it with a separate script. The LLA baseline was captured
+    correctly because we learned this lesson the hard way on the HLA side.
+
 ## Phase 7: HLA (Python) Profiling and Optimization
 
 The LLA (C++) feeds decoded frames to the HLA (Python) which packs PCM audio
@@ -458,6 +485,7 @@ dict keys, ring buffer overflow, large frame numbers).
 |----------|-----------------|
 | [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md) | Raw throughput: MSVC vs GCC, 16 configs, WSL2 vs native Windows |
 | [PROFILING_RESULTS.md](PROFILING_RESULTS.md) | Per-function timing breakdown, 16 configs, 9 instrumented sections |
-| [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) | Mode comparison: Full/Minimal/Off x All/Slot/None, 3 configs |
+| [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) | LLA mode comparison: Full/Minimal/Off x All/Slot/None markers |
+| [C_EXTENSION_DESIGN.md](C_EXTENSION_DESIGN.md) | C extension design: Cython/cffi/raw C tradeoffs, scope levels, results |
 | [TESTING.md](TESTING.md) | Test architecture: 58 C++ LLA tests + 64 Python HLA tests, audit history |
 | [../CLAUDE.md](../CLAUDE.md) | Project-level: build commands, settings, critical patterns |
