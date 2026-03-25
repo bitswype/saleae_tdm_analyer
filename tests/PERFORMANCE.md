@@ -156,15 +156,32 @@ real SDK where CommitResults could trigger internal processing.
 
 ## Phase 5: Measured Results
 
-| Config | Default | Minimal+Slot | Off+None | Speedup |
-|--------|--------:|-------------:|---------:|--------:|
-| Stereo 16-bit | 1.2x RT | 2.3x RT | 3.0x RT | **1.9-2.5x** |
-| 8-channel 16-bit | 0.3x RT | 0.5x RT | 0.8x RT | **1.5-2.3x** |
-| 8-channel 32-bit | 0.2x RT | 0.3x RT | 0.4x RT | **1.6-2.2x** |
+Apples-to-apples comparison using the same measurement infrastructure (FrameV2
+capture mock active in all cases). Baseline measured from commit `a8e4030`
+(pre-optimization code) in a separate worktree; optimized measured from current
+main. Same machine, same build config, same frame count (10000).
+
+| Config | Baseline (ms) | Full+All (ms) | Minimal+Slot (ms) | Off+None (ms) |
+|--------|-------------:|-------------:|------------------:|-------------:|
+| Stereo 16-bit | 220 (0.9x RT) | 194 (1.1x) | **66 (3.2x)** | 41 (5.1x) |
+| 8-ch 16-bit | 900 (0.2x RT) | 726 (0.3x) | **279 (0.7x)** | 168 (1.2x) |
+| 8-ch 16-bit +adv | 1049 (0.2x RT) | 503 (0.4x) | - | - |
+| 8-ch 32-bit | 677 (0.3x RT) | 660 (0.3x) | **429 (0.5x)** | - |
+
+Speedup vs baseline (same-infrastructure apples-to-apples):
+
+| Config | Minimal+Slot | Off+None |
+|--------|-------------:|---------:|
+| Stereo 16-bit | **3.3x** | **5.4x** |
+| 8-ch 16-bit | **3.2x** | **5.4x** |
+
+The "Full+All (post-opt)" column shows that even the default mode improved
+~10-20% from structural changes alone (batched CommitResults, vector reserve).
+The bigger gains come from the FrameV2 detail and marker density settings.
 
 For the primary use case (realtime audio streaming), **Minimal + Slot Markers**
-gives 1.5-1.9x speedup while retaining full HLA support and slot-level
-waveform annotation.
+gives a **3.2-3.3x speedup** over the pre-optimization baseline while retaining
+full HLA support and slot-level waveform annotation.
 
 See [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) for the full mode comparison.
 
