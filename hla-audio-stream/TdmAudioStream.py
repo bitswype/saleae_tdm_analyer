@@ -31,6 +31,12 @@ except ImportError:
 
 from _tdm_utils import parse_slot_spec, _as_signed, PerfCounters
 
+try:
+    from _decode_fast import FastDecoder
+    _USE_CYTHON = True
+except ImportError:
+    _USE_CYTHON = False
+
 PROTOCOL_VERSION = 1
 
 
@@ -104,6 +110,17 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._sample_rate = None
             self._frame_count = 0
 
+            # Cython fast path (if compiled extension available)
+            self._fast = None
+            self._fast_sr_set = False
+            if _USE_CYTHON:
+                try:
+                    self._fast = FastDecoder(
+                        self._slot_list, self._bit_depth,
+                        self._batch_size, self._frame_byte_size)
+                except Exception:
+                    self._fast = None
+
             # Ring buffer — deque drops oldest when full
             self._ring = collections.deque(maxlen=self._buf_size)
             self._ring_lock = threading.Lock()
@@ -162,6 +179,8 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._timing_ref = {}
             self._sample_rate = None
             self._frame_count = 0
+            self._fast = None
+            self._fast_sr_set = False
             self._ring = collections.deque()
             self._ring_lock = threading.Lock()
             self._wake_event = threading.Event()
@@ -313,6 +332,9 @@ class TdmAudioStream(HighLevelAnalyzer):
 
     def _flush_batch(self):
         """Flush the accumulated batch to the ring buffer."""
+        # Also flush Cython fast decoder batch if active
+        if self._fast is not None and self._fast.batch_count > 0:
+            self._flush_fast_batch()
         if self._batch_count == 0:
             return
         t0 = self._perf.begin('enqueue::ring')
@@ -346,17 +368,45 @@ class TdmAudioStream(HighLevelAnalyzer):
     # -------------------------------------------------------------------------
 
     def decode(self, frame):
-        """Process one FrameV2 from the upstream TdmAnalyzer LLA.
-
-        Returns None for normal frames, or AnalyzerFrame('error', ...) once
-        if __init__ failed.
-        """
+        """Process one FrameV2 from the upstream TdmAnalyzer LLA."""
+        # Deferred init error (same for both paths)
         if self._init_error is not None:
             err_msg = self._init_error
             self._init_error = None
             return AnalyzerFrame('error', frame.start_time, frame.end_time,
                                  {'message': err_msg})
 
+        # Fast path: Cython
+        if self._fast is not None:
+            # Sample rate derivation stays in Python (only first few frames)
+            if self._sample_rate is None:
+                return self._decode_python(frame)
+
+            # Tell fast decoder that sample rate is known (once)
+            if not self._fast_sr_set:
+                self._fast.set_sample_rate_known()
+                self._fast_sr_set = True
+
+            result = self._fast.process_frame(frame)
+            # Sync state for test compatibility
+            self._accum = self._fast.get_accum()
+            self._last_frame_num = self._fast.last_frame_num
+            self._frame_count = self._fast.frame_count
+            self._batch_count = self._fast.batch_count
+            if result == 1:
+                # Batch full -- flush to ring buffer
+                self._flush_fast_batch()
+            return None
+
+        # Fallback: pure Python
+        return self._decode_python(frame)
+
+    def _decode_python(self, frame):
+        """Pure-Python decode implementation (fallback path).
+
+        Returns None for normal frames, or AnalyzerFrame('error', ...) once
+        if __init__ failed.
+        """
         if frame.type != 'slot':
             return None
 
@@ -386,6 +436,24 @@ class TdmAudioStream(HighLevelAnalyzer):
         self._last_frame_num = frame_num
         self._perf.end('decode', t0)
         return None
+
+    def _flush_fast_batch(self):
+        """Flush the Cython fast decoder's batch buffer to the ring buffer."""
+        if not self._handshake_sent:
+            with self._client_lock:
+                if (self._current_client is not None
+                        and not self._handshake_sent
+                        and self._sample_rate is not None):
+                    self._send_handshake(self._current_client)
+
+        chunk = self._fast.get_batch_data()
+        self._fast.reset_batch()
+        self._batch_count = 0
+        if chunk:
+            with self._ring_lock:
+                self._ring.append(chunk)
+            self._wake_event.set()
+        self._frame_count = self._fast.frame_count
 
     def profile_summary(self):
         """Return profiling summary string. Only populated when TDM_HLA_PROFILE=1."""
