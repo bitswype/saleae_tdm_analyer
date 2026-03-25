@@ -22,6 +22,7 @@
 
 #include "tdm_test_signal.h"
 #include "TdmAnalyzerResults.h"
+#include "framev2_capture.h"
 
 // ---------------------------------------------------------------------------
 // Minimal test framework
@@ -1301,16 +1302,23 @@ void test_256_slots()
     c.sample_rate = U64( 48000 ) * 256 * 2 * 4;
     auto frames = RunAndCollect( c );
 
-    // Verify slot numbers cycle 0-255 correctly
+    // Verify slot numbers cycle 0-255 and data values are correct
     CHECK( frames.size() >= 256, "Should have at least one full frame of 256 slots" );
     for( U32 i = 0; i < 256; i++ )
     {
         U8 expected_slot = U8( i );
+        U64 expected_data = i % 4; // 2-bit data wraps at 4
         std::ostringstream oss;
         if( frames[ i ].slot != expected_slot )
         {
             oss << "Slot " << i << ": expected slot number " << (int)expected_slot
                 << ", got " << (int)frames[ i ].slot;
+            CHECK( false, oss.str() );
+        }
+        if( frames[ i ].data != expected_data )
+        {
+            oss << "Slot " << i << ": expected data " << expected_data
+                << ", got " << frames[ i ].data;
             CHECK( false, oss.str() );
         }
     }
@@ -1749,11 +1757,12 @@ void test_missed_frame_sync_detection()
 // ===================================================================
 
 // Task 12: Padding bits set to HIGH -- verify analyzer ignores them.
-// Hand-craft a stereo 8-in-16 signal where padding bits are all ones.
+// Uses DSP Mode B (no offset complexity) with a hand-crafted signal
+// where padding bits are all ones.
 void test_padding_bits_high()
 {
-    // Stereo, 8 data bits in 16-bit slot, right-aligned.
-    // First 8 bits = padding (HIGH), last 8 bits = data (value 0x42 = 66).
+    // Stereo, 8 data bits in 16-bit slot, right-aligned, DSP Mode B.
+    // Each slot: 8 padding bits (HIGH) + 8 data bits (value 0x42 MSB-first).
     // Expected decoded value: 0x42, not 0xFF42.
     const U32 slots = 2;
     const U32 bps = 16;
@@ -1771,32 +1780,27 @@ void test_padding_bits_high()
     for( int i = 0; i < 16; i++ )
         stream.push_back( { BIT_LOW, BIT_LOW } );
 
-    // Generate 4 frames (DSP Mode A)
-    // Value for each slot: 0x42 (MSB-first: 01000010)
-    // RIGHT_ALIGNED: 8 padding bits (HIGH) + 8 data bits
+    // Generate 4 frames (DSP Mode B: data and FS aligned, no offset)
     for( int f = 0; f < 4; f++ )
     {
-        // FS active + offset bit
-        stream.push_back( { BIT_LOW, BIT_HIGH } );
-
         for( U32 s = 0; s < slots; s++ )
         {
-            // 8 padding bits = HIGH
-            for( U32 b = 0; b < bps - dbps; b++ )
-                stream.push_back( { BIT_HIGH, BIT_LOW } );
-
-            // 8 data bits = 0x42 (MSB-first: 01000010)
-            U8 val = 0x42;
-            for( U32 b = 0; b < dbps; b++ )
+            for( U32 b = 0; b < bps; b++ )
             {
-                BitState bit = ( val & ( 1 << ( dbps - 1 - b ) ) ) ? BIT_HIGH : BIT_LOW;
-                stream.push_back( { bit, BIT_LOW } );
+                BitState fs = ( s == 0 && b == 0 ) ? BIT_HIGH : BIT_LOW;
+                BitState dat;
+                if( b < bps - dbps )
+                {
+                    dat = BIT_HIGH; // padding = HIGH
+                }
+                else
+                {
+                    U32 dbi = b - ( bps - dbps );
+                    dat = ( 0x42 & ( 1 << ( dbps - 1 - dbi ) ) ) ? BIT_HIGH : BIT_LOW;
+                }
+                stream.push_back( { dat, fs } );
             }
         }
-
-        // Remove the offset bit's effect: data_stream is shifted by 1,
-        // so strip the last bit (it belongs to the next frame's offset)
-        stream.pop_back();
     }
 
     // Trailing idle
@@ -1868,7 +1872,7 @@ void test_padding_bits_high()
     settings->mShiftOrder = AnalyzerEnums::MsbFirst;
     settings->mDataValidEdge = AnalyzerEnums::PosEdge;
     settings->mDataAlignment = RIGHT_ALIGNED;
-    settings->mBitAlignment = DSP_MODE_A;
+    settings->mBitAlignment = DSP_MODE_B;
     settings->mSigned = AnalyzerEnums::UnsignedInteger;
     settings->mFrameSyncInverted = FS_NOT_INVERTED;
     settings->mEnableAdvancedAnalysis = false;
@@ -1881,7 +1885,6 @@ void test_padding_bits_high()
     U64 count = mock_results->TotalFrameCount();
     CHECK( count >= 2, "Should have at least 2 decoded slots" );
 
-    // Verify decoded value is 0x42, NOT 0xFF42 or anything else
     for( U64 i = 0; i < std::min( count, U64( 4 ) ); i++ )
     {
         const Frame& f = mock_results->GetFrame( i );
@@ -2064,6 +2067,261 @@ void test_sign_64bit_after_fix()
 }
 
 // ===================================================================
+// Round 3: FrameV2 Field Verification
+// ===================================================================
+
+// Task 22: Verify FrameV2 fields on clean signal
+void test_framev2_happy_path()
+{
+    ClearCapturedFrameV2s();
+
+    Config c = DefaultConfig( "fv2-happy", 10 );
+    auto frames = RunAndCollect( c );
+
+    auto& fv2s = GetCapturedFrameV2s();
+    CHECK( fv2s.size() >= 10, "Should have captured FrameV2 records" );
+
+    // Find "slot" type records (skip any advisory)
+    S64 last_frame_num = -1;
+    U32 checked = 0;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type != "slot" )
+            continue;
+
+        // severity should be "ok"
+        std::string sev = fv2.GetString( "severity" );
+        CHECK_EQ( sev, std::string( "ok" ), "Clean slot severity should be 'ok'" );
+
+        // All error booleans should be false
+        CHECK_EQ( fv2.GetBoolean( "short_slot" ), false, "short_slot should be false" );
+        CHECK_EQ( fv2.GetBoolean( "extra_slot" ), false, "extra_slot should be false" );
+        CHECK_EQ( fv2.GetBoolean( "bitclock_error" ), false, "bitclock_error should be false" );
+        CHECK_EQ( fv2.GetBoolean( "missed_data" ), false, "missed_data should be false" );
+        CHECK_EQ( fv2.GetBoolean( "missed_frame_sync" ), false, "missed_frame_sync should be false" );
+        CHECK_EQ( fv2.GetBoolean( "low_sample_rate" ), false, "low_sample_rate should be false" );
+
+        // slot field should match expected cycle
+        S64 slot = fv2.GetInteger( "slot" );
+        CHECK( slot >= 0 && slot < S64( c.slots_per_frame ),
+               "FrameV2 slot should be in valid range" );
+
+        // frame_number should be non-negative and non-decreasing
+        S64 fn = fv2.GetInteger( "frame_number" );
+        CHECK( fn >= 0, "frame_number should be non-negative" );
+        if( slot == 0 && last_frame_num >= 0 )
+        {
+            CHECK( fn > last_frame_num, "frame_number should increment between frames" );
+        }
+        if( slot == 0 )
+            last_frame_num = fn;
+
+        checked++;
+        if( checked >= 10 )
+            break;
+    }
+    CHECK( checked >= 10, "Should have verified at least 10 slot FrameV2 records" );
+}
+
+// Task 20: Verify signed decode via FrameV2 "data" field
+void test_framev2_signed_decode()
+{
+    ClearCapturedFrameV2s();
+
+    Config c = DefaultConfig( "fv2-signed", 20 );
+    c.bits_per_slot = 4;
+    c.data_bits_per_slot = 4;
+    c.sign = AnalyzerEnums::SignedInteger;
+    c.sample_rate = U64( 48000 ) * 2 * 4 * 4;
+    auto frames = RunAndCollect( c );
+
+    auto& fv2s = GetCapturedFrameV2s();
+
+    // Collect "slot" type FrameV2 records
+    std::vector<const CapturedFrameV2*> slot_fv2s;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "slot" )
+            slot_fv2s.push_back( &fv2 );
+    }
+
+    CHECK( slot_fv2s.size() >= 20, "Should have at least 20 slot FrameV2 records" );
+
+    // Counter goes 0,1,2,...,15,0,1,... (mod 16 for 4-bit).
+    // Signed 4-bit: 0-7 -> 0-7, 8-15 -> -8 to -1
+    U32 counter = 0;
+    for( U32 i = 0; i < 20 && i < slot_fv2s.size(); i++ )
+    {
+        U32 raw = counter % 16;
+        S64 expected_signed;
+        if( raw >= 8 )
+            expected_signed = S64( raw ) - 16; // 8->-8, 9->-7, ..., 15->-1
+        else
+            expected_signed = S64( raw );
+
+        S64 actual = slot_fv2s[ i ]->GetInteger( "data" );
+        std::ostringstream oss;
+        if( actual != expected_signed )
+        {
+            oss << "FrameV2 slot " << i << ": signed data expected "
+                << expected_signed << ", got " << actual
+                << " (raw=" << raw << ")";
+            CHECK( false, oss.str() );
+        }
+        counter++;
+    }
+}
+
+// Task 21: Verify FrameV2 fields on error condition tests
+void test_framev2_short_slot_severity()
+{
+    ClearCapturedFrameV2s();
+    auto frames = RunShortSlotTest();
+
+    auto& fv2s = GetCapturedFrameV2s();
+    bool found_error = false;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "slot" && fv2.GetBoolean( "short_slot" ) )
+        {
+            CHECK_EQ( fv2.GetString( "severity" ), std::string( "error" ),
+                       "SHORT_SLOT should have severity 'error'" );
+            found_error = true;
+            break;
+        }
+    }
+    CHECK( found_error, "Should find a FrameV2 with short_slot=true" );
+}
+
+void test_framev2_extra_slot_severity()
+{
+    ClearCapturedFrameV2s();
+    RunExtraSlotsTest();
+
+    auto& fv2s = GetCapturedFrameV2s();
+    bool found_warning = false;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "slot" && fv2.GetBoolean( "extra_slot" ) )
+        {
+            CHECK_EQ( fv2.GetString( "severity" ), std::string( "warning" ),
+                       "EXTRA_SLOT should have severity 'warning'" );
+            found_warning = true;
+            break;
+        }
+    }
+    CHECK( found_warning, "Should find a FrameV2 with extra_slot=true" );
+}
+
+void test_framev2_bitclock_error_severity()
+{
+    ClearCapturedFrameV2s();
+    test_bitclock_error_detection(); // re-run to populate capture
+
+    auto& fv2s = GetCapturedFrameV2s();
+    bool found = false;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "slot" && fv2.GetBoolean( "bitclock_error" ) )
+        {
+            CHECK_EQ( fv2.GetString( "severity" ), std::string( "error" ),
+                       "BITCLOCK_ERROR should have severity 'error'" );
+            found = true;
+            break;
+        }
+    }
+    CHECK( found, "Should find a FrameV2 with bitclock_error=true" );
+}
+
+void test_framev2_missed_data_severity()
+{
+    ClearCapturedFrameV2s();
+    test_missed_data_detection();
+
+    auto& fv2s = GetCapturedFrameV2s();
+    bool found = false;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "slot" && fv2.GetBoolean( "missed_data" ) )
+        {
+            CHECK_EQ( fv2.GetString( "severity" ), std::string( "error" ),
+                       "MISSED_DATA should have severity 'error'" );
+            found = true;
+            break;
+        }
+    }
+    CHECK( found, "Should find a FrameV2 with missed_data=true" );
+}
+
+void test_framev2_missed_frame_sync_severity()
+{
+    ClearCapturedFrameV2s();
+    test_missed_frame_sync_detection();
+
+    auto& fv2s = GetCapturedFrameV2s();
+    bool found = false;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "slot" && fv2.GetBoolean( "missed_frame_sync" ) )
+        {
+            CHECK_EQ( fv2.GetString( "severity" ), std::string( "error" ),
+                       "MISSED_FRAME_SYNC should have severity 'error'" );
+            found = true;
+            break;
+        }
+    }
+    CHECK( found, "Should find a FrameV2 with missed_frame_sync=true" );
+}
+
+// Task 23: Verify low sample rate advisory and slot severity
+void test_framev2_low_sample_rate()
+{
+    ClearCapturedFrameV2s();
+
+    Config c = DefaultConfig( "fv2-low-sr", 20 );
+    c.sample_rate = U64( 48000 ) * 2 * 16 * 2; // 2x oversampling, below 4x threshold
+    RunAndCollect( c );
+
+    auto& fv2s = GetCapturedFrameV2s();
+
+    // Should have an advisory FrameV2
+    bool found_advisory = false;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "advisory" )
+        {
+            CHECK_EQ( fv2.GetString( "severity" ), std::string( "warning" ),
+                       "Advisory should have severity 'warning'" );
+            CHECK( fv2.HasField( "message" ), "Advisory should have a message" );
+            found_advisory = true;
+            break;
+        }
+    }
+    CHECK( found_advisory, "Should emit advisory FrameV2 for low sample rate" );
+
+    // Slot FrameV2s should have low_sample_rate=true and severity="warning"
+    bool found_low_sr_slot = false;
+    for( const auto& fv2 : fv2s )
+    {
+        if( fv2.type == "slot" )
+        {
+            CHECK_EQ( fv2.GetBoolean( "low_sample_rate" ), true,
+                       "Slot should have low_sample_rate=true" );
+            // If no other errors, severity should be "warning" (from mLowSampleRate)
+            if( !fv2.GetBoolean( "short_slot" ) && !fv2.GetBoolean( "bitclock_error" ) &&
+                !fv2.GetBoolean( "missed_data" ) && !fv2.GetBoolean( "missed_frame_sync" ) )
+            {
+                CHECK_EQ( fv2.GetString( "severity" ), std::string( "warning" ),
+                           "Low SR slot without errors should have severity 'warning'" );
+            }
+            found_low_sr_slot = true;
+            break;
+        }
+    }
+    CHECK( found_low_sr_slot, "Should have slot FrameV2 records with low_sample_rate" );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 
@@ -2148,6 +2406,17 @@ int main()
     RunTest( "test_dsp_mode_a_offset_bit_high", test_dsp_mode_a_offset_bit_high );
     RunTest( "test_low_sample_rate", test_low_sample_rate );
     RunTest( "test_sign_64bit_after_fix", test_sign_64bit_after_fix );
+    std::cout << std::endl;
+
+    std::cout << "FrameV2 Field Verification:" << std::endl;
+    RunTest( "test_framev2_happy_path", test_framev2_happy_path );
+    RunTest( "test_framev2_signed_decode", test_framev2_signed_decode );
+    RunTest( "test_framev2_short_slot_severity", test_framev2_short_slot_severity );
+    RunTest( "test_framev2_extra_slot_severity", test_framev2_extra_slot_severity );
+    RunTest( "test_framev2_bitclock_error_severity", test_framev2_bitclock_error_severity );
+    RunTest( "test_framev2_missed_data_severity", test_framev2_missed_data_severity );
+    RunTest( "test_framev2_missed_frame_sync_severity", test_framev2_missed_frame_sync_severity );
+    RunTest( "test_framev2_low_sample_rate", test_framev2_low_sample_rate );
     std::cout << std::endl;
 
     std::cout << "==============================" << std::endl;

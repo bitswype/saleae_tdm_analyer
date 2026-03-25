@@ -135,7 +135,7 @@ build-test\bin\Release\tdm_correctness.exe       # Windows
 build-test\bin\Release\tdm_benchmark.exe 48000   # Windows
 ```
 
-**Correctness tests** (`tdm_correctness`): 50 tests in nine categories: happy path (11), sign conversion (6), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1, 8-bit counter wrapping all 256 values), boundary values (10, including non-power-of-2 widths, extreme padding, 256-slot U8 boundary, LSB+padding combos, signed end-to-end), advanced analysis error detection (3, hand-crafted signals for BITCLOCK_ERROR/MISSED_DATA/MISSED_FRAME_SYNC), and generator blind spot tests (4, padding-bits-HIGH, DSP Mode A offset bit, low sample rate, 64-bit signed after UB fix).
+**Correctness tests** (`tdm_correctness`): 58 tests in ten categories: happy path (11), sign conversion (6), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (10), advanced analysis error detection (3), generator blind spot tests (4), and FrameV2 field verification (8, verifying signed decode values, severity strings, error booleans, frame numbering, and low sample rate advisory via a FrameV2-capturing mock).
 
 **Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
 
