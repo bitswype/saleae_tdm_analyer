@@ -43,6 +43,10 @@ target_include_directories(tdm_benchmark PRIVATE
 
 target_compile_definitions(tdm_benchmark PRIVATE LOGIC2)
 
+if(ENABLE_PROFILING)
+    target_compile_definitions(tdm_benchmark PRIVATE TDM_PROFILE)
+endif()
+
 add_executable(tdm_correctness
     tdm_correctness.cpp
     tdm_test_helpers.cpp

@@ -133,7 +133,15 @@ build-test\bin\Release\tdm_correctness.exe       # Windows
 # Performance benchmark (48000 frames = 1 second at 48 kHz)
 ./build-test/tests/tdm_benchmark 48000           # Linux/macOS
 build-test\bin\Release\tdm_benchmark.exe 48000   # Windows
+
+# Profiled benchmark (per-function timing breakdown)
+cmake -B build-prof -DBUILD_TESTS=ON -DENABLE_PROFILING=ON -A x64     # Windows
+cmake -B build-prof -DBUILD_TESTS=ON -DENABLE_PROFILING=ON -DCMAKE_BUILD_TYPE=Release  # Linux/macOS
+cmake --build build-prof --config Release --target tdm_benchmark
+build-prof\bin\Release\tdm_benchmark.exe 1000    # Windows
 ```
+
+Profiling uses compile-time instrumentation (`src/TdmProfiler.h`) that expands to nothing when `ENABLE_PROFILING` is OFF. When ON, the benchmark prints a per-function timing breakdown after each configuration showing where decode time is spent (GetNextBit, ChannelAdvance, Markers, FrameV2 construction, etc.).
 
 **Correctness tests** (`tdm_correctness`): 58 tests in ten categories: happy path (11), sign conversion (6), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (10), advanced analysis error detection (3), generator blind spot tests (4), and FrameV2 field verification (8, verifying signed decode values, severity strings, error booleans, frame numbering, and low sample rate advisory via a FrameV2-capturing mock).
 

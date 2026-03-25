@@ -1,5 +1,6 @@
 #include "TdmAnalyzer.h"
 #include "TdmAnalyzerSettings.h"
+#include "TdmProfiler.h"
 #include <AnalyzerChannelData.h>
 #include <stdio.h>
 
@@ -136,6 +137,7 @@ void TdmAnalyzer::SetupForGettingFirstTdmFrame()
 
 void TdmAnalyzer::GetTdmFrame()
 {
+    TDM_PROFILE_SCOPE( "GetTdmFrame" );
     // on entering this function:
     // we are at the beginning of a new TDM frame
     // mCurrentFrameState and State are the values of the first bit -- that belongs to us -- in the TDM frame.
@@ -201,32 +203,41 @@ void TdmAnalyzer::GetTdmFrame()
 
 void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_number )
 {
+    TDM_PROFILE_SCOPE( "GetNextBit" );
     mBitFlag = 0;
-    
+
     // we enter the function with the clock state such that on the next edge is where the data is valid.
     mClock->AdvanceToNextEdge(); // R: low -> high / F: high -> low
     U64 data_valid_sample = mClock->GetSampleNumber(); // R: high / F: low
 
-    mData->AdvanceToAbsPosition( data_valid_sample );
-    data = mData->GetBitState();
-
-    mFrame->AdvanceToAbsPosition( data_valid_sample );
-    frame = mFrame->GetBitState();
-
-    if( mSettings->mEnableAdvancedAnalysis == false)
     {
-        mResults->AddMarker(data_valid_sample,
-        data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero, 
-        mSettings->mDataChannel);
+        TDM_PROFILE_SCOPE( "GetNextBit::ChannelAdvance" );
+        mData->AdvanceToAbsPosition( data_valid_sample );
+        data = mData->GetBitState();
+
+        mFrame->AdvanceToAbsPosition( data_valid_sample );
+        frame = mFrame->GetBitState();
     }
 
-    sample_number = data_valid_sample;
+    {
+        TDM_PROFILE_SCOPE( "GetNextBit::Markers" );
+        if( mSettings->mEnableAdvancedAnalysis == false)
+        {
+            mResults->AddMarker(data_valid_sample,
+            data == BIT_HIGH ? AnalyzerResults::MarkerType::One : AnalyzerResults::MarkerType::Zero,
+            mSettings->mDataChannel);
+        }
 
-    mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
+        sample_number = data_valid_sample;
+
+        mResults->AddMarker( data_valid_sample, mArrowMarker, mSettings->mClockChannel );
+    }
+
     mClock->AdvanceToNextEdge(); // R: high -> low / F: low -> high, advance one more, so we're ready for next time this function is called.
 
     if ( mSettings->mEnableAdvancedAnalysis == true )
     {
+        TDM_PROFILE_SCOPE( "GetNextBit::AdvancedAnalysis" );
         U64 next_clock_edge = mClock->GetSampleNumber(); // R: low / F: high
         U32 data_tranistions = mData->AdvanceToAbsPosition( next_clock_edge );
         U32 frame_transitions = mFrame->AdvanceToAbsPosition( next_clock_edge );
@@ -236,7 +247,7 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
         {
             mBitFlag |= BITCLOCK_ERROR | DISPLAY_AS_ERROR_FLAG;
         }
-        
+
         if((data_tranistions > 0) && ( mData->WouldAdvancingToAbsPositionCauseTransition( next_clk_edge_sample ) == true))
         {
             mResults->AddMarker(next_clock_edge, AnalyzerResults::MarkerType::Stop, mSettings->mDataChannel);
@@ -253,6 +264,7 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
 
 void TdmAnalyzer::AnalyzeTdmSlot()
 {
+    TDM_PROFILE_SCOPE( "AnalyzeTdmSlot" );
     U64 result = 0;
     U32 starting_index = 0;
     size_t num_bits_to_process = mDataBits.size();
@@ -332,44 +344,54 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mResultsFrame.mType = U8( mSlotNum );
     mResultsFrame.mStartingSampleInclusive = mDataValidEdges[ starting_index ];
     mResultsFrame.mEndingSampleInclusive = mDataValidEdges[ num_bits_to_process - 1 ];
-    mResults->AddFrame( mResultsFrame );
 
-    FrameV2 frame_v2;
-
-    frame_v2.AddInteger( "slot", mResultsFrame.mType );
-    S64 adjusted_value = result;
-    if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
     {
-        adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( mResultsFrame.mData1, mSettings->mDataBitsPerSlot );
+        TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::AddFrame" );
+        mResults->AddFrame( mResultsFrame );
     }
-    frame_v2.AddInteger( "data", adjusted_value );
-    frame_v2.AddInteger( "frame_number", mFrameNum );
 
-    bool is_short_slot      = (mResultsFrame.mFlags & SHORT_SLOT) != 0;
-    bool is_extra_slot      = (mResultsFrame.mFlags & UNEXPECTED_BITS) != 0;
-    bool is_bitclock_error  = (mResultsFrame.mFlags & BITCLOCK_ERROR) != 0;
-    bool is_missed_data     = (mResultsFrame.mFlags & MISSED_DATA) != 0;
-    bool is_missed_frame_sync = (mResultsFrame.mFlags & MISSED_FRAME_SYNC) != 0;
+    {
+        TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::FrameV2" );
+        FrameV2 frame_v2;
 
-    const char* severity;
-    if( is_short_slot || is_bitclock_error || is_missed_data || is_missed_frame_sync )
-        severity = "error";
-    else if( is_extra_slot || mLowSampleRate )
-        severity = "warning";
-    else
-        severity = "ok";
+        frame_v2.AddInteger( "slot", mResultsFrame.mType );
+        S64 adjusted_value = result;
+        if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
+        {
+            adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( mResultsFrame.mData1, mSettings->mDataBitsPerSlot );
+        }
+        frame_v2.AddInteger( "data", adjusted_value );
+        frame_v2.AddInteger( "frame_number", mFrameNum );
 
-    frame_v2.AddString( "severity", severity );
-    frame_v2.AddBoolean( "short_slot", is_short_slot );
-    frame_v2.AddBoolean( "extra_slot", is_extra_slot );
-    frame_v2.AddBoolean( "bitclock_error", is_bitclock_error );
-    frame_v2.AddBoolean( "missed_data", is_missed_data );
-    frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
-    frame_v2.AddBoolean( "low_sample_rate", mLowSampleRate );
-    mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
-    
-    mResults->CommitResults();
-    ReportProgress( mClock->GetSampleNumber() );
+        bool is_short_slot      = (mResultsFrame.mFlags & SHORT_SLOT) != 0;
+        bool is_extra_slot      = (mResultsFrame.mFlags & UNEXPECTED_BITS) != 0;
+        bool is_bitclock_error  = (mResultsFrame.mFlags & BITCLOCK_ERROR) != 0;
+        bool is_missed_data     = (mResultsFrame.mFlags & MISSED_DATA) != 0;
+        bool is_missed_frame_sync = (mResultsFrame.mFlags & MISSED_FRAME_SYNC) != 0;
+
+        const char* severity;
+        if( is_short_slot || is_bitclock_error || is_missed_data || is_missed_frame_sync )
+            severity = "error";
+        else if( is_extra_slot || mLowSampleRate )
+            severity = "warning";
+        else
+            severity = "ok";
+
+        frame_v2.AddString( "severity", severity );
+        frame_v2.AddBoolean( "short_slot", is_short_slot );
+        frame_v2.AddBoolean( "extra_slot", is_extra_slot );
+        frame_v2.AddBoolean( "bitclock_error", is_bitclock_error );
+        frame_v2.AddBoolean( "missed_data", is_missed_data );
+        frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
+        frame_v2.AddBoolean( "low_sample_rate", mLowSampleRate );
+        mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
+    }
+
+    {
+        TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::Commit" );
+        mResults->CommitResults();
+        ReportProgress( mClock->GetSampleNumber() );
+    }
 
     mDataBits.clear();
     mDataValidEdges.clear();

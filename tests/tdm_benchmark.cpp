@@ -19,6 +19,7 @@
 #include "TestInstance.h"
 
 #include "tdm_test_signal.h"
+#include "TdmProfiler.h"
 
 // ---------------------------------------------------------------------------
 // Benchmark runner
@@ -121,6 +122,8 @@ static void PrintResult( const Config& cfg, const BenchResult& r )
               << "  (" << tdm_frames << " frames, " << r.slots_decoded << " slots)" << std::endl;
     std::cout << "    Throughput:  " << std::setprecision( 1 ) << mbits_per_sec << " Mbit/s"
               << "  |  " << std::setprecision( 1 ) << realtime_x << "x realtime" << std::endl;
+    TDM_PROFILE_PRINT();
+    TDM_PROFILE_RESET();
     std::cout << std::endl;
 }
 
