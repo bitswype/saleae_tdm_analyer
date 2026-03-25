@@ -312,6 +312,102 @@ level would require the more precise tools listed above.
    a setting. Users who need complete diagnostics get them; users who need
    realtime performance choose the minimal set.
 
+## Phase 7: HLA (Python) Profiling and Optimization
+
+The LLA (C++) feeds decoded frames to the HLA (Python) which packs PCM audio
+and streams it over TCP or writes WAV files. Even a fast LLA is useless if the
+HLA can't keep up.
+
+### HLA profiling infrastructure
+
+Added `time.perf_counter_ns()` instrumentation to both HLAs, gated by the
+`TDM_HLA_PROFILE=1` environment variable (zero overhead when off). A new
+`tdm-test-harness profile` CLI command drives the HLA outside Logic 2 and
+reports per-section timing breakdown.
+
+### Baseline (before optimization)
+
+Measured with the original per-frame struct.pack, per-frame ring buffer append,
+and function-call _as_signed:
+
+| Config | Throughput | Realtime | decode/call | pack/call | ring/call |
+|--------|-----------|----------|------------|----------:|----------:|
+| Stereo 16-bit | 167K fps | 3.5x | 1.01 us | 0.31 us | 0.17 us |
+| Stereo 32-bit | 135K fps | 2.8x | 1.43 us | 0.32 us | 0.16 us |
+| 8-ch 16-bit | 41K fps | 0.8x | 1.00 us | 0.55 us | 0.17 us |
+| 16-ch 16-bit | 20K fps | 0.4x | 0.93 us | 0.92 us | 0.19 us |
+
+8-channel was barely at realtime, 16-channel was well below. The bottleneck was
+the sheer volume of decode() calls (384K/sec for 8-ch) with per-frame overhead
+in struct.pack and ring buffer operations.
+
+### Optimizations applied
+
+1. **Batch PCM packing:** Accumulate N frames (buffer_size / 2) in a
+   pre-allocated bytearray via `struct.pack_into`, flush to ring buffer as a
+   single chunk. Reduced ring buffer operations from 48K/sec to ~750/sec (64x).
+
+2. **Inlined sign conversion:** Pre-computed mask/threshold/subtract constants
+   in __init__, inlined bitwise ops in decode() instead of calling _as_signed()
+   per slot.
+
+3. **Cached frame.data reference:** One dict attribute lookup instead of two.
+
+4. **Guarded sample rate derivation:** Skips function call after rate is derived.
+
+### After optimization
+
+| Config | Throughput | Realtime | decode/call | pack/call | ring/call |
+|--------|-----------|----------|------------|----------:|----------:|
+| Stereo 16-bit | 350K fps | **7.3x** | 1.14 us | 0.42 us | 1.59 us* |
+| Stereo 32-bit | 237K fps | **4.9x** | 1.68 us | 0.45 us | 2.18 us* |
+| 8-ch 16-bit | 73K fps | **1.5x** | 1.24 us | 0.72 us | 3.53 us* |
+| 16-ch 16-bit | 40K fps | **0.8x** | 1.11 us | 1.12 us | 4.95 us* |
+
+*Ring per-call is higher because it now processes 64 frames per call (batch).
+
+### Comparison
+
+| Config | Before | After | Speedup |
+|--------|-------:|------:|--------:|
+| Stereo 16-bit | 3.5x RT | 7.3x RT | **2.1x** |
+| Stereo 32-bit | 2.8x RT | 4.9x RT | **1.8x** |
+| 8-ch 16-bit | 0.8x RT | 1.5x RT | **1.9x** |
+| 16-ch 16-bit | 0.4x RT | 0.8x RT | **2.0x** |
+
+The batch packing optimization roughly doubled HLA throughput across all configs.
+8-channel went from below realtime (0.8x) to comfortably above (1.5x).
+16-channel improved from 0.4x to 0.8x -- still below realtime.
+
+### Where HLA time goes now
+
+After optimization, the dominant cost is the per-slot `decode()` call overhead
+(~1.1 us). This is the cost of Logic 2 calling into Python for each slot frame.
+With 384K calls/sec for 8-channel or 768K for 16-channel, even 1 us per call
+consumes the entire realtime budget.
+
+The pack and ring operations are now efficient (batched), and the sign conversion
+is inlined. The remaining decode() overhead is:
+- Python function call dispatch
+- Dict lookups on frame.data
+- Set membership test
+- Attribute lookups on self
+
+These are fundamental Python interpreter costs. Further optimization at the
+Python level would yield diminishing returns.
+
+### Future: C extension for decode hot path
+
+The most impactful next step would be moving the `decode()` hot path to a C
+extension module. The inner loop (extract slot/frame_num from frame.data, check
+slot membership, apply sign conversion, accumulate sample, detect frame boundary,
+pack PCM) is ~10 operations that could be a single C function call receiving a
+batch of frames. This would eliminate the 1 us per-call Python overhead entirely,
+potentially achieving 10-50x throughput improvement for high-channel-count
+configurations.
+
+This is tracked as a future optimization opportunity.
+
 ## Document Index
 
 | Document | What it contains |
