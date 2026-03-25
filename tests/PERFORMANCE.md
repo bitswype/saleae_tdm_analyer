@@ -168,6 +168,111 @@ waveform annotation.
 
 See [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) for the full mode comparison.
 
+## Phase 6: Post-Optimization Profile (Where Does Time Go Now?)
+
+After implementing the FrameV2 and marker settings, we re-profiled to see what's
+left to optimize. The picture changes dramatically depending on the mode.
+
+### Minimal + Slot Markers (recommended for realtime audio)
+
+Stereo 16-bit, 10000 frames:
+
+| Section | Time (ms) | % of decode | Per-call (us) |
+|---------|----------:|------------:|--------------:|
+| GetNextBit (total) | 56.2 | 57% | 0.176 |
+| - ChannelAdvance (SDK) | 25.2 | 26% | 0.079 |
+| - Clock advances + overhead | 31.0 | 32% | 0.097 |
+| AnalyzeTdmSlot (total) | 32.9 | 33% | - |
+| - FrameV2 (5 fields) | 29.2 | 30% | 1.459 |
+| - AddFrame (V1) | 1.0 | 1% | 0.049 |
+| Commit (per frame) | 0.2 | <1% | 0.023 |
+
+8-channel 16-bit, 10000 frames:
+
+| Section | Time (ms) | % of decode | Per-call (us) |
+|---------|----------:|------------:|--------------:|
+| GetNextBit (total) | 229.0 | 57% | 0.179 |
+| - ChannelAdvance (SDK) | 100.2 | 25% | 0.078 |
+| AnalyzeTdmSlot (total) | 139.7 | 35% | - |
+| - FrameV2 (5 fields) | 123.7 | 31% | 1.546 |
+
+Even at Minimal, FrameV2 is still 30% (5 map insertions at ~1.5 us) and
+GetNextBit is 57% (SDK channel operations + clock advances).
+
+### Off + No Markers (maximum speed)
+
+Stereo 16-bit, 10000 frames:
+
+| Section | Time (ms) | % of decode | Per-call (us) |
+|---------|----------:|------------:|--------------:|
+| GetNextBit (total) | 52.1 | 82% | 0.163 |
+| - ChannelAdvance (SDK) | 24.6 | 39% | 0.077 |
+| - Clock advances + overhead | 27.5 | 44% | - |
+| AnalyzeTdmSlot (total) | 2.0 | 3% | 0.100 |
+| AddFrame (V1) | 1.0 | 2% | 0.050 |
+
+With everything turned off, **82% of time is in GetNextBit** -- and about half
+of that is the SDK's AdvanceToAbsPosition/GetBitState calls which are not
+optimizable from the analyzer side.
+
+### Are We at the Floor?
+
+Likely yes, for this profiling approach. The remaining costs are:
+
+1. **SDK channel operations** (~25-40% depending on mode) -- these are
+   AdvanceToAbsPosition, GetBitState, AdvanceToNextEdge calls on the SDK's
+   AnalyzerChannelData interface. We cannot optimize inside them.
+
+2. **Clock edge advances** (~30%) -- the two AdvanceToNextEdge calls per bit in
+   GetNextBit. These are also SDK operations.
+
+3. **FrameV2 at Minimal** (~30%) -- still 5 map insertions per slot. The only
+   way to reduce further would be to pack fields (e.g., flags integer instead
+   of 2 booleans), which would require HLA changes.
+
+4. **Profiling instrumentation itself** -- at 320K-49M calls per run, the two
+   `chrono::steady_clock::now()` reads per TDM_PROFILE_SCOPE add substantial
+   overhead. The ~3x profiling overhead means we can't distinguish "real work"
+   from "measurement cost" at the Off+None level where individual function
+   calls take 0.1-0.2 us.
+
+### Profiling Method Limitations
+
+The current instrumentation uses `std::chrono::steady_clock` in RAII scoped
+timers (see `src/TdmProfiler.h`). This approach was chosen for simplicity and
+portability, but has known limitations:
+
+- **High per-measurement cost.** Two `steady_clock::now()` calls per scope
+  entry/exit. On Windows, this typically resolves to `QueryPerformanceCounter`
+  at ~20-40 ns per call, so each profiled scope adds ~40-80 ns of overhead.
+  At 320K calls (stereo 16-bit), that's ~13-25 ms of pure measurement cost
+  within the profiled 98 ms decode -- roughly 15-25% of the measurement is
+  measuring itself.
+
+- **Cannot profile sub-function sections accurately.** Nested scopes (e.g.,
+  GetNextBit containing GetNextBit::ChannelAdvance) double-count the inner
+  scope's chrono overhead. The outer scope's time includes the inner scope's
+  measurement cost.
+
+- **Unsuitable for sub-microsecond resolution.** Individual GetNextBit calls
+  take 0.16-0.18 us in the fastest mode. The chrono overhead per scope is
+  0.04-0.08 us -- 25-50% of the measured value is noise.
+
+**To go deeper, a different approach is needed:**
+
+- **Sampling profiler** (Intel VTune, Linux perf, macOS Instruments) -- zero
+  instrumentation overhead, statistical function-level attribution, can see
+  into SDK calls
+- **RDTSC-based counters** -- hardware timestamp counter, ~1 ns resolution,
+  ~5 ns overhead per read (vs ~30 ns for chrono)
+- **Differential benchmarking** -- time entire runs with specific code sections
+  `#ifdef`-ed out, measure the difference. No per-call overhead.
+
+For the purposes of this optimization pass, the chrono-based profiling was
+sufficient to identify the dominant bottleneck (FrameV2 at 60-90%) and validate
+the fix (1.5-2.5x speedup). Further micro-optimization below the SDK call
+level would require the more precise tools listed above.
+
 ## What We Learned
 
 ### About the code

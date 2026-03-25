@@ -296,6 +296,57 @@ int main( int argc, char** argv )
     }
 
     // -----------------------------------------------------------------------
+    // Profiled runs with optimized settings (Minimal + SlotMarkers)
+    // -----------------------------------------------------------------------
+
+    std::cout << "Optimized Mode (Minimal + Slot Markers)" << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << std::endl;
+
+    {
+        Config c = DefaultConfig( "Stereo 16-bit [Minimal+Slot]", num_frames );
+        c.framev2_detail = FV2_MINIMAL;
+        c.marker_density = MARKERS_SLOT_ONLY;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    {
+        Config c = DefaultConfig( "8-channel 16-bit [Minimal+Slot]", num_frames );
+        c.slots_per_frame = 8;
+        c.sample_rate = U64( 48000 ) * 8 * 16 * 4;
+        c.framev2_detail = FV2_MINIMAL;
+        c.marker_density = MARKERS_SLOT_ONLY;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    {
+        Config c = DefaultConfig( "8-channel 32-bit [Minimal+Slot]", num_frames );
+        c.slots_per_frame = 8;
+        c.bits_per_slot = 32;
+        c.data_bits_per_slot = 32;
+        c.sample_rate = U64( 48000 ) * 8 * 32 * 4;
+        c.framev2_detail = FV2_MINIMAL;
+        c.marker_density = MARKERS_SLOT_ONLY;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    {
+        Config c = DefaultConfig( "Stereo 16-bit [Off+None]", num_frames );
+        c.framev2_detail = FV2_OFF;
+        c.marker_density = MARKERS_NONE;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    {
+        Config c = DefaultConfig( "8-channel 16-bit [Off+None]", num_frames );
+        c.slots_per_frame = 8;
+        c.sample_rate = U64( 48000 ) * 8 * 16 * 4;
+        c.framev2_detail = FV2_OFF;
+        c.marker_density = MARKERS_NONE;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // -----------------------------------------------------------------------
     // Performance mode comparison
     // -----------------------------------------------------------------------
 
