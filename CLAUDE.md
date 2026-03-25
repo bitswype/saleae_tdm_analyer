@@ -115,6 +115,24 @@ The `analyze` command uses sox to:
 5. Reconnection resilience: disconnect mid-stream, reconnect, verify clean handshake + data
 6. Buffer pressure: 32-frame ring buffer, verify data integrity (frame alignment, amplitude, sign balance) despite heavy overflow
 
+### C++ benchmark (decode performance)
+
+```bash
+# Build (Linux/macOS)
+cmake -B build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-test --target tdm_benchmark
+
+# Build (Windows — from Developer Command Prompt)
+cmake -B build-test -DBUILD_TESTS=ON -A x64
+cmake --build build-test --config Release --target tdm_benchmark
+
+# Run (48000 frames = 1 second at 48 kHz)
+./build-test/tests/tdm_benchmark 48000        # Linux/macOS
+build-test\bin\Release\tdm_benchmark.exe 48000 # Windows
+```
+
+Runs 16 configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
+
 ### Sender batching optimization
 
 The HLA's `_sender_loop` batches up to 1024 frames per `sendall()` call. Without batching, stereo streams generate 44100+ individual 4-byte TCP sends per second, starving the decode thread of GIL time.
