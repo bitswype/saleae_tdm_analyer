@@ -183,6 +183,29 @@ For the primary use case (realtime audio streaming), **Minimal + Slot Markers**
 gives a **3.2-3.3x speedup** over the pre-optimization baseline while retaining
 full HLA support and slot-level waveform annotation.
 
+### End-to-end pipeline (LLA + HLA)
+
+The audio streaming pipeline is serial: LLA decodes TDM -> emits FrameV2 ->
+HLA processes FrameV2 -> packs PCM -> TCP. The end-to-end throughput is limited
+by whichever layer is slower. The HLA requires at least Minimal FrameV2 output
+from the LLA (it reads slot, data, frame_number, short_slot, bitclock_error).
+
+| Config | LLA (Minimal+Slot) | HLA (Cython) | End-to-end (slower of two) |
+|--------|-------------------:|-------------:|---------------------------:|
+| Stereo 16-bit | 3.2x RT | 17.5x RT | **3.2x RT** (LLA-bound) |
+| 8-ch 16-bit | 0.7x RT | 4.0x RT | **0.7x RT** (LLA-bound) |
+| 16-ch 16-bit | - | 1.6x RT | **LLA-bound** |
+
+**The LLA is now the bottleneck in every configuration.** The HLA optimizations
+(batch packing + Cython) successfully moved the bottleneck from the HLA to
+the LLA. Stereo is comfortably realtime at 3.2x. 8-channel at 0.7x is below
+realtime -- further LLA optimization (or reducing FrameV2 field count further)
+would be needed for 8+ channel realtime streaming.
+
+Note: these LLA numbers include the test mock's FrameV2 capture overhead. In
+the real Logic 2 SDK, FrameV2 performance characteristics will differ. The
+actual end-to-end realtime capability should be validated against Logic 2.
+
 See [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) for the full mode comparison.
 
 ## Phase 6: Post-Optimization Profile (Where Does Time Go Now?)
