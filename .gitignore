@@ -8,3 +8,4 @@ build-test/
 __pycache__/
 *.egg-info/
 _version.py
+tmp/

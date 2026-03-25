@@ -399,5 +399,100 @@ int main( int argc, char** argv )
         PrintResult( c, RunBenchmark( c ) );
     }
 
+    // --- High channel count: 16-channel 16-bit ---
+    {
+        Config c = DefaultConfig( "16-channel 16-bit", num_frames );
+        c.slots_per_frame = 16;
+        c.sample_rate = U64( 48000 ) * 16 * 16 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- High channel count: 32-channel 16-bit ---
+    {
+        Config c = DefaultConfig( "32-channel 16-bit", num_frames );
+        c.slots_per_frame = 32;
+        c.sample_rate = U64( 48000 ) * 32 * 16 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- High channel count: 64-channel 16-bit ---
+    {
+        Config c = DefaultConfig( "64-channel 16-bit", num_frames );
+        c.slots_per_frame = 64;
+        c.sample_rate = U64( 48000 ) * 64 * 16 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- High resolution: Stereo 64-bit ---
+    {
+        Config c = DefaultConfig( "Stereo 64-bit", num_frames );
+        c.bits_per_slot = 64;
+        c.data_bits_per_slot = 64;
+        c.sample_rate = U64( 48000 ) * 2 * 64 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- High resolution: 8-channel 32-bit ---
+    {
+        Config c = DefaultConfig( "8-channel 32-bit", num_frames );
+        c.slots_per_frame = 8;
+        c.bits_per_slot = 32;
+        c.data_bits_per_slot = 32;
+        c.sample_rate = U64( 48000 ) * 8 * 32 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- High resolution: 8-channel 24/32-bit ---
+    {
+        Config c = DefaultConfig( "8-channel 24/32-bit", num_frames );
+        c.slots_per_frame = 8;
+        c.bits_per_slot = 32;
+        c.data_bits_per_slot = 24;
+        c.sample_rate = U64( 48000 ) * 8 * 32 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- High sample rate: 192 kHz Stereo 24/32-bit ---
+    {
+        Config c = DefaultConfig( "192 kHz Stereo 24/32-bit", num_frames );
+        c.frame_rate = 192000;
+        c.bits_per_slot = 32;
+        c.data_bits_per_slot = 24;
+        c.sample_rate = U64( 192000 ) * 2 * 32 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- High sample rate: 384 kHz Stereo 32-bit ---
+    {
+        Config c = DefaultConfig( "384 kHz Stereo 32-bit", num_frames );
+        c.frame_rate = 384000;
+        c.bits_per_slot = 32;
+        c.data_bits_per_slot = 32;
+        c.sample_rate = U64( 384000 ) * 2 * 32 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- Combined stress: 16-channel 32-bit 96 kHz ---
+    {
+        Config c = DefaultConfig( "96 kHz 16-channel 32-bit", num_frames );
+        c.frame_rate = 96000;
+        c.slots_per_frame = 16;
+        c.bits_per_slot = 32;
+        c.data_bits_per_slot = 32;
+        c.sample_rate = U64( 96000 ) * 16 * 32 * 4;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
+    // --- Combined stress: 32-channel 32-bit 48 kHz +advanced ---
+    {
+        Config c = DefaultConfig( "32-channel 32-bit +advanced", num_frames );
+        c.slots_per_frame = 32;
+        c.bits_per_slot = 32;
+        c.data_bits_per_slot = 32;
+        c.sample_rate = U64( 48000 ) * 32 * 32 * 4;
+        c.advanced_analysis = true;
+        PrintResult( c, RunBenchmark( c ) );
+    }
+
     return 0;
 }
