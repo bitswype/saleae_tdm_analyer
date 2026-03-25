@@ -31,11 +31,17 @@ except ImportError:
 
 from _tdm_utils import parse_slot_spec, _as_signed, PerfCounters
 
+_USE_FAST = None  # 'cython', 'cffi', or None
+
 try:
     from _decode_fast import FastDecoder
-    _USE_CYTHON = True
+    _USE_FAST = 'cython'
 except ImportError:
-    _USE_CYTHON = False
+    try:
+        from _decode_cffi_wrapper import CffiDecoder as FastDecoder
+        _USE_FAST = 'cffi'
+    except ImportError:
+        FastDecoder = None
 
 PROTOCOL_VERSION = 1
 
@@ -110,10 +116,10 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._sample_rate = None
             self._frame_count = 0
 
-            # Cython fast path (if compiled extension available)
+            # Fast path: Cython or cffi (if compiled extension available)
             self._fast = None
             self._fast_sr_set = False
-            if _USE_CYTHON:
+            if _USE_FAST:
                 try:
                     self._fast = FastDecoder(
                         self._slot_list, self._bit_depth,
@@ -332,7 +338,7 @@ class TdmAudioStream(HighLevelAnalyzer):
 
     def _flush_batch(self):
         """Flush the accumulated batch to the ring buffer."""
-        # Also flush Cython fast decoder batch if active
+        # Also flush fast decoder batch if active (Cython or cffi)
         if self._fast is not None and self._fast.batch_count > 0:
             self._flush_fast_batch()
         if self._batch_count == 0:
@@ -376,7 +382,7 @@ class TdmAudioStream(HighLevelAnalyzer):
             return AnalyzerFrame('error', frame.start_time, frame.end_time,
                                  {'message': err_msg})
 
-        # Fast path: Cython
+        # Fast path: Cython or cffi
         if self._fast is not None:
             # Sample rate derivation stays in Python (only first few frames)
             if self._sample_rate is None:
@@ -438,7 +444,7 @@ class TdmAudioStream(HighLevelAnalyzer):
         return None
 
     def _flush_fast_batch(self):
-        """Flush the Cython fast decoder's batch buffer to the ring buffer."""
+        """Flush the fast decoder's batch buffer to the ring buffer."""
         if not self._handshake_sent:
             with self._client_lock:
                 if (self._current_client is not None
