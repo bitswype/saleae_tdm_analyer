@@ -1,6 +1,7 @@
 build/
 build-release/
 build-debug/
+build-test/
 **.vscode
 **.code-workspace
 **.vscode-ctags

@@ -23,3 +23,8 @@ src/TdmSimulationDataGenerator.h
 )
 
 add_analyzer_plugin(tdm_analyzer SOURCES ${SOURCES})
+
+option(BUILD_TESTS "Build test harness and benchmarks" OFF)
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
