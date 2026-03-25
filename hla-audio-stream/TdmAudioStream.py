@@ -31,17 +31,21 @@ except ImportError:
 
 from _tdm_utils import parse_slot_spec, _as_signed, PerfCounters
 
-_USE_FAST = None  # 'cython', 'cffi', or None
+_USE_FAST = None  # 'cython', 'rawc', 'cffi', or None
 
 try:
     from _decode_fast import FastDecoder
     _USE_FAST = 'cython'
 except ImportError:
     try:
-        from _decode_cffi_wrapper import CffiDecoder as FastDecoder
-        _USE_FAST = 'cffi'
+        from _decode_rawc import RawCDecoder as FastDecoder
+        _USE_FAST = 'rawc'
     except ImportError:
-        FastDecoder = None
+        try:
+            from _decode_cffi_wrapper import CffiDecoder as FastDecoder
+            _USE_FAST = 'cffi'
+        except ImportError:
+            FastDecoder = None
 
 PROTOCOL_VERSION = 1
 
