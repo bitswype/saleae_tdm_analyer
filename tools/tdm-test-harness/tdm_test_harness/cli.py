@@ -1451,6 +1451,75 @@ def quality_sweep(ctx, json_output):
 
 
 @cli.command()
+@click.option('--channels', default=2, help='Number of channels')
+@click.option('--sample-rate', default=48000, help='Sample rate in Hz')
+@click.option('--duration', default=1.0, help='Duration in seconds')
+@click.option('--bit-depth', default='16', type=click.Choice(['16', '32']), help='Bit depth')
+@click.option('--port', default=14099, help='TCP port (not connected to)')
+@click.option('--buffer-size', default=128, help='Ring buffer size')
+@click.help_option('-h', '--help')
+def profile(channels, sample_rate, duration, bit_depth, port, buffer_size):
+    """Profile the audio stream HLA decode performance."""
+    import os
+    import math
+    os.environ['TDM_HLA_PROFILE'] = '1'
+
+    # The _PROFILE flag in _tdm_utils is evaluated at import time.
+    # Since cli.py already imported HlaDriver (and thus _tdm_utils) at
+    # module level, we must patch the flag in the already-loaded module.
+    import _tdm_utils
+    _tdm_utils._PROFILE = True
+
+    bit_depth = int(bit_depth)
+    n_frames = int(sample_rate * duration)
+    slot_list = list(range(channels))
+    slot_spec = ','.join(str(s) for s in slot_list)
+
+    click.echo(f"HLA Audio Stream Profile")
+    click.echo(f"========================")
+    click.echo(f"Channels: {channels}, Sample rate: {sample_rate} Hz, "
+               f"Duration: {duration}s, Bit depth: {bit_depth}")
+    click.echo(f"Frames: {n_frames}, Buffer: {buffer_size}")
+    click.echo()
+
+    # Generate sine wave test signal
+    max_val = (1 << (bit_depth - 1)) - 1
+    signal_data = []
+    for i in range(n_frames):
+        frame_samples = []
+        for ch in range(channels):
+            freq = 440 * (ch + 1)
+            val = int(max_val * math.sin(2 * math.pi * freq * i / sample_rate))
+            frame_samples.append(val)
+        signal_data.append(frame_samples)
+
+    frames = list(emit_frames(signal_data, sample_rate, slot_list))
+    click.echo(f"Generated {len(frames)} slot frames")
+
+    driver = HlaDriver(slot_spec, port=port, buffer_size=buffer_size, bit_depth=bit_depth)
+
+    start = time.perf_counter()
+    driver.feed(frames)
+    elapsed = time.perf_counter() - start
+
+    fps = n_frames / elapsed if elapsed > 0 else 0
+    rt_factor = fps / sample_rate if sample_rate > 0 else 0
+
+    click.echo(f"Feed time: {elapsed*1000:.1f} ms")
+    click.echo(f"Throughput: {fps:.0f} frames/sec ({rt_factor:.1f}x realtime)")
+    click.echo()
+
+    summary = driver._hla.profile_summary()
+    if summary:
+        click.echo("Profile breakdown:")
+        click.echo(summary)
+    else:
+        click.echo("No profile data (set TDM_HLA_PROFILE=1)")
+
+    driver.shutdown()
+
+
+@cli.command()
 def signals():
     """List available test signal types."""
     click.echo("Available test signals:\n")

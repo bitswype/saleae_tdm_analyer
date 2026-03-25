@@ -54,6 +54,54 @@ def _as_signed(value: int, bit_depth: int) -> int:
     return value
 
 
+import os
+import time
+
+_PROFILE = os.environ.get('TDM_HLA_PROFILE', '') == '1'
+
+class PerfCounters:
+    """Accumulates call counts and nanosecond totals per named section.
+
+    Zero overhead when TDM_HLA_PROFILE env var is not set to '1'.
+    Usage:
+        _perf = PerfCounters()
+        t = _perf.begin('section')
+        ... work ...
+        _perf.end('section', t)
+    """
+    def __init__(self):
+        self._data = {}
+
+    def begin(self, name):
+        if not _PROFILE:
+            return 0
+        return time.perf_counter_ns()
+
+    def end(self, name, start):
+        if not _PROFILE:
+            return
+        elapsed = time.perf_counter_ns() - start
+        entry = self._data.get(name)
+        if entry is None:
+            self._data[name] = [1, elapsed]
+        else:
+            entry[0] += 1
+            entry[1] += elapsed
+
+    def summary(self):
+        if not self._data:
+            return ''
+        lines = [f"  {'Section':<30} {'Calls':>10} {'Total(ms)':>12} {'Per-call(us)':>14}"]
+        for name, (count, total_ns) in self._data.items():
+            if count == 0:
+                continue
+            lines.append(f"  {name:<30} {count:>10} {total_ns/1e6:>12.1f} {total_ns/count/1e3:>14.3f}")
+        return '\n'.join(lines)
+
+    def reset(self):
+        self._data.clear()
+
+
 if __name__ == '__main__':
     # Self-test: parse_slot_spec behavior
     assert parse_slot_spec("0,2,4") == [0, 2, 4], "basic comma-separated"

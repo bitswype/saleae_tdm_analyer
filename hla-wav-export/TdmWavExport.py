@@ -1,6 +1,54 @@
 import wave
 import struct
 import os
+import time
+
+_PROFILE = os.environ.get('TDM_HLA_PROFILE', '') == '1'
+
+
+class PerfCounters:
+    """Accumulates call counts and nanosecond totals per named section.
+
+    Zero overhead when TDM_HLA_PROFILE env var is not set to '1'.
+    Usage:
+        _perf = PerfCounters()
+        t = _perf.begin('section')
+        ... work ...
+        _perf.end('section', t)
+    """
+    def __init__(self):
+        self._data = {}
+
+    def begin(self, name):
+        if not _PROFILE:
+            return 0
+        return time.perf_counter_ns()
+
+    def end(self, name, start):
+        if not _PROFILE:
+            return
+        elapsed = time.perf_counter_ns() - start
+        entry = self._data.get(name)
+        if entry is None:
+            self._data[name] = [1, elapsed]
+        else:
+            entry[0] += 1
+            entry[1] += elapsed
+
+    def summary(self):
+        if not self._data:
+            return ''
+        lines = [f"  {'Section':<30} {'Calls':>10} {'Total(ms)':>12} {'Per-call(us)':>14}"]
+        for name, (count, total_ns) in self._data.items():
+            if count == 0:
+                continue
+            lines.append(f"  {name:<30} {count:>10} {total_ns/1e6:>12.1f} {total_ns/count/1e3:>14.3f}")
+        return '\n'.join(lines)
+
+    def reset(self):
+        self._data.clear()
+
+
 try:
     from saleae.analyzers import HighLevelAnalyzer, AnalyzerFrame, StringSetting, ChoicesSetting
 except ImportError:
@@ -109,6 +157,8 @@ class TdmWavExport(HighLevelAnalyzer):
         self._init_error = None
 
         try:
+            self._perf = PerfCounters()
+
             # Capture injected setting values as private instance attributes.
             # Logic 2 has already set self.slots, self.output_path, self.bit_depth
             # as strings by the time __init__ is called.
@@ -117,6 +167,9 @@ class TdmWavExport(HighLevelAnalyzer):
             # Convert bit depth to int; fallback to 16 handles the edge case where
             # the default attribute was not applied by an older Logic 2 build.
             self._bit_depth = int(self.bit_depth or '16')
+            self._sign_mask = (1 << self._bit_depth) - 1
+            self._sign_threshold = 1 << (self._bit_depth - 1)
+            self._sign_subtract = 1 << self._bit_depth
 
             # REQ-16: Validate output_path before proceeding. Raising here is caught
             # by the except block below and stored as a deferred error.
@@ -132,6 +185,16 @@ class TdmWavExport(HighLevelAnalyzer):
             # Parsed slot list — ordered per user specification (REQ-09)
             self._slot_list = parse_slot_spec(self._slots_raw)
             self._slot_set = set(self._slot_list)  # O(1) membership test (REQ-10)
+
+            # Pre-compute PCM format string
+            self._pcm_fmt = '<' + ('h' if self._bit_depth == 16 else 'i') * len(self._slot_list)
+
+            # Batch buffer for WAV writes
+            self._frame_byte_size = len(self._slot_list) * (4 if self._bit_depth > 16 else 2)
+            self._batch_size = max(1, 64)  # batch 64 frames before writing to WAV
+            self._batch_buf = bytearray(self._batch_size * self._frame_byte_size)
+            self._batch_count = 0
+            self._batch_offset = 0
 
             # WAV file state — lazy-opened on first frame (REQ-12)
             self._wav = None          # wave.Wave_write object, None until first frame
@@ -150,8 +213,18 @@ class TdmWavExport(HighLevelAnalyzer):
         except Exception as e:
             self._init_error = str(e)
             # Safe defaults so decode() can run without AttributeError
+            self._perf = PerfCounters()
             self._slot_list = []
             self._slot_set = set()
+            self._pcm_fmt = '<'
+            self._sign_mask = 0
+            self._sign_threshold = 0
+            self._sign_subtract = 0
+            self._frame_byte_size = 0
+            self._batch_size = 1
+            self._batch_buf = bytearray()
+            self._batch_count = 0
+            self._batch_offset = 0
             self._wav = None
             self._sample_rate = None
             self._accum = {}
@@ -198,17 +271,33 @@ class TdmWavExport(HighLevelAnalyzer):
             self._sample_rate = derived
 
     def _write_wav_frame(self) -> None:
-        """Pack the accumulated samples for the current TDM frame and write to WAV.
+        """Pack the accumulated samples into the batch buffer.
 
-        Interleaves samples in slot-list order. Missing slots (not received in
-        this TDM frame) contribute silence (zero) per REQ-11. wave.writeframes()
-        calls _patchheader() internally after every write, satisfying REQ-14.
+        When the batch is full (batch_size frames), flush it to the WAV file
+        as a single writeframes call. This reduces struct.pack allocations and
+        WAV header patches from once-per-frame to once-per-batch.
         """
-        fmt = '<' + ('h' if self._bit_depth == 16 else 'i') * len(self._slot_list)
+        t0 = self._perf.begin('wav::pack')
         samples = [self._accum.get(slot, 0) for slot in self._slot_list]
-        packed = struct.pack(fmt, *samples)
-        self._wav.writeframes(packed)
+        struct.pack_into(self._pcm_fmt, self._batch_buf, self._batch_offset, *samples)
+        self._batch_offset += self._frame_byte_size
+        self._batch_count += 1
+        self._perf.end('wav::pack', t0)
+
+        if self._batch_count >= self._batch_size:
+            self._flush_wav_batch()
+
         self._frame_count += 1
+
+    def _flush_wav_batch(self) -> None:
+        """Flush the accumulated batch to the WAV file."""
+        if self._batch_count == 0:
+            return
+        t0 = self._perf.begin('wav::write')
+        self._wav.writeframes(bytes(self._batch_buf[:self._batch_offset]))
+        self._batch_offset = 0
+        self._batch_count = 0
+        self._perf.end('wav::write', t0)
 
     def _try_flush(self, current_frame_num: int) -> None:
         """Detect TDM frame boundaries and flush the completed accumulator.
@@ -227,6 +316,10 @@ class TdmWavExport(HighLevelAnalyzer):
         if self._wav is not None:
             self._write_wav_frame()
         self._accum = {}
+
+    def profile_summary(self):
+        """Return profiling summary string. Only populated when TDM_HLA_PROFILE=1."""
+        return self._perf.summary()
 
     def decode(self, frame: AnalyzerFrame):
         """Process one FrameV2 from the upstream TdmAnalyzer LLA.
@@ -256,30 +349,51 @@ class TdmWavExport(HighLevelAnalyzer):
         if frame.type != 'slot':
             return None
 
-        slot = frame.data['slot']
-        frame_num = frame.data['frame_number']
+        t0 = self._perf.begin('decode')
+
+        d = frame.data
+        slot = d['slot']
+        frame_num = d['frame_number']
 
         # Skip slots not in the user-specified filter set (REQ-10)
         if slot not in self._slot_set:
+            self._perf.end('decode', t0)
             return None
 
         # Derive sample rate from frame timing (REQ-13)
-        self._try_derive_sample_rate(frame)
+        if self._sample_rate is None:
+            self._try_derive_sample_rate(frame)
 
         # Detect TDM frame boundary and flush completed frame (REQ-15).
         # Flush BEFORE accumulating so the flush reads the previous frame's
         # clean accumulator, not the current slot's newly-arrived data.
+        t1 = self._perf.begin('decode::flush')
         self._try_flush(frame_num)
+        self._perf.end('decode::flush', t1)
 
         # Accumulate sample AFTER flush — error frames contribute silence by
         # not writing to accum; self._accum.get(slot, 0) returns 0 for them.
-        if not (frame.data.get('short_slot') or frame.data.get('bitclock_error')):
-            self._accum[slot] = _as_signed(frame.data.get('data', 0), self._bit_depth)
+        if not (d.get('short_slot') or d.get('bitclock_error')):
+            v = d.get('data', 0) & self._sign_mask
+            if v >= self._sign_threshold:
+                v -= self._sign_subtract
+            self._accum[slot] = v
 
         # Update frame tracker
         self._last_frame_num = frame_num
 
+        self._perf.end('decode', t0)
         return None
+
+    def shutdown(self):
+        """Flush remaining batch and close the WAV file."""
+        self._flush_wav_batch()
+        if self._wav is not None:
+            try:
+                self._wav.close()
+            except Exception:
+                pass
+            self._wav = None
 
 
 if __name__ == '__main__':
@@ -354,6 +468,9 @@ if __name__ == '__main__':
         ]
         for f in frames_in:
             hla.decode(f)
+
+        # Flush remaining batch and close WAV before reading back
+        hla.shutdown()
 
         # Read back the WAV and verify sample values
         with _wave.open(_tmp_path, 'rb') as wf:

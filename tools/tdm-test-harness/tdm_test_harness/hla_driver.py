@@ -49,11 +49,15 @@ class HlaDriver:
     def feed(self, frames):
         """Feed a sequence of frames to the HLA's decode method.
 
+        Flushes any partial batch buffer after all frames have been fed
+        so that data reaches the ring buffer (and TCP clients) promptly.
+
         Args:
             frames: Iterable of AnalyzerFrame-like objects (e.g. FakeFrame).
         """
         for frame in frames:
             self._hla.decode(frame)
+        self._hla._flush_batch()
 
     def feed_one(self, frame):
         """Feed a single frame to the HLA's decode method."""

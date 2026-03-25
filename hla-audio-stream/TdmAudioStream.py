@@ -29,7 +29,7 @@ except ImportError:
             pass
         default = '16'
 
-from _tdm_utils import parse_slot_spec, _as_signed
+from _tdm_utils import parse_slot_spec, _as_signed, PerfCounters
 
 PROTOCOL_VERSION = 1
 
@@ -68,8 +68,13 @@ class TdmAudioStream(HighLevelAnalyzer):
         self._init_error = None
 
         try:
+            self._perf = PerfCounters()
+
             self._slots_raw = self.slots
             self._bit_depth = int(self.bit_depth or '16')
+            self._sign_mask = (1 << self._bit_depth) - 1
+            self._sign_threshold = 1 << (self._bit_depth - 1)
+            self._sign_subtract = 1 << self._bit_depth
             self._port = int(self.tcp_port or '4011')
             self._buf_size = int(self.buffer_size or '128')
 
@@ -85,6 +90,12 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._slot_list = parse_slot_spec(self._slots_raw)
             self._slot_set = set(self._slot_list)
             self._pcm_fmt = '<' + ('h' if self._bit_depth == 16 else 'i') * len(self._slot_list)
+
+            self._frame_byte_size = len(self._slot_list) * (4 if self._bit_depth > 16 else 2)
+            self._batch_size = max(1, self._buf_size // 2)
+            self._batch_buf = bytearray(self._batch_size * self._frame_byte_size)
+            self._batch_count = 0
+            self._batch_offset = 0
 
             # Sample accumulator (same pattern as TdmWavExport)
             self._accum = {}
@@ -134,9 +145,18 @@ class TdmAudioStream(HighLevelAnalyzer):
         except Exception as e:
             self._init_error = str(e)
             # Safe defaults so decode() can run without AttributeError
+            self._perf = PerfCounters()
             self._slot_list = []
             self._slot_set = set()
             self._pcm_fmt = '<'
+            self._sign_mask = 0
+            self._sign_threshold = 0
+            self._sign_subtract = 0
+            self._frame_byte_size = 0
+            self._batch_size = 1
+            self._batch_buf = bytearray()
+            self._batch_count = 0
+            self._batch_offset = 0
             self._accum = {}
             self._last_frame_num = None
             self._timing_ref = {}
@@ -236,7 +256,9 @@ class TdmAudioStream(HighLevelAnalyzer):
                         continue
 
                 try:
+                    t0 = self._perf.begin('sender::send')
                     client.sendall(b''.join(batch))
+                    self._perf.end('sender::send', t0)
                 except (OSError, BrokenPipeError):
                     with self._client_lock:
                         self._current_client = None
@@ -264,9 +286,12 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._sample_rate = derived
 
     def _enqueue_frame(self):
-        """Pack accumulated samples into PCM bytes and add to ring buffer."""
-        # Send deferred handshake if client connected after rate was derived.
-        # Fast-path: skip lock when handshake already sent (steady state).
+        """Pack accumulated samples into the batch buffer.
+
+        When the batch is full (batch_size frames), flush it to the ring
+        buffer as a single chunk. This reduces lock acquisitions and
+        struct.pack allocations from 48000/sec to ~750/sec for stereo 48kHz.
+        """
         if not self._handshake_sent:
             with self._client_lock:
                 if (self._current_client is not None
@@ -274,15 +299,32 @@ class TdmAudioStream(HighLevelAnalyzer):
                         and self._sample_rate is not None):
                     self._send_handshake(self._current_client)
 
-        # Pack interleaved PCM — missing slots contribute silence (zero)
+        t0 = self._perf.begin('enqueue::pack')
         samples = [self._accum.get(slot, 0) for slot in self._slot_list]
-        packed = struct.pack(self._pcm_fmt, *samples)
+        struct.pack_into(self._pcm_fmt, self._batch_buf, self._batch_offset, *samples)
+        self._batch_offset += self._frame_byte_size
+        self._batch_count += 1
+        self._perf.end('enqueue::pack', t0)
 
-        with self._ring_lock:
-            self._ring.append(packed)
-        self._wake_event.set()
+        if self._batch_count >= self._batch_size:
+            self._flush_batch()
 
         self._frame_count += 1
+
+    def _flush_batch(self):
+        """Flush the accumulated batch to the ring buffer."""
+        if self._batch_count == 0:
+            return
+        t0 = self._perf.begin('enqueue::ring')
+        chunk = bytes(self._batch_buf[:self._batch_offset])
+        # CPython deque.append is atomic under the GIL; explicit lock kept
+        # for safety but acquired once per batch, not per frame.
+        with self._ring_lock:
+            self._ring.append(chunk)
+        self._wake_event.set()
+        self._batch_offset = 0
+        self._batch_count = 0
+        self._perf.end('enqueue::ring', t0)
 
     def _try_flush(self, current_frame_num):
         """Detect TDM frame boundary and enqueue the completed accumulator.
@@ -318,23 +360,40 @@ class TdmAudioStream(HighLevelAnalyzer):
         if frame.type != 'slot':
             return None
 
-        slot = frame.data['slot']
-        frame_num = frame.data['frame_number']
+        t0 = self._perf.begin('decode')
+
+        d = frame.data
+        slot = d['slot']
+        frame_num = d['frame_number']
 
         if slot not in self._slot_set:
+            self._perf.end('decode', t0)
             return None
 
-        self._try_derive_sample_rate(frame)
-        self._try_flush(frame_num)
+        if self._sample_rate is None:
+            self._try_derive_sample_rate(frame)
 
-        if not (frame.data.get('short_slot') or frame.data.get('bitclock_error')):
-            self._accum[slot] = _as_signed(frame.data.get('data', 0), self._bit_depth)
+        t1 = self._perf.begin('decode::flush')
+        self._try_flush(frame_num)
+        self._perf.end('decode::flush', t1)
+
+        if not (d.get('short_slot') or d.get('bitclock_error')):
+            v = d.get('data', 0) & self._sign_mask
+            if v >= self._sign_threshold:
+                v -= self._sign_subtract
+            self._accum[slot] = v
 
         self._last_frame_num = frame_num
+        self._perf.end('decode', t0)
         return None
+
+    def profile_summary(self):
+        """Return profiling summary string. Only populated when TDM_HLA_PROFILE=1."""
+        return self._perf.summary()
 
     def shutdown(self):
         """Cleanly stop TCP server and background threads."""
+        self._flush_batch()
         self._shutdown.set()
         # Send stopping message to connected client
         with self._client_lock:
@@ -426,6 +485,9 @@ if __name__ == '__main__':
     fn = len(test_data) + 2
     t = fn / sample_rate
     hla.decode(_FakeFrame(slot=0, frame_number=fn, data_val=999, start_time=t))
+
+    # Flush any remaining batch buffer so data reaches the ring buffer
+    hla._flush_batch()
 
     # Give sender thread time to transmit
     time.sleep(0.2)
