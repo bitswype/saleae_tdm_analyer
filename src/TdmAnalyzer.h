@@ -4,6 +4,9 @@
 #include <Analyzer.h>
 #include "TdmAnalyzerResults.h"
 #include "TdmSimulationDataGenerator.h"
+#ifdef TDM_BENCHMARK_TIMING
+#include <chrono>
+#endif
 
 class TdmAnalyzerSettings;
 class TdmAnalyzer : public Analyzer2
@@ -58,10 +61,17 @@ class TdmAnalyzer : public Analyzer2
     std::vector<U8> mDataFlags;
 
     Frame mResultsFrame;
-    FrameV2 mFrameV2;  // Reused across slots to avoid per-call heap alloc/free
     U64 mSampleRate;
     double mDesiredBitClockPeriod;
     bool mLowSampleRate;
+
+#ifdef TDM_BENCHMARK_TIMING
+    // Self-timing: written to %USERPROFILE%\tdm_benchmark_timing.json on destruction.
+    // Enable via: cmake -DENABLE_BENCHMARK_TIMING=ON
+    std::chrono::steady_clock::time_point mDecodeStart;
+    std::chrono::steady_clock::time_point mDecodeLastFrame;
+    bool mDecodeStarted = false;
+#endif
 
     // Cold members — simulation support
     bool mSimulationInitilized;

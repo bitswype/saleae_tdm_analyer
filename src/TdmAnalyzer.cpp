@@ -4,6 +4,14 @@
 #include <AnalyzerChannelData.h>
 #include <stdio.h>
 
+#ifdef TDM_BENCHMARK_TIMING
+#include <chrono>
+#include <cstdlib>
+static void WriteBenchmarkTiming( double decode_seconds, U64 frame_count,
+                                   U32 slots, U32 bits, U32 data_bits,
+                                   int fv2_detail, int marker_density );
+#endif
+
 TdmAnalyzer::TdmAnalyzer()
   : Analyzer2(),
     mSettings( new TdmAnalyzerSettings() ),
@@ -20,6 +28,21 @@ TdmAnalyzer::TdmAnalyzer()
 TdmAnalyzer::~TdmAnalyzer()
 {
     KillThread();
+
+#ifdef TDM_BENCHMARK_TIMING
+    // Write decode timing to temp file for external benchmarking.
+    // Uses mDecodeLastFrame (stamped after each TDM frame) as the end time,
+    // not "now", since the destructor runs when the user closes the tab.
+    if( mDecodeStarted )
+    {
+        double seconds = std::chrono::duration<double>( mDecodeLastFrame - mDecodeStart ).count();
+        WriteBenchmarkTiming( seconds, mFrameNum,
+                              mSettings->mSlotsPerFrame, mSettings->mBitsPerSlot,
+                              mSettings->mDataBitsPerSlot,
+                              int( mSettings->mFrameV2Detail ),
+                              int( mSettings->mMarkerDensity ) );
+    }
+#endif
 }
 
 void TdmAnalyzer::SetupResults()
@@ -99,12 +122,70 @@ void TdmAnalyzer::WorkerThread()
     SetupForGettingFirstTdmFrame();
     mFrameNum = 0;
 
+#ifdef TDM_BENCHMARK_TIMING
+    mDecodeStart = std::chrono::steady_clock::now();
+    mDecodeStarted = true;
+#endif
+
     for( ;; )
     {
         GetTdmFrame();
+#ifdef TDM_BENCHMARK_TIMING
+        mDecodeLastFrame = std::chrono::steady_clock::now();
+#endif
         CheckIfThreadShouldExit();
     }
+
+    // Note: this code is reached if CheckIfThreadShouldExit returns normally.
+    // In practice, the SDK terminates the thread via exception or signal,
+    // so the timing write is in the destructor instead.
 }
+
+#ifdef TDM_BENCHMARK_TIMING
+// Write benchmark timing to %USERPROFILE%\tdm_benchmark_timing.json.
+// Called from destructor so it runs regardless of how WorkerThread exits.
+// Enable via: cmake -DENABLE_BENCHMARK_TIMING=ON
+static void WriteBenchmarkTiming( double decode_seconds, U64 frame_count,
+                                   U32 slots, U32 bits, U32 data_bits,
+                                   int fv2_detail, int marker_density )
+{
+    const char* home = std::getenv( "USERPROFILE" );
+    if( !home ) home = std::getenv( "TEMP" );
+    if( !home ) home = "C:\\Users\\Public";
+
+    char path[ 512 ];
+    snprintf( path, sizeof( path ), "%s\\tdm_benchmark_timing.json", home );
+
+    FILE* f = fopen( path, "w" );
+    if( !f ) return;
+
+    double fps = ( decode_seconds > 0.0 ) ? ( frame_count / decode_seconds ) : 0.0;
+    double total_bits = double( frame_count ) * double( bits );
+    double mbps = ( decode_seconds > 0.0 ) ? ( total_bits / decode_seconds / 1000000.0 ) : 0.0;
+
+    const char* fv2_str = ( fv2_detail == 0 ) ? "Full" : ( fv2_detail == 1 ) ? "Minimal" : "Off";
+    const char* mkr_str = ( marker_density == 0 ) ? "All" : ( marker_density == 1 ) ? "Slot" : "None";
+
+    fprintf( f,
+        "{\n"
+        "  \"decode_seconds\": %.4f,\n"
+        "  \"frames\": %llu,\n"
+        "  \"frames_per_sec\": %.0f,\n"
+        "  \"megabits_per_sec\": %.2f,\n"
+        "  \"slots_per_frame\": %u,\n"
+        "  \"bits_per_slot\": %u,\n"
+        "  \"data_bits_per_slot\": %u,\n"
+        "  \"framev2_detail\": \"%s\",\n"
+        "  \"marker_density\": \"%s\"\n"
+        "}\n",
+        decode_seconds,
+        (unsigned long long)frame_count,
+        fps, mbps,
+        slots, bits, data_bits,
+        fv2_str, mkr_str );
+    fclose( f );
+}
+#endif // TDM_BENCHMARK_TIMING
 
 void TdmAnalyzer::SetupForGettingFirstBit()
 {
@@ -381,22 +462,23 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     if( mSettings->mFrameV2Detail != FV2_OFF )
     {
         TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::FrameV2" );
-        // Reuse mFrameV2 member to avoid per-call heap alloc/free.
-        // After the first call, Add* overwrites existing map entries
-        // without allocating new nodes.
-        mFrameV2.AddInteger( "slot", mResultsFrame.mType );
+        // Must use a fresh FrameV2 each frame: the SDK's Add* methods append
+        // (not overwrite), and FrameV2 has no Clear/Reset method. Reusing a
+        // member caused O(N^2) memory growth and OOM crashes.
+        FrameV2 frame_v2;
+        frame_v2.AddInteger( "slot", mResultsFrame.mType );
         S64 adjusted_value = result;
         if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
         {
             adjusted_value = AnalyzerHelpers::ConvertToSignedNumber( mResultsFrame.mData1, mSettings->mDataBitsPerSlot );
         }
-        mFrameV2.AddInteger( "data", adjusted_value );
-        mFrameV2.AddInteger( "frame_number", mFrameNum );
+        frame_v2.AddInteger( "data", adjusted_value );
+        frame_v2.AddInteger( "frame_number", mFrameNum );
 
         bool is_short_slot = (mResultsFrame.mFlags & SHORT_SLOT) != 0;
         bool is_bitclock_error = (mResultsFrame.mFlags & BITCLOCK_ERROR) != 0;
-        mFrameV2.AddBoolean( "short_slot", is_short_slot );
-        mFrameV2.AddBoolean( "bitclock_error", is_bitclock_error );
+        frame_v2.AddBoolean( "short_slot", is_short_slot );
+        frame_v2.AddBoolean( "bitclock_error", is_bitclock_error );
 
         if( mSettings->mFrameV2Detail == FV2_FULL )
         {
@@ -412,14 +494,14 @@ void TdmAnalyzer::AnalyzeTdmSlot()
             else
                 severity = "ok";
 
-            mFrameV2.AddString( "severity", severity );
-            mFrameV2.AddBoolean( "extra_slot", is_extra_slot );
-            mFrameV2.AddBoolean( "missed_data", is_missed_data );
-            mFrameV2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
-            mFrameV2.AddBoolean( "low_sample_rate", mLowSampleRate );
+            frame_v2.AddString( "severity", severity );
+            frame_v2.AddBoolean( "extra_slot", is_extra_slot );
+            frame_v2.AddBoolean( "missed_data", is_missed_data );
+            frame_v2.AddBoolean( "missed_frame_sync", is_missed_frame_sync );
+            frame_v2.AddBoolean( "low_sample_rate", mLowSampleRate );
         }
 
-        mResults->AddFrameV2( mFrameV2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
+        mResults->AddFrameV2( frame_v2, "slot", mResultsFrame.mStartingSampleInclusive, mResultsFrame.mEndingSampleInclusive );
     }
 
     mDataBits.clear();

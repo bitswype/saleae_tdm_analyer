@@ -22,6 +22,13 @@
 
 struct FrameV2Data
 {
+    // WARNING: This uses std::map which overwrites duplicate keys. The real SDK
+    // uses an append-only list (duplicates accumulate, no overwrite). This
+    // divergence is acceptable because the analyzer must use a fresh local
+    // FrameV2 per frame (the SDK provides no Clear/Reset). NEVER reuse a
+    // FrameV2 object across frames -- the real SDK will accumulate entries and
+    // cause O(N^2) memory growth. See PERFORMANCE.md Phase 5b for the full
+    // post-mortem on this bug.
     std::map<std::string, FrameV2FieldValue> fields;
 };
 

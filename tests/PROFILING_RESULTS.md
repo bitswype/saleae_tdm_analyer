@@ -139,7 +139,7 @@ The profiling instrumentation adds ~3x overhead. This is expected since `GetNext
 
 1. **Investigate FrameV2 construction cost in the real SDK.** The mock stubs may differ from the real Logic 2 FrameV2 implementation. Profile with the real SDK to confirm FrameV2 is still the bottleneck. If it is, consider:
    - Reducing the number of FrameV2 fields (currently 10 per slot)
-   - Batching FrameV2 construction (construct once, reuse across slots with field updates)
+   - ~~Batching FrameV2 construction~~ (INVALID: SDK Add* methods append, not overwrite; no Clear/Reset exists. Reuse causes O(N^2) memory growth. See PERFORMANCE.md Phase 5b.)
    - Making FrameV2 output optional via a setting
 
 2. **Reduce marker count.** Consider adding markers only on slot or frame boundaries rather than every bit. This could save 8-16% of decode time.
