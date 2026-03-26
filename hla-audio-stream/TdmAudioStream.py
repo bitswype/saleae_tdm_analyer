@@ -65,10 +65,10 @@ class TdmAudioStream(HighLevelAnalyzer):
     # Settings — declared at class level so Logic 2 discovers and renders them.
     # -------------------------------------------------------------------------
 
-    slots = StringSetting(label='Slots (e.g. 0,2,4 or 0-3)')
-    tcp_port = StringSetting(label='TCP Port (default 4011)')
-    buffer_size = StringSetting(label='Ring Buffer Size (frames, default 128)')
-    bit_depth = ChoicesSetting(['16', '32'], label='Bit Depth')
+    slots = StringSetting(label='Slots to stream (required, e.g. 0,1 or 0-3 or 0,2,4-7)')
+    tcp_port = StringSetting(label='TCP Port. Leave blank for 4011.')
+    buffer_size = StringSetting(label='Ring buffer size (frames). Leave blank for 128.')
+    bit_depth = ChoicesSetting(['16', '32'], label='Output bit depth')
     bit_depth.default = '16'
 
     # -------------------------------------------------------------------------
