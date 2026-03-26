@@ -14,6 +14,7 @@ A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and 
   - [Features](#features)
   - [Advanced Analysis Features](#advanced-analysis-features)
   - [Settings](#settings)
+  - [Performance Tuning](#performance-tuning)
   - [Exporting data as a wave file](#exporting-data-as-a-wave-file)
 - [High Level Analyzers (HLAs)](#high-level-analyzers-hlas)
   - [HLA: TDM WAV Export](#hla-tdm-wav-export)
@@ -341,6 +342,22 @@ sudo sysctl -w kernel.yama.ptrace_scope=0
 ```
 
 # Migration Guide
+
+## v2.4.0 — Performance tuning and OOM fix
+
+Two new analyzer settings control the decode speed/detail tradeoff. Existing
+captures will use the default (Full + All markers), so no action is needed
+for backward compatibility.
+
+**Critical fix:** A FrameV2 member reuse optimization introduced in a
+development build caused O(N^2) memory growth and OOM crashes in Logic 2.
+If you deployed a build from between commits `4a05f3c` and `318ca36`,
+update immediately.
+
+**For realtime audio streaming users:** Set "Data Table / HLA Output" to
+Minimal and "Waveform Markers" to Slot boundaries. Also disable "Show in
+data table" and "Stream to terminal" (right-click analyzer in sidebar).
+See [Performance Tuning](#performance-tuning) for details.
 
 ## v2.1.0 — FrameV2 schema overhaul
 
