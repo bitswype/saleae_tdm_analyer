@@ -349,11 +349,6 @@ Two new analyzer settings control the decode speed/detail tradeoff. Existing
 captures will use the default (Full + All markers), so no action is needed
 for backward compatibility.
 
-**Critical fix:** A FrameV2 member reuse optimization introduced in a
-development build caused O(N^2) memory growth and OOM crashes in Logic 2.
-If you deployed a build from between commits `4a05f3c` and `318ca36`,
-update immediately.
-
 **For realtime audio streaming users:** Set "Data Table / HLA Output" to
 Minimal and "Waveform Markers" to Slot boundaries. Also disable "Show in
 data table" and "Stream to terminal" (right-click analyzer in sidebar).
