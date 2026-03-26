@@ -183,24 +183,34 @@ For the primary use case (realtime audio streaming), **Minimal + Slot Markers**
 gives a **3.2-3.3x speedup** over the pre-optimization baseline while retaining
 full HLA support and slot-level waveform annotation.
 
-### Phase 5b: FrameV2 member reuse
+### Phase 5b: FrameV2 member reuse (REVERTED - caused OOM crash)
 
-Moving the FrameV2 from a per-call local variable to a reused class member
-eliminated the heap alloc/free per slot. After the first call, `AddInteger`
-etc. overwrite existing map entries without allocating new nodes.
+**This optimization was wrong and has been reverted.**
 
-| Metric | Before reuse | After reuse |
-|--------|------------:|------------:|
-| FrameV2 per-call (profiled, Minimal) | 1.508 us | 0.956 us |
-| FrameV2 section reduction | - | **37%** |
-| End-to-end (8-ch M+S, non-profiled) | 279 ms | 273 ms |
-| End-to-end improvement | - | **2-8%** |
+The idea was to move FrameV2 from a per-call local variable to a reused class
+member (`mFrameV2`) to eliminate per-call heap alloc/free. The assumption was
+that `AddInteger`, `AddString`, `AddBoolean` would overwrite existing entries
+with the same key.
 
-The modest end-to-end improvement (vs 37% per-section) is because the mock's
-`AddFrameV2` still copies the entire map to the results vector on every call.
-The remaining ~0.96 us is dominated by the copy, not the construction. In the
-real SDK, the benefit may be larger if its `AddFrameV2` implementation is more
-allocation-heavy.
+**That assumption was incorrect.** The SDK's `Add*` methods APPEND to an
+internal list - they do not overwrite. FrameV2 provides no `Clear()` or
+`Reset()` method. Every frame added 5-10 more entries to the same object,
+and `AddFrameV2` copies ALL accumulated entries. This caused:
+
+- **O(N^2) memory growth**: by frame N, the copy contains N * fields_per_frame
+  entries. For 160K slot frames (1 second of 8ch/16bit), total memory would
+  reach ~128 GB.
+- **OOM crash in production**: Logic 2 consumed 28 GB of RAM processing a
+  <1 second 8-channel capture before Windows killed it.
+
+The mock-based benchmark showed a "37% improvement" because the test mock's
+FrameV2 implementation used a `std::map` (which DOES overwrite by key). The
+real SDK uses an append-only list. **The mock's behavior diverged from the
+real SDK in a way that made a catastrophic bug look like an optimization.**
+
+**DO NOT attempt to reuse FrameV2 objects across frames.** Always use a fresh
+local FrameV2 per frame. There is no way to reset a FrameV2 with the current
+SDK API.
 
 ### End-to-end pipeline (LLA + HLA)
 
@@ -225,7 +235,7 @@ below realtime.
 | Section | % of decode | Per-call (us) | Optimizable? |
 |---------|------------:|--------------:|--------------|
 | GetNextBit (SDK channel ops) | 58% | 0.169 | No - inside SDK |
-| FrameV2 (5 fields, reused object) | 23% | 0.956 | No further - AddFrameV2 copy dominates |
+| FrameV2 (5 fields, local per frame) | 23% | ~1.5 | No - AddFrameV2 copy dominates |
 | AddFrame (V1) | 1% | 0.042 | Already minimal |
 | Commit | <1% | 0.031 | Already minimal |
 
@@ -413,11 +423,14 @@ level would require the more precise tools listed above.
     mixed pre-mock and post-mock numbers; we fixed it by measuring the
     pre-optimization code in a worktree with the same mock active.
 
-13. **Object reuse eliminates alloc/free but not copy.** Reusing the FrameV2
-    member variable cut per-call construction cost 37%, but the `AddFrameV2`
-    copy into results storage remained unchanged. When the dominant cost is
-    the SDK's internal operation (not your object construction), reuse has
-    diminishing returns. Measure the breakdown before and after.
+13. **Verify SDK behavior before optimizing around assumptions.** We assumed
+    FrameV2's `Add*` methods overwrote existing keys (like std::map). They
+    actually append (like a vector of pairs). Our test mock used std::map,
+    which masked the divergence and made the bug look like a 37% win. In
+    production (Logic 2 with real SDK), it caused O(N^2) memory growth and
+    an OOM crash consuming 28 GB of RAM on a <1 second capture. The fix was
+    to revert to a local FrameV2 per frame. **Never reuse FrameV2 objects -
+    the SDK provides no way to clear them.**
 
 ## Phase 7: HLA (Python) Profiling and Optimization
 
@@ -558,6 +571,153 @@ used automatically. For distribution:
 The 64-test oracle (`tests/test_hla_decode.py`) validates all four backends,
 including C-specific edge cases (negative ints, integer overflow, missing
 dict keys, ring buffer overflow, large frame numbers).
+
+## Phase 9: Real SDK Validation (Logic 2 Automation)
+
+All previous measurements used mock SDK stubs. This phase measures actual decode
+performance inside Logic 2 with the real Saleae SDK, using hardware-connected
+Logic Pro 16 simulation data.
+
+### Measurement method
+
+The automation API (`logic2-automation`) cannot detect when an analyzer finishes
+processing, and cannot control per-analyzer UI display settings ("Show in data
+table", "Stream to terminal"). After extensive investigation:
+
+- `save_capture()` does not wait for processing, returns instantly
+- `export_data_table()` blocks but requires an analyzer handle (unavailable for
+  pre-existing analyzers) and forces UI display ON
+- CPU monitoring cannot distinguish analyzer work from Logic 2 background activity
+- `.sal` file size is constant regardless of processing state
+
+**Solution: DLL self-timing.** The analyzer records `steady_clock::now()` at
+decode start and after each TDM frame. On destruction, it writes the elapsed
+time to `%USERPROFILE%\tdm_benchmark_timing.json`. This measures pure decode
+time independent of UI, indexing, or API overhead.
+
+**Benchmark capture preparation:** The `.sal` format is a ZIP with `meta.json`.
+A script (`tools/prepare_benchmark_captures.py`) clones a source `.sal` (which
+must have `showInDataTable: false` and `streamToTerminal: false` set in
+Logic 2's UI), patching only the FrameV2 detail and marker density settings.
+This produces 9 `.sal` files with identical raw data but different analyzer
+configs, all with UI display off.
+
+### The UI display bottleneck (CRITICAL for realtime use)
+
+Before measuring decoder settings, we discovered that Logic 2's UI display
+options dominate processing time by **50-100x**:
+
+| Scenario | `add_analyzer()` time | Notes |
+|----------|---------------------:|-------|
+| Full+All, UI ON (show in data table + stream to terminal) | **126s** | Default when adding via API |
+| Minimal+Slot, UI ON | **103s** | |
+| Off+None, UI ON | **1.2s** | Only fast because there's nothing to index |
+| Full+All, UI OFF | **~3s** | Set in Logic 2 UI before saving .sal |
+
+**For realtime audio streaming, disabling "Show in data table" and "Stream to
+terminal" is not optional - it is required.** With these enabled, even Off+None
+cannot keep up with realtime for multi-channel configurations. With these
+disabled, Full+All is comfortably above realtime.
+
+To disable: right-click the analyzer name in the sidebar, uncheck both
+"Show in data table" and "Stream to terminal".
+
+### Decode time: 3x3 grid (8ch/16bit, 105K frames, UI off)
+
+| | All markers | Slot only | None |
+|---|---:|---:|---:|
+| **Full (10 fields)** | **2.83s** | **2.10s** | **2.04s** |
+| **Minimal (5 fields)** | **2.57s** | **1.54s** | **1.55s** |
+| **Off (no FrameV2)** | **1.69s** | **0.94s** | **0.91s** |
+
+Multiple runs per config showed ~15-30% variance from Logic 2 background
+activity. Values above are best-of-N (least background noise). Run-to-run
+consistency for Off+None was excellent (0.91, 0.93, 0.93s).
+
+### Speedup vs Full+All (default)
+
+| | All | Slot | None |
+|---|---:|---:|---:|
+| **Full** | 1.0x | 1.3x | 1.4x |
+| **Minimal** | 1.1x | **1.8x** | 1.8x |
+| **Off** | 1.7x | 3.0x | **3.1x** |
+
+### Analysis
+
+**Markers:** All->Slot is the significant jump (~1.3x). Slot->None is negligible.
+Per-bit markers (arrows + data dots on every clock edge) are expensive; per-slot
+markers are nearly free. For 8ch/16bit, "All" means 128 markers per TDM frame vs
+8 for "Slot" - a 16x reduction that translates to ~1.3x decode speedup.
+
+**FrameV2:** Each tier saves ~0.5-0.6s. Full has 10 fields (including severity
+string, 5 error booleans), Minimal has 5 (slot, data, frame_number, short_slot,
+bitclock_error), Off has 0. The per-frame cost of FrameV2 construction +
+AddFrameV2 copy dominates when markers are reduced.
+
+**Recommended for realtime audio (Minimal+Slot):** 1.54s = 1.8x faster than
+default. Provides all fields needed by the audio streaming and WAV export HLAs.
+
+**Maximum speed (Off+None):** 0.91s = 3.1x faster. No HLA support.
+
+### Mock vs real SDK comparison
+
+| Metric | Mock benchmark | Real SDK |
+|--------|---------------:|-----------:|
+| Full+All to Off+None speedup | 3.2-5.4x | **3.1x** |
+| Full+All to Minimal+Slot speedup | 1.5-1.9x | **1.8x** |
+| Marker impact (All vs None) | 8-16% | **28-44%** |
+
+The mock predicted the FrameV2 speedup accurately (1.8x). The marker impact
+was underestimated by the mock - real SDK marker rendering is more expensive
+than the mock's no-op stubs.
+
+### What this means for users
+
+1. **Disable UI display for streaming.** Right-click the analyzer, uncheck
+   "Show in data table" and "Stream to terminal". This is the single most
+   impactful change - 50-100x improvement.
+
+2. **Use Minimal+Slot for audio streaming.** 1.8x faster than default, provides
+   all fields the audio HLAs need.
+
+3. **Use Off+None for maximum capture speed.** 3.1x faster than default, but
+   HLA extensions will not receive data.
+
+4. **Slot markers are effectively free.** No reason to use "None" over "Slot"
+   unless every microsecond matters. The visual slot boundaries are useful.
+
+## What We Learned (continued)
+
+14. **UI display settings dominate real-world performance.** The "Show in data
+    table" and "Stream to terminal" checkboxes in Logic 2 control whether
+    analyzer results are indexed for display. With both enabled (the default),
+    indexing takes 50-100x longer than the actual decode. This completely
+    overshadows any analyzer-side optimization. For realtime streaming,
+    disabling these is mandatory.
+
+15. **Mock benchmarks predicted relative speedups accurately.** The mock
+    predicted 1.5-1.9x for Full->Minimal and 3.2-5.4x for Full->Off. The real
+    SDK measured 1.8x and 3.1x respectively. The mock's absolute throughput
+    numbers were wrong (different SDK internals), but the ratios held. This
+    validates the mock as a useful optimization tool despite its limitations.
+
+16. **Measure in the real environment.** The FrameV2 reuse bug (Phase 5b) was
+    invisible in mock benchmarks because the mock used std::map (overwrite)
+    while the real SDK uses append-only storage. The OOM crash only appeared
+    when testing in Logic 2. Similarly, the UI display bottleneck is invisible
+    in mocks. Real SDK measurement found both issues.
+
+17. **Self-timing in the DLL is the most reliable measurement.** External
+    approaches (CPU monitoring, save-file polling, API timing) all failed to
+    isolate analyzer processing time from Logic 2 background work. Embedding
+    `steady_clock` timestamps directly in WorkerThread and writing results on
+    destruction gives ground-truth numbers with no external dependencies.
+
+18. **The .sal format is a useful automation tool.** The ZIP+meta.json structure
+    allows programmatic creation of benchmark captures with specific analyzer
+    settings and UI display flags. This bypasses automation API limitations
+    (no control over showInDataTable/streamToTerminal) by pre-configuring
+    the .sal file before loading.
 
 ## Document Index
 

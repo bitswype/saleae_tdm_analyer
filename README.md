@@ -118,6 +118,33 @@ WARNING                 ( 1 << 6 ) // 0x40
 ERROR                   ( 1 << 7 ) // 0x80
 ```
 
+## Performance Tuning
+
+Two analyzer settings control the speed/detail tradeoff:
+
+- **Data Table / HLA Output**: Full (all 10 FrameV2 fields), Minimal (5 fields needed by audio HLAs), or Off (no FrameV2, maximum speed). Default: Full.
+- **Waveform Markers**: All bits (per-bit arrows + data dots), Slot boundaries only, or None. Default: All bits.
+
+Real SDK measurements on 8ch/16bit TDM data:
+
+| Setting | Decode time | Speedup |
+|---------|------------:|--------:|
+| Full + All markers (default) | 2.83s | 1.0x |
+| Minimal + Slot markers | 1.54s | 1.8x |
+| Off + None | 0.91s | 3.1x |
+
+For **realtime audio streaming** (via the Audio Stream HLA), use **Minimal + Slot boundaries**. This provides all fields the HLA needs at 1.8x the default speed.
+
+### Disable UI display for streaming (critical)
+
+Logic 2's "Show in data table" and "Stream to terminal" options cause the analyzer results to be indexed for display. **This indexing takes 50-100x longer than the actual decode.** For realtime streaming, you must disable both:
+
+1. Right-click the analyzer name in Logic 2's sidebar
+2. Uncheck **Show in data table**
+3. Uncheck **Stream to terminal**
+
+With these enabled, a 3-second 8ch/16bit capture takes over 100 seconds to process. With these disabled, the same capture processes in under 3 seconds.
+
 ## Exporting data as a wave file
 
 Logic 2 does not support custom export types for Low Level Analyzers — the only export mechanism available to analyzer plugins is the `TXT/CSV` export path. This is a confirmed Saleae design decision, not a temporary limitation. This analyzer works around this by adding an export format selector in the analyzer settings: the "Export to TXT/CSV" action produces either CSV or WAV output based on that setting. To export the captured data as a wave file, follow these steps:

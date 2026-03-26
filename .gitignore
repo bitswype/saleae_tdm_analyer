@@ -2,6 +2,8 @@ build/
 build-release/
 build-debug/
 build-test/
+build-prof/
+build-bench/
 **.vscode
 **.code-workspace
 **.vscode-ctags

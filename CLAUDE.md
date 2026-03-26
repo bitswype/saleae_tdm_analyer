@@ -143,6 +143,17 @@ build-prof\bin\Release\tdm_benchmark.exe 1000    # Windows
 
 Profiling uses compile-time instrumentation (`src/TdmProfiler.h`) that expands to nothing when `ENABLE_PROFILING` is OFF. When ON, the benchmark prints a per-function timing breakdown after each configuration showing where decode time is spent (GetNextBit, ChannelAdvance, Markers, FrameV2 construction, etc.).
 
+**Real SDK benchmark timing** (for measuring decode performance inside Logic 2):
+
+```bash
+# Build with self-timing enabled
+cmake -B build-bench -DENABLE_BENCHMARK_TIMING=ON -A x64              # Windows
+cmake -B build-bench -DENABLE_BENCHMARK_TIMING=ON -DCMAKE_BUILD_TYPE=Release  # Linux/macOS
+cmake --build build-bench --config Release
+```
+
+When `ENABLE_BENCHMARK_TIMING` is ON, the DLL records `steady_clock` timestamps at decode start and after each TDM frame. On analyzer destruction (closing the capture tab), it writes timing to `%USERPROFILE%\tdm_benchmark_timing.json`. Use with `tools/prepare_benchmark_captures.py` to generate .sal files with `showInDataTable=false` and `streamToTerminal=false` for accurate measurement without UI overhead. See `tests/PERFORMANCE.md` Phase 9 for the full methodology.
+
 **Correctness tests** (`tdm_correctness`): 58 tests in ten categories: happy path (11), sign conversion (6), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (10), advanced analysis error detection (3), generator blind spot tests (4), and FrameV2 field verification (8, verifying signed decode values, severity strings, error booleans, frame numbering, and low sample rate advisory via a FrameV2-capturing mock).
 
 **Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
@@ -154,7 +165,12 @@ Two user-facing settings control the speed/detail tradeoff:
 - **Data Table / HLA Output** (`mFrameV2Detail`): Full (all 10 FrameV2 fields), Minimal (5 fields needed by audio HLAs), or Off (no FrameV2, maximum speed). Default: Full.
 - **Waveform Markers** (`mMarkerDensity`): All bits (per-bit arrows + data dots), Slot boundaries only, or None. Default: All bits.
 
-Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries (1.5-1.9x speedup). See `tests/PERFORMANCE.md` for the full story from baseline through profiling to optimization.
+Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries (1.8x speedup validated on real SDK). See `tests/PERFORMANCE.md` for the full story from baseline through profiling to optimization.
+
+**CRITICAL: Logic 2 UI display settings.** Disabling "Show in data table" and "Stream to terminal" (right-click analyzer in sidebar) is **mandatory for realtime streaming**. With these enabled, indexing overhead is 50-100x the actual decode time. This dwarfs any analyzer-side optimization. Real SDK measurements (Phase 9 in PERFORMANCE.md):
+- Full+All: 2.83s decode, ~126s with UI display ON
+- Minimal+Slot: 1.54s decode, ~103s with UI display ON
+- Off+None: 0.91s decode, ~1.2s with UI display ON (nothing to index)
 
 ### HLA Cython fast decode
 
@@ -180,6 +196,13 @@ The HLA's `_sender_loop` batches up to 1024 frames per `sendall()` call. Without
 Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. WSL2's WSLg/PulseAudio/RDP audio path produces ALSA underruns that are not pipeline bugs. For audio quality testing, use TCP capture (`tdm-test-harness capture`) which bypasses audio hardware entirely.
 
 ## Critical Patterns
+
+### FrameV2 SDK behavior (IMPORTANT)
+
+- **FrameV2 Add* methods APPEND, they do not overwrite.** `AddInteger("slot", 1)` followed by `AddInteger("slot", 2)` results in TWO entries, not one.
+- **FrameV2 has no Clear() or Reset() method.** There is no way to remove entries from a FrameV2 object.
+- **NEVER reuse a FrameV2 across frames.** Always create a fresh local `FrameV2` per frame. Reusing a member variable causes O(N^2) memory growth and OOM crashes. This was tried and reverted after crashing Logic 2 with 28 GB memory consumption on a <1 second capture. See `tests/PERFORMANCE.md` Phase 5b for the full post-mortem.
+- **The test mock diverges here.** The mock uses `std::map` (overwrites by key). The real SDK uses an append-only list. This divergence hid the bug during mock-based benchmarking.
 
 ### Logic 2 HLA conventions
 
