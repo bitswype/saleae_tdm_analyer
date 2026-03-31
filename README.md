@@ -18,7 +18,7 @@ A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and 
   - [Exporting data as a wave file](#exporting-data-as-a-wave-file)
 - [High Level Analyzers (HLAs)](#high-level-analyzers-hlas)
   - [HLA: TDM WAV Export](#hla-tdm-wav-export)
-  - [HLA: TDM Audio Stream](#hla-tdm-audio-stream)
+  - [HLA: TDM Audio Stream](#hla-tdm-audio-stream) (with streaming quick start)
 - [Known Limitations](#known-limitations)
 - [Install instructions](#install-instructions)
 - [Building from source](#building-from-source)
@@ -129,7 +129,11 @@ Three analyzer settings control the speed/detail tradeoff:
 
 ### Audio Batch Mode (for real-time streaming)
 
-Logic 2's HLA pipeline can process approximately 50,000 decode() calls per second. Without batching, stereo 48kHz I2S generates 96,000 calls/sec (one per slot) - only ~54% of real-time. Audio Batch Mode packs N TDM frames into a single FrameV2 with a PCM byte array, dramatically reducing calls:
+Logic 2's HLA pipeline can process approximately 50,000 decode() calls per second. Without batching, stereo 48kHz I2S generates 96,000 calls/sec (one per slot) - only ~54% of real-time:
+
+![HLA not keeping up - 54% without batching](pictures/hla_not_keeping_up.png)
+
+Audio Batch Mode packs N TDM frames into a single FrameV2 with a PCM byte array, dramatically reducing calls:
 
 | Batch Size | Stereo 48kHz calls/sec | Real-time? |
 |----------:|----------------------:|:----------:|
@@ -165,6 +169,10 @@ Logic 2's HLA pipeline can process approximately 50,000 decode() calls per secon
 | 128-channel 192kHz | 512 | 1024 |
 
 The formula: `minimum batch = ceil(sample_rate * channels / 50000)`, rounded up to the next power of 2. The "recommended" column doubles the minimum for headroom. Higher batch sizes add negligible latency (batch=64 at 48kHz = 1.3ms) and reduce CPU overhead further.
+
+With batching enabled, the HLA progress indicator should show 100%:
+
+![HLA at 100% with batch mode enabled](pictures/batch_mode_100pct.png)
 
 ### Decode speed settings
 
@@ -256,25 +264,39 @@ See the [TDM WAV Export README](hla-wav-export/README.md) for full documentation
 ## HLA: TDM Audio Stream
 
 Streams selected TDM slots as live PCM audio over TCP. A companion CLI tool
-and GUI connect to the stream and play it through any audio output device —
+and GUI connect to the stream and play it through any audio output device -
 hear decoded TDM audio in real time. Note: requires a standard (non-looping)
-capture — see [Known Limitations](#known-limitations).
+capture - see [Known Limitations](#known-limitations).
 
 See the [TDM Audio Stream README](hla-audio-stream/README.md) for full
 documentation, platform-specific setup, test harness, and debugging tips.
 
-**Quick start:**
+**Quick start - live audio streaming:**
 
-```bash
-# Install the companion tool (from the repo root or release zip root)
-pip install tools/tdm-audio-bridge/
+1. **Configure the LLA** with Audio Batch Size set to 64 (or higher for many channels):
 
-# Launch the GUI (or use the CLI: tdm-audio-bridge listen)
-tdm-audio-bridge gui
-```
+   ![LLA settings with batch mode](pictures/streaming_setup_1.png)
 
-![GUI — disconnected](hla-audio-stream/pictures/gui_disconnected.png)
-![GUI — playing](hla-audio-stream/pictures/gui_playing.png)
+2. **Add the Audio Stream HLA** on top of the TDM LLA. Configure the slots to stream, TCP port, and output bit depth:
+
+   ![HLA Audio Stream settings](pictures/hla_audio_stream_settings.png)
+
+3. **Install and launch the companion tool:**
+
+   ```bash
+   pip install tools/tdm-audio-bridge/
+   tdm-audio-bridge gui
+   ```
+
+   Or double-click `tools/tdm-audio-bridge/launch-gui.bat` (Windows) or run `./launch-gui.sh` (macOS/Linux).
+
+4. **Start a live capture** in Logic 2. The bridge GUI will connect and begin playing audio:
+
+   ![Live streaming setup](pictures/streaming_setup.png)
+
+   ![Audio bridge GUI - playing](pictures/bridge_gui_playing.png)
+
+**Important:** The HLA progress indicator must show **100%** for clean streaming. If it shows less (e.g., 54%), increase the Audio Batch Size in the LLA settings. See [Audio Batch Mode](#audio-batch-mode-for-real-time-streaming) for recommended values.
 
 # Known Limitations
 
@@ -385,16 +407,26 @@ sudo sysctl -w kernel.yama.ptrace_scope=0
 
 # Migration Guide
 
+## v2.5.0 — Audio Batch Mode for real-time streaming
+
+New "Audio Batch Size" setting enables real-time audio streaming at stereo
+48kHz and above. Set to 64 for most configurations. When enabled, the LLA
+packs N TDM frames into a single FrameV2 with PCM data, reducing HLA decode
+calls from 96,000/sec to 750/sec (at batch=64). Existing captures default
+to Off (batch=0) with no behavior change.
+
+See [Audio Batch Mode](#audio-batch-mode-for-real-time-streaming) for the
+full configuration guide and recommended batch sizes.
+
 ## v2.4.0 — Performance tuning and OOM fix
 
 Two new analyzer settings control the decode speed/detail tradeoff. Existing
 captures will use the default (Full + All markers), so no action is needed
 for backward compatibility.
 
-**For realtime audio streaming users:** Set "Data Table / HLA Output" to
-Minimal and "Waveform Markers" to Slot boundaries. Also disable "Show in
-data table" and "Stream to terminal" (right-click analyzer in sidebar).
-See [Performance Tuning](#performance-tuning) for details.
+**For realtime audio streaming users:** Set "Audio Batch Size" to 64 and
+disable "Show in data table" and "Stream to terminal" (right-click analyzer
+in sidebar). See [Performance Tuning](#performance-tuning) for details.
 
 ## v2.1.0 — FrameV2 schema overhaul
 
