@@ -18,13 +18,14 @@
 
 struct FrameV2FieldValue
 {
-    enum Type { NONE, INTEGER, STRING, BOOLEAN, DOUBLE, BYTE };
+    enum Type { NONE, INTEGER, STRING, BOOLEAN, DOUBLE, BYTE, BYTE_ARRAY };
     Type type;
     S64 int_val;
     std::string str_val;
     bool bool_val;
     double dbl_val;
     U8 byte_val;
+    std::vector<U8> byte_array_val;
 
     FrameV2FieldValue() : type( NONE ), int_val( 0 ), bool_val( false ), dbl_val( 0 ), byte_val( 0 ) {}
 };
@@ -67,6 +68,14 @@ struct CapturedFrameV2
         if( it != fields.end() && it->second.type == FrameV2FieldValue::BOOLEAN )
             return it->second.bool_val;
         return false;
+    }
+
+    std::vector<U8> GetByteArray( const std::string& key ) const
+    {
+        auto it = fields.find( key );
+        if( it != fields.end() && it->second.type == FrameV2FieldValue::BYTE_ARRAY )
+            return it->second.byte_array_val;
+        return {};
     }
 };
 

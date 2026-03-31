@@ -48,6 +48,7 @@ std::vector<DecodedFrame> RunAndCollect( const Config& cfg )
     settings->mEnableAdvancedAnalysis = cfg.advanced_analysis;
     settings->mFrameV2Detail = cfg.framev2_detail;
     settings->mMarkerDensity = cfg.marker_density;
+    settings->mAudioBatchSize = cfg.audio_batch_size;
 
     instance.RunAnalyzerWorker();
 

@@ -424,6 +424,10 @@ class TdmAudioStream(HighLevelAnalyzer):
             return AnalyzerFrame('error', frame.start_time, frame.end_time,
                                  {'message': err_msg})
 
+        # Audio batch mode: LLA has pre-packed PCM, bypass slot accumulation
+        if frame.type == 'audio_batch':
+            return self._decode_audio_batch(frame)
+
         # Fast path: Cython or cffi
         if self._fast is not None:
             # Sample rate derivation stays in Python (only first few frames)
@@ -448,6 +452,69 @@ class TdmAudioStream(HighLevelAnalyzer):
 
         # Fallback: pure Python
         return self._decode_python(frame)
+
+    def _decode_audio_batch(self, frame):
+        """Process a batched audio frame from the LLA.
+
+        The LLA has packed N TDM frames of interleaved, little-endian,
+        signed PCM into pcm_data. We extract metadata, set sample_rate
+        from the batch (no timing derivation needed), and forward the
+        raw bytes to the ring buffer.
+        """
+        d = frame.data
+        pcm_data = d.get('pcm_data', b'')
+        num_frames = d.get('num_frames', 0)
+        lla_channels = d.get('channels', 0)
+        bit_depth = d.get('bit_depth', 16)
+        sample_rate = d.get('sample_rate', 0)
+
+        if not pcm_data or num_frames == 0:
+            return None
+
+        # Set sample rate from LLA metadata
+        if self._sample_rate is None and sample_rate > 0:
+            self._sample_rate = sample_rate
+
+        # Send handshake if not yet sent
+        if not self._handshake_sent:
+            with self._client_lock:
+                if (self._current_client is not None
+                        and not self._handshake_sent
+                        and self._sample_rate is not None):
+                    self._send_handshake(self._current_client)
+
+        if self._sample_rate is None:
+            return None
+
+        bytes_per_sample = (bit_depth + 7) // 8
+        lla_frame_size = lla_channels * bytes_per_sample
+        hla_channels = len(self._slot_list)
+
+        # Fast path: all channels requested in natural order
+        if (hla_channels == lla_channels
+                and self._slot_list == list(range(lla_channels))):
+            chunk = bytes(pcm_data)
+        else:
+            # Extract selected slots from interleaved blob
+            hla_frame_size = hla_channels * bytes_per_sample
+            out = bytearray(num_frames * hla_frame_size)
+            for f in range(num_frames):
+                src_base = f * lla_frame_size
+                dst_base = f * hla_frame_size
+                for ch_idx, slot in enumerate(self._slot_list):
+                    if slot < lla_channels:
+                        src_off = src_base + slot * bytes_per_sample
+                        dst_off = dst_base + ch_idx * bytes_per_sample
+                        out[dst_off:dst_off + bytes_per_sample] = \
+                            pcm_data[src_off:src_off + bytes_per_sample]
+            chunk = bytes(out)
+
+        with self._ring_lock:
+            self._ring.append(chunk)
+        self._wake_event.set()
+        self._frame_count += num_frames
+
+        return None
 
     def _decode_python(self, frame):
         """Pure-Python decode implementation (fallback path).

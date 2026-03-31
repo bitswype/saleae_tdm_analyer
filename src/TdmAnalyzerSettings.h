@@ -78,6 +78,7 @@ class TdmAnalyzerSettings : public AnalyzerSettings
 
     TdmFrameV2Detail mFrameV2Detail;
     TdmMarkerDensity mMarkerDensity;
+    U32 mAudioBatchSize;  // 0 = off, 1..1024 = TDM frames per FrameV2
 
   protected:
     std::unique_ptr<AnalyzerSettingInterfaceChannel> mClockChannelInterface;
@@ -102,5 +103,6 @@ class TdmAnalyzerSettings : public AnalyzerSettings
 
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mFrameV2DetailInterface;
     std::unique_ptr<AnalyzerSettingInterfaceNumberList> mMarkerDensityInterface;
+    std::unique_ptr<AnalyzerSettingInterfaceNumberList> mAudioBatchSizeInterface;
 };
 #endif // TDM_ANALYZER_SETTINGS

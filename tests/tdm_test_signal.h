@@ -41,6 +41,7 @@ struct Config
     AnalyzerEnums::EdgeDirection data_valid_edge;
     TdmFrameV2Detail framev2_detail;
     TdmMarkerDensity marker_density;
+    U32 audio_batch_size;
 };
 
 inline Config DefaultConfig( const char* label, U32 num_frames )
@@ -63,6 +64,7 @@ inline Config DefaultConfig( const char* label, U32 num_frames )
     c.data_valid_edge = AnalyzerEnums::PosEdge;
     c.framev2_detail = FV2_FULL;
     c.marker_density = MARKERS_ALL;
+    c.audio_batch_size = 0;
     return c;
 }
 

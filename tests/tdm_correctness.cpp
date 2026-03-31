@@ -110,6 +110,20 @@ void test_framev2_missed_frame_sync_severity();
 void test_framev2_low_sample_rate();
 
 // ---------------------------------------------------------------------------
+// Forward declarations: test_audio_batch.cpp
+// ---------------------------------------------------------------------------
+
+void test_batch_off_identical();
+void test_batch_basic();
+void test_batch_pcm_correctness();
+void test_batch_frame_number();
+void test_batch_sample_rate();
+void test_batch_v1_still_emitted();
+void test_batch_32bit();
+void test_batch_signed();
+void test_batch_1_frame();
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -205,6 +219,18 @@ int main()
     RunTest( "test_framev2_missed_data_severity", test_framev2_missed_data_severity );
     RunTest( "test_framev2_missed_frame_sync_severity", test_framev2_missed_frame_sync_severity );
     RunTest( "test_framev2_low_sample_rate", test_framev2_low_sample_rate );
+    std::cout << std::endl;
+
+    std::cout << "Audio Batch Mode:" << std::endl;
+    RunTest( "test_batch_off_identical", test_batch_off_identical );
+    RunTest( "test_batch_basic", test_batch_basic );
+    RunTest( "test_batch_pcm_correctness", test_batch_pcm_correctness );
+    RunTest( "test_batch_frame_number", test_batch_frame_number );
+    RunTest( "test_batch_sample_rate", test_batch_sample_rate );
+    RunTest( "test_batch_v1_still_emitted", test_batch_v1_still_emitted );
+    RunTest( "test_batch_32bit", test_batch_32bit );
+    RunTest( "test_batch_signed", test_batch_signed );
+    RunTest( "test_batch_1_frame", test_batch_1_frame );
     std::cout << std::endl;
 
     std::cout << "==============================" << std::endl;

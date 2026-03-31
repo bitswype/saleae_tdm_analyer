@@ -33,6 +33,8 @@ class TdmAnalyzer : public Analyzer2
     void GetTdmFrame();
     void SetupForGettingFirstBit();
     void GetNextBit( BitState& data, BitState& frame, U64& sample_number );
+    void AccumulateSlotIntoBatch( S64 signed_value );
+    void EmitAudioBatch();
 
   protected:
     // Hot-path decode state — grouped for cache locality
@@ -64,6 +66,15 @@ class TdmAnalyzer : public Analyzer2
     U64 mSampleRate;
     double mDesiredBitClockPeriod;
     bool mLowSampleRate;
+
+    // Audio batch mode state
+    std::vector<U8> mBatchBuffer;
+    U32 mBatchFrameCount;
+    U32 mBatchBytesPerFrame;
+    U32 mBatchBytesPerSample;
+    U64 mBatchStartSample;
+    U64 mBatchEndSample;
+    U64 mBatchStartFrameNum;
 
 #ifdef TDM_BENCHMARK_TIMING
     // Self-timing: written to %USERPROFILE%\tdm_benchmark_timing.json on destruction.

@@ -321,6 +321,55 @@ class TdmWavExport(HighLevelAnalyzer):
         """Return profiling summary string. Only populated when TDM_HLA_PROFILE=1."""
         return self._perf.summary()
 
+    def _decode_audio_batch(self, frame):
+        """Process a batched audio frame from the LLA and write to WAV."""
+        d = frame.data
+        pcm_data = d.get('pcm_data', b'')
+        num_frames = d.get('num_frames', 0)
+        lla_channels = d.get('channels', 0)
+        bit_depth = d.get('bit_depth', 16)
+        sample_rate = d.get('sample_rate', 0)
+
+        if not pcm_data or num_frames == 0:
+            return None
+
+        # Set sample rate from LLA metadata
+        if self._sample_rate is None and sample_rate > 0:
+            self._sample_rate = sample_rate
+
+        # Open WAV file if not yet opened
+        if self._wav is None and self._sample_rate is not None:
+            self._open_wav()
+        if self._wav is None:
+            return None
+
+        bytes_per_sample = (bit_depth + 7) // 8
+        lla_frame_size = lla_channels * bytes_per_sample
+        hla_channels = len(self._slot_list)
+
+        # Fast path: all channels in natural order
+        if (hla_channels == lla_channels
+                and self._slot_list == list(range(lla_channels))):
+            wav_data = bytes(pcm_data)
+        else:
+            # Extract selected slots from interleaved blob
+            hla_frame_size = hla_channels * bytes_per_sample
+            out = bytearray(num_frames * hla_frame_size)
+            for f in range(num_frames):
+                src_base = f * lla_frame_size
+                dst_base = f * hla_frame_size
+                for ch_idx, slot in enumerate(self._slot_list):
+                    if slot < lla_channels:
+                        src_off = src_base + slot * bytes_per_sample
+                        dst_off = dst_base + ch_idx * bytes_per_sample
+                        out[dst_off:dst_off + bytes_per_sample] = \
+                            pcm_data[src_off:src_off + bytes_per_sample]
+            wav_data = bytes(out)
+
+        self._wav.writeframes(wav_data)
+        self._frame_count += num_frames
+        return None
+
     def decode(self, frame: AnalyzerFrame):
         """Process one FrameV2 from the upstream TdmAnalyzer LLA.
 
@@ -342,9 +391,13 @@ class TdmWavExport(HighLevelAnalyzer):
         # Cleared after first emission so subsequent frames are silently dropped.
         if self._init_error is not None:
             err_msg = self._init_error
-            self._init_error = None  # clear — emit only once, then silence
+            self._init_error = None  # clear - emit only once, then silence
             return AnalyzerFrame('error', frame.start_time, frame.end_time,
                                  {'message': err_msg})
+
+        # Audio batch mode: LLA has pre-packed PCM, write directly to WAV
+        if frame.type == 'audio_batch':
+            return self._decode_audio_batch(frame)
 
         if frame.type != 'slot':
             return None

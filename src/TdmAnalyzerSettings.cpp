@@ -24,7 +24,8 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
       mExportFileType( CSV ),
       mEnableAdvancedAnalysis( false ),
       mFrameV2Detail( FV2_FULL ),
-      mMarkerDensity( MARKERS_ALL )
+      mMarkerDensity( MARKERS_ALL ),
+      mAudioBatchSize( 0 )
 {
     mClockChannelInterface.reset( new AnalyzerSettingInterfaceChannel() );
     mClockChannelInterface->SetTitleAndTooltip( "CLOCK channel", "Clock, aka TDM SCK or BCLK - Continuous Serial Clock, aka Bit Clock" );
@@ -167,6 +168,27 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
         "No waveform markers. Data table and HLA output still work.");
     mMarkerDensityInterface->SetNumber(mMarkerDensity);
 
+    mAudioBatchSizeInterface.reset(new AnalyzerSettingInterfaceNumberList());
+    mAudioBatchSizeInterface->SetTitleAndTooltip(
+        "Audio Batch Size",
+        "Batch multiple TDM frames into a single FrameV2 for real-time HLA streaming. "
+        "When enabled, the 'Data Table / HLA Output' setting is ignored and only batch "
+        "frames are emitted. Use 'Off' for protocol debugging and data table inspection; "
+        "use batching for real-time audio streaming via the Audio Stream HLA.");
+    mAudioBatchSizeInterface->AddNumber(0, "Off (one FrameV2 per slot)",
+        "Current behavior. Each slot emits its own FrameV2. Best for protocol debugging.");
+    for (U32 n = 1; n <= 1024; n *= 2)
+    {
+        char str[64];
+        snprintf(str, sizeof(str), "%u TDM frame%s per FrameV2", n, n == 1 ? "" : "s");
+        char tooltip[128];
+        snprintf(tooltip, sizeof(tooltip),
+            "Emit one FrameV2 every %u TDM frame%s with packed PCM data.",
+            n, n == 1 ? "" : "s");
+        mAudioBatchSizeInterface->AddNumber(n, str, tooltip);
+    }
+    mAudioBatchSizeInterface->SetNumber(mAudioBatchSize);
+
     AddInterface( mClockChannelInterface.get() );
     AddInterface( mFrameChannelInterface.get() );
     AddInterface( mDataChannelInterface.get() );
@@ -184,6 +206,7 @@ TdmAnalyzerSettings::TdmAnalyzerSettings()
     AddInterface( mEnableAdvancedAnalysisInterface.get() );
     AddInterface( mFrameV2DetailInterface.get() );
     AddInterface( mMarkerDensityInterface.get() );
+    AddInterface( mAudioBatchSizeInterface.get() );
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
     AddExportOption( 0, "Export as text/csv file" );
@@ -226,6 +249,7 @@ void TdmAnalyzerSettings::UpdateInterfacesFromSettings()
     mEnableAdvancedAnalysisInterface->SetValue( mEnableAdvancedAnalysis );
     mFrameV2DetailInterface->SetNumber(mFrameV2Detail);
     mMarkerDensityInterface->SetNumber(mMarkerDensity);
+    mAudioBatchSizeInterface->SetNumber(mAudioBatchSize);
 }
 
 static void FormatHzString( char* buf, size_t buf_size, U64 hz )
@@ -331,6 +355,7 @@ bool TdmAnalyzerSettings::SetSettingsFromInterfaces()
     mEnableAdvancedAnalysis = bool(mEnableAdvancedAnalysisInterface->GetValue() );
     mFrameV2Detail = TdmFrameV2Detail(U32(mFrameV2DetailInterface->GetNumber()));
     mMarkerDensity = TdmMarkerDensity(U32(mMarkerDensityInterface->GetNumber()));
+    mAudioBatchSize = U32(mAudioBatchSizeInterface->GetNumber());
 
     // AddExportOption( 0, "Export as text/csv file", "text (*.txt);;csv (*.csv)" );
 
@@ -456,6 +481,12 @@ void TdmAnalyzerSettings::LoadSettings( const char* settings )
         mMarkerDensity = TdmMarkerDensity(marker_density);
     }
 
+    U32 audio_batch_size;
+    if (text_archive >> audio_batch_size)
+    {
+        mAudioBatchSize = audio_batch_size;
+    }
+
     ClearChannels();
     AddChannel( mClockChannel, "TDM CLOCK", true );
     AddChannel( mFrameChannel, "TDM FRAME", true );
@@ -491,6 +522,7 @@ const char* TdmAnalyzerSettings::SaveSettings()
     text_archive << mEnableAdvancedAnalysis;
     text_archive << mFrameV2Detail;
     text_archive << mMarkerDensity;
+    text_archive << mAudioBatchSize;
 
     return SetReturnString( text_archive.GetString() );
 }

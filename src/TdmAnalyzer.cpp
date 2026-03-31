@@ -29,6 +29,20 @@ TdmAnalyzer::~TdmAnalyzer()
 {
     KillThread();
 
+    // Flush any partial audio batch accumulated before the thread exited
+    if( mSettings && mSettings->mAudioBatchSize > 0 && mBatchFrameCount > 0 )
+    {
+        try
+        {
+            EmitAudioBatch();
+            mResults->CommitResults();
+        }
+        catch( ... )
+        {
+            // mResults may be invalid by this point; silently drop
+        }
+    }
+
 #ifdef TDM_BENCHMARK_TIMING
     // Write decode timing to temp file for external benchmarking.
     // Uses mDecodeLastFrame (stamped after each TDM frame) as the end time,
@@ -117,6 +131,40 @@ void TdmAnalyzer::WorkerThread()
     mDataBits.reserve( mSettings->mBitsPerSlot );
     mDataValidEdges.reserve( mSettings->mBitsPerSlot );
     mDataFlags.reserve( mSettings->mBitsPerSlot );
+
+    // Audio batch mode setup
+    mBatchFrameCount = 0;
+    mBatchStartFrameNum = 0;
+    mBatchStartSample = 0;
+    mBatchEndSample = 0;
+    if( mSettings->mAudioBatchSize > 0 )
+    {
+        U32 data_bits = mSettings->mDataBitsPerSlot;
+        if( data_bits <= 8 )       mBatchBytesPerSample = 1;
+        else if( data_bits <= 16 ) mBatchBytesPerSample = 2;
+        else if( data_bits <= 24 ) mBatchBytesPerSample = 3;
+        else                       mBatchBytesPerSample = 4;
+
+        mBatchBytesPerFrame = mSettings->mSlotsPerFrame * mBatchBytesPerSample;
+        U64 total_bytes = U64( mSettings->mAudioBatchSize ) * mBatchBytesPerFrame;
+        mBatchBuffer.resize( total_bytes, 0 );
+
+        FrameV2 advisory;
+        advisory.AddString( "severity", "info" );
+        char msg[ 256 ];
+        snprintf( msg, sizeof( msg ),
+            "Audio Batch Size is %u. Individual slot FrameV2 output is disabled. "
+            "HLAs will receive 'audio_batch' frames with packed PCM data.",
+            mSettings->mAudioBatchSize );
+        advisory.AddString( "message", msg );
+        mResults->AddFrameV2( advisory, "advisory", 0, 0 );
+        mResults->CommitResults();
+    }
+    else
+    {
+        mBatchBytesPerSample = 0;
+        mBatchBytesPerFrame = 0;
+    }
 
     SetupForGettingFirstBit();
     SetupForGettingFirstTdmFrame();
@@ -285,6 +333,15 @@ void TdmAnalyzer::GetTdmFrame()
             }
             
             mFrameNum++;
+
+            if( mSettings->mAudioBatchSize > 0 )
+            {
+                mBatchFrameCount++;
+                if( mBatchFrameCount >= mSettings->mAudioBatchSize )
+                {
+                    EmitAudioBatch();
+                }
+            }
 
             {
                 TDM_PROFILE_SCOPE( "GetTdmFrame::Commit" );
@@ -459,7 +516,28 @@ void TdmAnalyzer::AnalyzeTdmSlot()
         mResults->AddFrame( mResultsFrame );
     }
 
-    if( mSettings->mFrameV2Detail != FV2_OFF )
+    if( mSettings->mAudioBatchSize > 0 )
+    {
+        // Batch mode: accumulate signed PCM into buffer instead of per-slot FrameV2
+        if( mSlotNum < mSettings->mSlotsPerFrame && ( mResultsFrame.mFlags & SHORT_SLOT ) == 0 )
+        {
+            S64 signed_value;
+            if( mSettings->mSigned == AnalyzerEnums::SignedInteger )
+                signed_value = AnalyzerHelpers::ConvertToSignedNumber( mResultsFrame.mData1, mSettings->mDataBitsPerSlot );
+            else
+                signed_value = static_cast<S64>( result );
+
+            AccumulateSlotIntoBatch( signed_value );
+        }
+        // Track sample range for this batch
+        if( mBatchFrameCount == 0 && mSlotNum == 0 )
+        {
+            mBatchStartSample = mResultsFrame.mStartingSampleInclusive;
+            mBatchStartFrameNum = mFrameNum;
+        }
+        mBatchEndSample = mResultsFrame.mEndingSampleInclusive;
+    }
+    else if( mSettings->mFrameV2Detail != FV2_OFF )
     {
         TDM_PROFILE_SCOPE( "AnalyzeTdmSlot::FrameV2" );
         // Must use a fresh FrameV2 each frame: the SDK's Add* methods append
@@ -509,6 +587,40 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mDataFlags.clear();
 
     mSlotNum++;
+}
+
+void TdmAnalyzer::AccumulateSlotIntoBatch( S64 signed_value )
+{
+    U32 offset = mBatchFrameCount * mBatchBytesPerFrame
+               + mSlotNum * mBatchBytesPerSample;
+
+    // Write little-endian, truncated to mBatchBytesPerSample bytes
+    U64 raw = static_cast<U64>( signed_value );
+    for( U32 i = 0; i < mBatchBytesPerSample; i++ )
+    {
+        mBatchBuffer[ offset + i ] = static_cast<U8>( raw & 0xFF );
+        raw >>= 8;
+    }
+}
+
+void TdmAnalyzer::EmitAudioBatch()
+{
+    if( mBatchFrameCount == 0 )
+        return;
+
+    FrameV2 batch_fv2;
+    batch_fv2.AddByteArray( "pcm_data", mBatchBuffer.data(),
+                             U64( mBatchFrameCount ) * mBatchBytesPerFrame );
+    batch_fv2.AddInteger( "num_frames", mBatchFrameCount );
+    batch_fv2.AddInteger( "channels", mSettings->mSlotsPerFrame );
+    batch_fv2.AddInteger( "bit_depth", mSettings->mDataBitsPerSlot );
+    batch_fv2.AddInteger( "sample_rate", mSettings->mTdmFrameRate );
+    batch_fv2.AddInteger( "start_frame_number", S64( mBatchStartFrameNum ) );
+
+    mResults->AddFrameV2( batch_fv2, "audio_batch",
+                           mBatchStartSample, mBatchEndSample );
+
+    mBatchFrameCount = 0;
 }
 
 U32 TdmAnalyzer::GenerateSimulationData( U64 newest_sample_requested, U32 sample_rate, SimulationChannelDescriptor** simulation_channels )

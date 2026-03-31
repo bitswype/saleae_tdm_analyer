@@ -101,9 +101,13 @@ void FrameV2::AddByte( const char* key, U8 value )
     mInternals->fields[ key ] = fv;
 }
 
-void FrameV2::AddByteArray( const char*, const U8*, U64 )
+void FrameV2::AddByteArray( const char* key, const U8* data, U64 length )
 {
-    // Not captured -- no test currently needs byte array fields.
+    FrameV2FieldValue fv;
+    fv.type = FrameV2FieldValue::BYTE_ARRAY;
+    if( data && length > 0 )
+        fv.byte_array_val.assign( data, data + length );
+    mInternals->fields[ key ] = fv;
 }
 
 // ---------------------------------------------------------------------------

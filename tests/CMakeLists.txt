@@ -56,6 +56,7 @@ add_executable(tdm_correctness
     test_advanced_analysis.cpp
     test_generator_blindspots.cpp
     test_framev2.cpp
+    test_audio_batch.cpp
     extra_stubs.cpp
     ${TESTLIB_SOURCES}
     ${ANALYZER_SOURCES}
