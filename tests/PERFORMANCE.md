@@ -686,6 +686,78 @@ than the mock's no-op stubs.
 4. **Slot markers are effectively free.** No reason to use "None" over "Slot"
    unless every microsecond matters. The visual slot boundaries are useful.
 
+## Phase 10: Real-Time Audio Streaming Throughput
+
+With the DLL-side optimizations validated (Phase 9), we tested end-to-end
+real-time audio streaming: Raspberry Pi 4 outputting I2S -> Saleae Logic ->
+TDM LLA -> Audio Stream HLA -> TCP -> Audio Bridge GUI -> speaker.
+
+### The HLA throughput ceiling
+
+**Logic 2's HLA progress indicator shows percentage of real-time throughput.**
+This is critical to understand: the HLA must show **100%** for real-time
+streaming to work. Any value below 100% means the HLA is falling behind and
+the audio bridge will underrun.
+
+Testing revealed a hard ceiling of approximately **50,000 decode() calls per
+second** through Logic 2's Python HLA pipeline. This is the per-call dispatch
+overhead of Logic 2 invoking the Python decode() method for each FrameV2 frame
+- not the cost of our code inside decode().
+
+Evidence:
+- Stereo 48kHz = 96,000 calls/sec -> HLA shows ~54%, audio underruns after ~1s
+- Stereo 24kHz = 48,000 calls/sec -> HLA shows 100%, clean streaming
+- Mono 48kHz = still 96,000 calls/sec (LLA emits one frame per slot regardless
+  of HLA slot filter) -> HLA shows ~45%, still underruns
+- Cython fast decode path loaded and confirmed active - no measurable
+  improvement because the bottleneck is call overhead, not decode logic
+
+### Why mono doesn't help
+
+The LLA emits one FrameV2 per slot in every TDM frame. For stereo I2S, that's
+2 FrameV2 per audio sample period, regardless of how many slots the HLA is
+configured to stream. The HLA's slot filter runs inside decode() but the
+Logic 2 dispatch overhead is already spent. Changing the HLA from "0,1" to "0"
+does not reduce the number of decode() calls.
+
+### Practical real-time streaming limits
+
+| Configuration | decode() calls/sec | HLA throughput | Streams cleanly? |
+|---------------|-------------------:|---------------:|:----------------:|
+| Stereo 24kHz  | 48,000             | 100%           | Yes              |
+| Mono 24kHz    | 48,000             | 100%           | Yes              |
+| Stereo 48kHz  | 96,000             | ~54%           | No               |
+| Mono 48kHz    | 96,000             | ~45%           | No               |
+| 4ch 24kHz     | 96,000             | ~50%           | No (estimated)   |
+| Stereo 96kHz  | 192,000            | ~27%           | No (estimated)   |
+
+### Socket rebind fix
+
+During testing, we discovered that Logic 2 instantiates the HLA class multiple
+times (a setup pass, then a capture pass). On Windows, the first instance's TCP
+server socket stayed bound to the port, causing the second instance (the one
+that actually receives decode() calls) to fail with `[WinError 10048]`. The fix
+uses `gc.get_objects()` to find and close any stale socket bound to the target
+port before binding the new one. A class-level `_prev_instance` reference also
+calls `shutdown()` on the previous instance when a new one is created.
+
+### Cython sys.path fix
+
+Logic 2's embedded Python does not include the HLA extension directory in
+`sys.path`. Pure Python imports (`.py` files) work because Logic 2 handles
+them specially, but compiled extensions (`.pyd`/`.so`) are not found. The fix
+adds `os.path.dirname(os.path.abspath(__file__))` to `sys.path` at module
+load time so the Cython/rawc/cffi backends can be imported.
+
+### Future direction: batched FrameV2
+
+The only way to break through the 50k calls/sec ceiling is to reduce the
+number of decode() calls. A batched LLA mode could pack N TDM frames into a
+single FrameV2 (configurable: 1, 2, 4, 8, ... 512), reducing calls by a
+factor of N. At batch size 4, stereo 48kHz would need only 24,000 calls/sec -
+well within the ceiling. This requires LLA changes (accumulate and pack a
+binary blob) and HLA changes (unpack the batch in one decode() call).
+
 ## What We Learned (continued)
 
 14. **UI display settings dominate real-world performance.** The "Show in data
@@ -718,6 +790,29 @@ than the mock's no-op stubs.
     settings and UI display flags. This bypasses automation API limitations
     (no control over showInDataTable/streamToTerminal) by pre-configuring
     the .sal file before loading.
+
+19. **The HLA progress % is real-time throughput, not buffer progress.** If the
+    HLA shows 54%, it is processing at 54% of real-time speed. For live audio
+    streaming, 100% is required. This was confirmed empirically: 54% at 48kHz
+    stereo caused underruns; 100% at 24kHz stereo streamed cleanly.
+
+20. **Logic 2's HLA dispatch overhead is the real-time ceiling.** The ~50,000
+    decode() calls/sec limit is imposed by Logic 2's framework overhead for
+    calling into Python, not by the decode logic itself. Cython (4-7x faster
+    decode) made no measurable difference to real-time throughput. The only
+    way to improve real-time streaming is to reduce the number of FrameV2
+    frames the LLA emits, i.e., batch multiple TDM frames into one FrameV2.
+
+21. **Logic 2 instantiates HLAs multiple times.** A setup pass creates one
+    instance, then a capture pass creates another. On Windows, the first
+    instance's server socket blocks the second from binding. Class-level
+    cleanup (`_prev_instance.shutdown()` + `gc.get_objects()` socket scan)
+    is required for reliable TCP server operation.
+
+22. **Logic 2's embedded Python has a restricted sys.path.** The HLA extension
+    directory is not included, so compiled extensions (.pyd/.so) next to the
+    .py file are invisible to import. Explicitly inserting the directory into
+    sys.path at module load time is required.
 
 ## Document Index
 

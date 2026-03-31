@@ -172,9 +172,27 @@ Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-
 - Minimal+Slot: 1.54s decode, ~103s with UI display ON
 - Off+None: 0.91s decode, ~1.2s with UI display ON (nothing to index)
 
+### Real-time streaming throughput ceiling
+
+**The HLA progress indicator shows percentage of real-time throughput.** It must show **100%** for real-time audio streaming to work. Any value below 100% means the audio bridge will underrun.
+
+Logic 2's Python HLA pipeline has a hard ceiling of approximately **50,000 decode() calls per second**. This is dispatch overhead in Logic 2's framework, not our decode logic. Cython makes no measurable difference to this ceiling.
+
+| Configuration | decode() calls/sec | HLA throughput | Real-time? |
+|---------------|-------------------:|---------------:|:----------:|
+| Stereo 24kHz  | 48,000             | 100%           | Yes        |
+| Stereo 48kHz  | 96,000             | ~54%           | No         |
+| Mono 48kHz    | 96,000             | ~45%           | No         |
+
+**Mono does not help.** The LLA emits one FrameV2 per slot regardless of the HLA's slot filter. For stereo I2S, there are always 2 FrameV2 per audio sample period.
+
+The only path to real-time stereo 48kHz is to reduce decode() calls by batching multiple TDM frames into a single FrameV2 in the LLA. See `tests/PERFORMANCE.md` Phase 10.
+
 ### HLA Cython fast decode
 
 The audio stream HLA has a Cython-compiled fast decode path (`_decode_fast.pyx`) that moves the entire decode() body to C: field extraction, slot filtering, frame boundary detection, sign conversion, sample accumulation, and PCM packing. Falls back gracefully to pure Python when the extension is not compiled.
+
+**Important:** Logic 2's embedded Python does not include the HLA directory in `sys.path`. The HLA adds its own directory to `sys.path` at module load time so compiled extensions (`.pyd`/`.so`) can be found. Without this, the Cython backend silently fails to load.
 
 ```bash
 # Build the Cython extension
@@ -206,6 +224,7 @@ Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. 
 
 ### Logic 2 HLA conventions
 
+- **Logic 2 instantiates HLAs multiple times** — a setup pass then a capture pass. The first instance is never cleaned up (no `shutdown()` call). TCP servers must use class-level `_prev_instance` tracking + `gc.get_objects()` socket scan to close stale sockets before binding.
 - **Settings at class level** — Logic 2 injects values before `__init__` runs
 - `ChoicesSetting.default` must be set as a separate statement, not a kwarg
 - **Deferred error** — `__init__` wraps in try/except, stores in `self._init_error`, `decode()` emits error frame once on first call

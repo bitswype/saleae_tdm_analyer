@@ -33,6 +33,14 @@ from _tdm_utils import parse_slot_spec, _as_signed, PerfCounters
 
 _USE_FAST = None  # 'cython', 'rawc', 'cffi', or None
 
+# Logic 2 does not add the HLA directory to sys.path, so compiled
+# extensions (.pyd/.so) next to this file are not found by default.
+# Insert our directory so the Cython/rawc/cffi backends can load.
+import os as _os, sys as _sys
+_hla_dir = _os.path.dirname(_os.path.abspath(__file__))
+if _hla_dir not in _sys.path:
+    _sys.path.insert(0, _hla_dir)
+
 try:
     from _decode_fast import FastDecoder
     _USE_FAST = 'cython'
@@ -60,6 +68,10 @@ class TdmAudioStream(HighLevelAnalyzer):
 
     Settings are injected by Logic 2 before __init__ is called.
     """
+
+    # Class-level ref to the previous instance so we can shut down its
+    # server socket when Logic 2 creates a new instance (setup -> capture).
+    _prev_instance = None
 
     # -------------------------------------------------------------------------
     # Settings — declared at class level so Logic 2 discovers and renders them.
@@ -93,6 +105,32 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._sign_subtract = 1 << self._bit_depth
             self._port = int(self.tcp_port or '4011')
             self._buf_size = int(self.buffer_size or '128')
+
+            # Shut down previous instance's server socket so we can
+            # reclaim the port.  Logic 2 creates multiple HLA instances
+            # (setup pass then capture pass) without calling shutdown().
+            if TdmAudioStream._prev_instance is not None:
+                try:
+                    TdmAudioStream._prev_instance.shutdown()
+                except Exception:
+                    pass
+
+            # Force-close any existing listener on our port.  On Windows
+            # default socket behavior still blocks bind() if a previous
+            # socket in the same process holds the address.  Scan for it.
+            import gc
+            for obj in gc.get_objects():
+                if (isinstance(obj, socket.socket)
+                        and obj is not self.__dict__.get('_server_sock')
+                        and obj.fileno() != -1):
+                    try:
+                        addr = obj.getsockname()
+                        if addr == ('127.0.0.1', self._port):
+                            obj.close()
+                    except (OSError, ValueError):
+                        pass
+
+            TdmAudioStream._prev_instance = self
 
             if self._port < 1024 or self._port > 65535:
                 raise ValueError(
@@ -145,12 +183,12 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._shutdown = threading.Event()
 
             # TCP server
+            # On Unix SO_REUSEADDR allows quick rebind after restart.
+            # On Windows we use default behavior: no SO_EXCLUSIVEADDRUSE
+            # (which blocks bind when TIME_WAIT connections exist) and no
+            # SO_REUSEADDR (which allows multiple listeners on same port).
             self._server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            if sys.platform == 'win32':
-                self._server_sock.setsockopt(
-                    socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1
-                )
-            else:
+            if sys.platform != 'win32':
                 self._server_sock.setsockopt(
                     socket.SOL_SOCKET, socket.SO_REUSEADDR, 1
                 )
