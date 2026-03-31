@@ -19,7 +19,7 @@ if(NOT TARGET Saleae::AnalyzerSDK)
         # Use the full SHA for reproducible builds — branch names like 'master' are mutable.
         # To upgrade: verify new commit builds on all three platforms, then update this hash.
         GIT_TAG        114a3b8306e6a5008453546eda003db15b002027
-        GIT_SHALLOW    True
+        GIT_SHALLOW    False
         GIT_PROGRESS   True
     )
 
