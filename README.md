@@ -247,9 +247,9 @@ extensions on top of the TdmAnalyzer.
 ## HLA: TDM WAV Export
 
 Exports selected TDM slots to a WAV file in real time during capture. This is
-separate from the built-in LLA export — the HLA approach allows slot selection
+separate from the built-in LLA export - the HLA approach allows slot selection
 and writes incrementally during capture rather than as a post-capture step.
-Note: requires a standard (non-looping) capture — see
+Note: use a standard (non-looping) capture for WAV export - see
 [Known Limitations](#known-limitations).
 
 See the [TDM WAV Export README](hla-wav-export/README.md) for full documentation.
@@ -265,8 +265,8 @@ See the [TDM WAV Export README](hla-wav-export/README.md) for full documentation
 
 Streams selected TDM slots as live PCM audio over TCP. A companion CLI tool
 and GUI connect to the stream and play it through any audio output device -
-hear decoded TDM audio in real time. Note: requires a standard (non-looping)
-capture - see [Known Limitations](#known-limitations).
+hear decoded TDM audio in real time. Works with both standard and looping
+captures when Audio Batch Mode keeps the HLA at 100% throughput.
 
 See the [TDM Audio Stream README](hla-audio-stream/README.md) for full
 documentation, platform-specific setup, test harness, and debugging tips.
@@ -302,13 +302,23 @@ documentation, platform-specific setup, test harness, and debugging tips.
 
 ## Looping (rolling) capture mode
 
-Both HLAs (WAV Export and Audio Stream) will error out when used with Logic 2's
-looping capture mode. Once the circular buffer fills and Logic 2 begins
-discarding old sample data, the analyzers lose access to samples they need and
-enter an error state. This is a known Logic 2 platform limitation — see
-[Saleae's backlog error documentation](https://support.saleae.com/getting-help/troubleshooting/backlog-error)
-and the [detailed writeup in the Audio Stream README](hla-audio-stream/README.md#looping-rolling-capture-mode)
-for workarounds and references.
+Looping capture works for real-time audio streaming **as long as the HLA keeps
+up with the data rate** (progress indicator at 100%). With Audio Batch Mode
+enabled at the recommended batch size, this is reliably achievable.
+
+If the HLA falls behind (progress below 100%), Logic 2's circular buffer will
+eventually evict sample data that the analyzer still needs, causing decode
+errors. This is not a bug - it is the expected behavior when processing can't
+keep up with capture. The fix is to increase the Audio Batch Size until the
+HLA reaches 100%. See [Audio Batch Mode](#audio-batch-mode-for-real-time-streaming)
+for recommended values by configuration.
+
+For the WAV Export HLA, looping capture is not recommended - the WAV file grows
+indefinitely and there is no mechanism to wrap or truncate it when the circular
+buffer rolls over.
+
+See [Saleae's backlog error documentation](https://support.saleae.com/getting-help/troubleshooting/backlog-error)
+for background on how Logic 2 handles buffer eviction.
 
 # Install instructions
 
