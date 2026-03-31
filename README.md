@@ -137,7 +137,34 @@ Logic 2's HLA pipeline can process approximately 50,000 decode() calls per secon
 | 2         | 24,000                | Yes        |
 | 64        | 750                   | Yes        |
 
-**Recommended setting for audio streaming: batch size 64.** This provides comfortable headroom for any sample rate up to 96kHz stereo or 48kHz 4-channel.
+**Recommended batch sizes by configuration:**
+
+| Configuration | Minimum | Recommended |
+|---------------|--------:|------------:|
+| Mono 48kHz | 1 | 4 |
+| Stereo 48kHz | 2 | 4 |
+| 4-channel 48kHz | 4 | 8 |
+| 8-channel 48kHz | 8 | 16 |
+| 16-channel 48kHz | 16 | 32 |
+| 32-channel 48kHz | 32 | 64 |
+| 64-channel 48kHz | 64 | 128 |
+| 128-channel 48kHz | 128 | 256 |
+| 256-channel 48kHz | 256 | 512 |
+| Stereo 96kHz | 4 | 8 |
+| 4-channel 96kHz | 8 | 16 |
+| 8-channel 96kHz | 16 | 32 |
+| 16-channel 96kHz | 32 | 64 |
+| 32-channel 96kHz | 64 | 128 |
+| 64-channel 96kHz | 128 | 256 |
+| 128-channel 96kHz | 256 | 512 |
+| 256-channel 96kHz | 512 | 1024 |
+| Stereo 192kHz | 8 | 16 |
+| 8-channel 192kHz | 32 | 64 |
+| 32-channel 192kHz | 128 | 256 |
+| 64-channel 192kHz | 256 | 512 |
+| 128-channel 192kHz | 512 | 1024 |
+
+The formula: `minimum batch = ceil(sample_rate * channels / 50000)`, rounded up to the next power of 2. The "recommended" column doubles the minimum for headroom. Higher batch sizes add negligible latency (batch=64 at 48kHz = 1.3ms) and reduce CPU overhead further.
 
 ### Decode speed settings
 
