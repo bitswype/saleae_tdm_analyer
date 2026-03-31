@@ -121,12 +121,27 @@ ERROR                   ( 1 << 7 ) // 0x80
 
 ## Performance Tuning
 
-Two analyzer settings control the speed/detail tradeoff:
+Three analyzer settings control the speed/detail tradeoff:
 
 - **Data Table / HLA Output**: Full (all 10 FrameV2 fields), Minimal (5 fields needed by audio HLAs), or Off (no FrameV2, maximum speed). Default: Full.
 - **Waveform Markers**: All bits (per-bit arrows + data dots), Slot boundaries only, or None. Default: All bits.
+- **Audio Batch Size**: Off (one FrameV2 per slot, default) or 1-1024 TDM frames per FrameV2 (powers of 2). **Required for real-time streaming at stereo 48kHz or above.** When enabled, the Data Table / HLA Output setting is ignored and only batch frames with packed PCM data are emitted. V1 Frames, markers, and bubble text are unaffected.
 
-Real SDK measurements on 8ch/16bit TDM data:
+### Audio Batch Mode (for real-time streaming)
+
+Logic 2's HLA pipeline can process approximately 50,000 decode() calls per second. Without batching, stereo 48kHz I2S generates 96,000 calls/sec (one per slot) - only ~54% of real-time. Audio Batch Mode packs N TDM frames into a single FrameV2 with a PCM byte array, dramatically reducing calls:
+
+| Batch Size | Stereo 48kHz calls/sec | Real-time? |
+|----------:|----------------------:|:----------:|
+| Off       | 96,000                | No (~54%)  |
+| 2         | 24,000                | Yes        |
+| 64        | 750                   | Yes        |
+
+**Recommended setting for audio streaming: batch size 64.** This provides comfortable headroom for any sample rate up to 96kHz stereo or 48kHz 4-channel.
+
+### Decode speed settings
+
+Real SDK measurements on 8ch/16bit TDM data (non-batched mode):
 
 | Setting | Decode time | Speedup |
 |---------|------------:|--------:|
@@ -134,7 +149,7 @@ Real SDK measurements on 8ch/16bit TDM data:
 | Minimal + Slot markers | 1.54s | 1.8x |
 | Off + None | 0.91s | 3.1x |
 
-For **realtime audio streaming** (via the Audio Stream HLA), use **Minimal + Slot boundaries**. This provides all fields the HLA needs at 1.8x the default speed.
+For **protocol debugging** (non-batched), use **Minimal + Slot boundaries** for a good balance of speed and data table visibility.
 
 ### Disable UI display for streaming (critical)
 

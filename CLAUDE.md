@@ -154,16 +154,17 @@ cmake --build build-bench --config Release
 
 When `ENABLE_BENCHMARK_TIMING` is ON, the DLL records `steady_clock` timestamps at decode start and after each TDM frame. On analyzer destruction (closing the capture tab), it writes timing to `%USERPROFILE%\tdm_benchmark_timing.json`. Use with `tools/prepare_benchmark_captures.py` to generate .sal files with `showInDataTable=false` and `streamToTerminal=false` for accurate measurement without UI overhead. See `tests/PERFORMANCE.md` Phase 9 for the full methodology.
 
-**Correctness tests** (`tdm_correctness`): 58 tests in ten categories: happy path (11), sign conversion (6), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (10), advanced analysis error detection (3), generator blind spot tests (4), and FrameV2 field verification (8, verifying signed decode values, severity strings, error booleans, frame numbering, and low sample rate advisory via a FrameV2-capturing mock).
+**Correctness tests** (`tdm_correctness`): 67 tests in eleven categories: happy path (11), sign conversion (6), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (10), advanced analysis error detection (3), generator blind spot tests (4), FrameV2 field verification (8), and audio batch mode (9, verifying batch emission, PCM correctness, frame numbering, sample rate propagation, V1 frame preservation, 32-bit packing, signed values, and batch=1).
 
 **Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
 
 ### Performance tuning settings
 
-Two user-facing settings control the speed/detail tradeoff:
+Three user-facing settings control the speed/detail tradeoff:
 
 - **Data Table / HLA Output** (`mFrameV2Detail`): Full (all 10 FrameV2 fields), Minimal (5 fields needed by audio HLAs), or Off (no FrameV2, maximum speed). Default: Full.
 - **Waveform Markers** (`mMarkerDensity`): All bits (per-bit arrows + data dots), Slot boundaries only, or None. Default: All bits.
+- **Audio Batch Size** (`mAudioBatchSize`): Off (one FrameV2 per slot, default) or 1-1024 (powers of 2) TDM frames per FrameV2. When enabled, the Data Table / HLA Output setting is ignored and only `audio_batch` FrameV2 frames with packed PCM data are emitted. Required for real-time streaming at stereo 48kHz or above. V1 Frames, markers, and bubble text are unaffected.
 
 Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries (1.8x speedup validated on real SDK). See `tests/PERFORMANCE.md` for the full story from baseline through profiling to optimization.
 
@@ -180,13 +181,12 @@ Logic 2's Python HLA pipeline has a hard ceiling of approximately **50,000 decod
 
 | Configuration | decode() calls/sec | HLA throughput | Real-time? |
 |---------------|-------------------:|---------------:|:----------:|
-| Stereo 24kHz  | 48,000             | 100%           | Yes        |
-| Stereo 48kHz  | 96,000             | ~54%           | No         |
-| Mono 48kHz    | 96,000             | ~45%           | No         |
+| Stereo 24kHz (no batch)  | 48,000   | 100%           | Yes        |
+| Stereo 48kHz (no batch)  | 96,000   | ~54%           | No         |
+| Stereo 48kHz (batch=2)   | 24,000   | 100%           | Yes        |
+| Stereo 48kHz (batch=64)  | 750      | 100%           | Yes        |
 
-**Mono does not help.** The LLA emits one FrameV2 per slot regardless of the HLA's slot filter. For stereo I2S, there are always 2 FrameV2 per audio sample period.
-
-The only path to real-time stereo 48kHz is to reduce decode() calls by batching multiple TDM frames into a single FrameV2 in the LLA. See `tests/PERFORMANCE.md` Phase 10.
+**Audio Batch Mode is the solution.** Setting Audio Batch Size to any value >= 2 brings stereo 48kHz well under the 50k ceiling. Batch=64 is recommended for comfortable headroom. Without batching, mono does not help either - the LLA emits one FrameV2 per slot regardless of the HLA's slot filter. See `tests/PERFORMANCE.md` Phase 10.
 
 ### HLA Cython fast decode
 
