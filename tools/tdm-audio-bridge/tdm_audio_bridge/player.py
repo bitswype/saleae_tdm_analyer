@@ -102,6 +102,10 @@ class Player:
         self._prebuffer_bytes = prebuffer_frames * handshake.channels * bytes_per_sample
         self._started = False
 
+        # Volume control (0.0 = silence, 1.0 = unity, >1.0 = gain)
+        self._volume = 1.0
+        self._muted = False
+
         # Internal buffer for received PCM.
         # Uses a read offset to avoid O(n) shift on every audio callback.
         self._lock = threading.Lock()
@@ -124,6 +128,22 @@ class Player:
     def buffer_level(self):
         with self._lock:
             return (len(self._buf) - self._read_pos) / max(self._prebuffer_bytes, 1)
+
+    @property
+    def volume(self):
+        return self._volume
+
+    @volume.setter
+    def volume(self, value):
+        self._volume = max(0.0, min(float(value), 2.0))
+
+    @property
+    def muted(self):
+        return self._muted
+
+    @muted.setter
+    def muted(self, value):
+        self._muted = bool(value)
 
     def start(self):
         """Mark the player as ready to start.
@@ -215,6 +235,18 @@ class Player:
         # Convert bytes to numpy array for sounddevice
         dtype = np.int16 if hs.bit_depth == 16 else np.int32
         samples = np.frombuffer(raw, dtype=dtype).reshape(-1, hs.channels)
-        outdata[:len(samples)] = samples
-        if len(samples) < frame_count:
-            outdata[len(samples):] = 0
+
+        if self._muted:
+            outdata[:] = 0
+        else:
+            vol = self._volume
+            if vol == 1.0:
+                outdata[:len(samples)] = samples
+            else:
+                # Apply volume as float to avoid integer overflow, then clip
+                max_val = 32767 if hs.bit_depth == 16 else 2147483647
+                scaled = np.clip(samples.astype(np.float64) * vol,
+                                 -max_val - 1, max_val).astype(dtype)
+                outdata[:len(samples)] = scaled
+            if len(samples) < frame_count:
+                outdata[len(samples):] = 0

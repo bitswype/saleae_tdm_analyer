@@ -162,6 +162,28 @@ class BridgeApp:
         ttk.Radiobutton(lat_row, text='Low', variable=self._latency_var,
                         value='low').pack(side='left')
 
+        # -- Volume frame --
+        vol_frame = ttk.LabelFrame(root, text='Volume')
+        vol_frame.pack(fill='x', padx=8, pady=4)
+
+        vol_row = ttk.Frame(vol_frame)
+        vol_row.pack(fill='x', **pad)
+
+        self._mute_var = tk.BooleanVar(value=False)
+        self._mute_btn = ttk.Checkbutton(
+            vol_row, text='Mute', variable=self._mute_var,
+            command=self._on_mute_toggle)
+        self._mute_btn.pack(side='left', padx=(0, 8))
+
+        self._volume_var = tk.IntVar(value=100)
+        self._volume_scale = ttk.Scale(
+            vol_row, from_=0, to=150, orient='horizontal',
+            variable=self._volume_var, command=self._on_volume_change)
+        self._volume_scale.pack(side='left', fill='x', expand=True, padx=(0, 4))
+
+        self._volume_label = ttk.Label(vol_row, text='100%', width=5)
+        self._volume_label.pack(side='left')
+
         # -- Stats frame --
         stats_frame = ttk.LabelFrame(root, text='Stats')
         stats_frame.pack(fill='x', padx=8, pady=(4, 4))
@@ -249,6 +271,23 @@ class BridgeApp:
         """Handle window close."""
         self._disconnect()
         self._root.destroy()
+
+    # -- Volume controls --
+
+    def _on_volume_change(self, value=None):
+        """Handle volume slider change."""
+        pct = self._volume_var.get()
+        self._volume_label.config(text=f'{pct}%')
+        with self._player_lock:
+            if self._player is not None:
+                self._player.volume = pct / 100.0
+
+    def _on_mute_toggle(self):
+        """Handle mute checkbox toggle."""
+        muted = self._mute_var.get()
+        with self._player_lock:
+            if self._player is not None:
+                self._player.muted = muted
 
     # -- StreamClient callbacks (called from background thread) --
 
@@ -361,6 +400,8 @@ class BridgeApp:
             self._player = Player(
                 handshake, device=device_idx,
                 latency=self._latency_var.get())
+            self._player.volume = self._volume_var.get() / 100.0
+            self._player.muted = self._mute_var.get()
             self._player.start()
 
     def _update_stats(self):
