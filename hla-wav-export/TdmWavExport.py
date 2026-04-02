@@ -138,7 +138,8 @@ class TdmWavExport(HighLevelAnalyzer):
 
     slots = StringSetting(label='Slots to export (required, e.g. 0,1 or 0-3 or 0,2,4-7)')
     output_path = StringSetting(label='Output WAV path (e.g. C:\\capture.wav or /tmp/capture.wav)')
-    bit_depth = ChoicesSetting(['16', '32'], label='Output bit depth')
+    bit_depth = ChoicesSetting(['16', '32'],
+        label='Output bit depth (ignored in Audio Batch Mode - LLA bit depth is used)')
     bit_depth.default = '16'  # Must be a separate statement — no default= kwarg allowed
 
     # -------------------------------------------------------------------------

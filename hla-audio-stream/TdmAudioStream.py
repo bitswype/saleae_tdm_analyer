@@ -80,7 +80,8 @@ class TdmAudioStream(HighLevelAnalyzer):
     slots = StringSetting(label='Slots to stream (required, e.g. 0,1 or 0-3 or 0,2,4-7)')
     tcp_port = StringSetting(label='TCP Port. Leave blank for 4011.')
     buffer_size = StringSetting(label='Ring buffer size (frames). Leave blank for 128.')
-    bit_depth = ChoicesSetting(['16', '32'], label='Output bit depth')
+    bit_depth = ChoicesSetting(['16', '32'],
+        label='Output bit depth (ignored in Audio Batch Mode - LLA bit depth is used)')
     bit_depth.default = '16'
 
     # -------------------------------------------------------------------------
@@ -263,7 +264,9 @@ class TdmAudioStream(HighLevelAnalyzer):
                     with self._ring_lock:
                         self._ring.clear()
 
-                    # If sample rate already known, send handshake now
+                    # If sample rate already known, send handshake now.
+                    # Otherwise the handshake is deferred until decode()
+                    # derives it - the client will wait.
                     if self._sample_rate is not None:
                         self._send_handshake(client)
 
