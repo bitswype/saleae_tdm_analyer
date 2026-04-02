@@ -113,15 +113,32 @@ void test_framev2_low_sample_rate();
 // Forward declarations: test_audio_batch.cpp
 // ---------------------------------------------------------------------------
 
+// Happy path
 void test_batch_off_identical();
 void test_batch_basic();
-void test_batch_pcm_correctness();
 void test_batch_frame_number();
 void test_batch_sample_rate();
 void test_batch_v1_still_emitted();
 void test_batch_32bit();
 void test_batch_signed();
 void test_batch_1_frame();
+// PCM oracle
+void test_batch_pcm_oracle_unsigned();
+void test_batch_pcm_oracle_signed();
+void test_batch_pcm_oracle_32bit();
+void test_batch_pcm_consecutive_batches();
+// Multi-channel / bit depth
+void test_batch_4channel();
+void test_batch_8channel();
+void test_batch_8bit();
+void test_batch_24bit();
+// Edge cases
+void test_batch_large_1024();
+void test_batch_partial_fewer_than_batch();
+void test_batch_no_slot_fv2_leak();
+// Error handling / robustness
+void test_batch_with_errors();
+void test_batch_v1_values_correct();
 
 // ---------------------------------------------------------------------------
 // Main
@@ -221,16 +238,40 @@ int main()
     RunTest( "test_framev2_low_sample_rate", test_framev2_low_sample_rate );
     std::cout << std::endl;
 
-    std::cout << "Audio Batch Mode:" << std::endl;
+    std::cout << "Audio Batch Mode -- Happy Path:" << std::endl;
     RunTest( "test_batch_off_identical", test_batch_off_identical );
     RunTest( "test_batch_basic", test_batch_basic );
-    RunTest( "test_batch_pcm_correctness", test_batch_pcm_correctness );
     RunTest( "test_batch_frame_number", test_batch_frame_number );
     RunTest( "test_batch_sample_rate", test_batch_sample_rate );
     RunTest( "test_batch_v1_still_emitted", test_batch_v1_still_emitted );
     RunTest( "test_batch_32bit", test_batch_32bit );
     RunTest( "test_batch_signed", test_batch_signed );
     RunTest( "test_batch_1_frame", test_batch_1_frame );
+    std::cout << std::endl;
+
+    std::cout << "Audio Batch Mode -- PCM Oracle:" << std::endl;
+    RunTest( "test_batch_pcm_oracle_unsigned", test_batch_pcm_oracle_unsigned );
+    RunTest( "test_batch_pcm_oracle_signed", test_batch_pcm_oracle_signed );
+    RunTest( "test_batch_pcm_oracle_32bit", test_batch_pcm_oracle_32bit );
+    RunTest( "test_batch_pcm_consecutive_batches", test_batch_pcm_consecutive_batches );
+    std::cout << std::endl;
+
+    std::cout << "Audio Batch Mode -- Multi-channel / Bit Depth:" << std::endl;
+    RunTest( "test_batch_4channel", test_batch_4channel );
+    RunTest( "test_batch_8channel", test_batch_8channel );
+    RunTest( "test_batch_8bit", test_batch_8bit );
+    RunTest( "test_batch_24bit", test_batch_24bit );
+    std::cout << std::endl;
+
+    std::cout << "Audio Batch Mode -- Edge Cases:" << std::endl;
+    RunTest( "test_batch_large_1024", test_batch_large_1024 );
+    RunTest( "test_batch_partial_fewer_than_batch", test_batch_partial_fewer_than_batch );
+    RunTest( "test_batch_no_slot_fv2_leak", test_batch_no_slot_fv2_leak );
+    std::cout << std::endl;
+
+    std::cout << "Audio Batch Mode -- Error Handling / Robustness:" << std::endl;
+    RunTest( "test_batch_with_errors", test_batch_with_errors );
+    RunTest( "test_batch_v1_values_correct", test_batch_v1_values_correct );
     std::cout << std::endl;
 
     std::cout << "==============================" << std::endl;

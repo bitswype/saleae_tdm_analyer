@@ -1094,3 +1094,277 @@ def test_flush_batch_empty_is_noop(port):
     driver._hla._flush_batch()
     assert len(driver._hla._ring) == initial_ring_len
     driver.shutdown()
+
+
+# ===========================================================================
+# 16. Audio Batch Mode (LLA sends "audio_batch" frames to HLA)
+# ===========================================================================
+
+def _make_audio_batch_frame(samples, channels, bit_depth, sample_rate,
+                             start_frame_num=0, start_time=0.0):
+    """Build a FakeFrame of type 'audio_batch' with packed PCM.
+
+    Args:
+        samples: list of lists, e.g. [[ch0, ch1], [ch0, ch1], ...]
+        channels: number of channels in the LLA output
+        bit_depth: bits per sample
+        sample_rate: audio sample rate
+    """
+    num_frames = len(samples)
+    bytes_per_sample = (bit_depth + 7) // 8
+    fmt_char = {1: 'b', 2: '<h', 4: '<i'}[bytes_per_sample]
+
+    pcm = bytearray()
+    for frame_samples in samples:
+        for ch in range(channels):
+            val = frame_samples[ch] if ch < len(frame_samples) else 0
+            pcm.extend(struct.pack(fmt_char, val))
+
+    end_time = start_time + num_frames / sample_rate
+    return FakeFrame('audio_batch', start_time, end_time, {
+        'pcm_data': bytes(pcm),
+        'num_frames': num_frames,
+        'channels': channels,
+        'bit_depth': bit_depth,
+        'sample_rate': sample_rate,
+        'start_frame_number': start_frame_num,
+    })
+
+
+def _batch_stream_test(driver, port, samples, channels, bit_depth, sample_rate,
+                        slot_filter_channels=None):
+    """Helper: connect TCP client, feed batch frames, read decoded PCM.
+
+    Connects the client first so the handshake can be sent during decode.
+    Returns (handshake_dict, decoded_frames_list).
+    """
+    # Connect client first
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5.0)
+    sock.connect(('127.0.0.1', port))
+    time.sleep(0.1)  # Let accept_loop register the client
+
+    # Feed batch frame(s)
+    batch = _make_audio_batch_frame(samples, channels, bit_depth, sample_rate)
+    driver.feed([batch])
+
+    time.sleep(0.3)  # Let sender thread transmit
+
+    # Read handshake + PCM
+    sock.settimeout(2.0)
+    buf = b''
+    while b'\n' not in buf:
+        try:
+            buf += sock.recv(4096)
+        except socket.timeout:
+            break
+    if b'\n' not in buf:
+        sock.close()
+        return None, []
+
+    line, remainder = buf.split(b'\n', 1)
+    handshake = json.loads(line)
+
+    out_ch = slot_filter_channels or handshake['channels']
+    decoded = _read_frames_from_sock(sock, out_ch, bit_depth, remainder, timeout=1.0)
+    sock.close()
+    return handshake, decoded
+
+
+def test_audio_batch_basic_stream(port):
+    """Audio batch frames are forwarded to the TCP ring buffer."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128)
+
+    samples = [[100, 200], [300, 400], [500, 600], [700, 800]]
+    handshake, decoded = _batch_stream_test(driver, port, samples, 2, 16, 48000)
+
+    assert handshake is not None, "Should have received handshake"
+    assert handshake['sample_rate'] == 48000
+    assert handshake['channels'] == 2
+    assert handshake['bit_depth'] == 16
+
+    assert len(decoded) >= 4, f"Expected 4 frames, got {len(decoded)}"
+    assert decoded[0] == [100, 200]
+    assert decoded[1] == [300, 400]
+    assert decoded[2] == [500, 600]
+    assert decoded[3] == [700, 800]
+
+    driver.shutdown()
+
+
+def test_audio_batch_sample_rate_from_metadata(port):
+    """Sample rate is derived from batch metadata, not timing."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128)
+
+    # No warmup - the batch frame provides sample_rate directly
+    samples = [[1, 2]]
+    batch = _make_audio_batch_frame(samples, 2, 16, 96000)
+    driver.feed([batch])
+
+    assert driver._hla._sample_rate == 96000
+    driver.shutdown()
+
+
+def test_audio_batch_slot_filter_subset(port):
+    """HLA configured for slots 0,2 extracts only those from a 4-channel batch."""
+    driver = HlaDriver('0,2', port=port, buffer_size=128)
+
+    samples = [
+        [10, 20, 30, 40],
+        [50, 60, 70, 80],
+    ]
+    handshake, decoded = _batch_stream_test(
+        driver, port, samples, 4, 16, 48000, slot_filter_channels=2)
+
+    assert handshake['channels'] == 2
+    assert len(decoded) >= 2
+    assert decoded[0] == [10, 30], f"Expected [10, 30], got {decoded[0]}"
+    assert decoded[1] == [50, 70], f"Expected [50, 70], got {decoded[1]}"
+
+    driver.shutdown()
+
+
+def test_audio_batch_slot_filter_all_channels(port):
+    """When HLA requests all channels in order, fast path is used (no repack)."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128)
+
+    samples = [[111, 222], [333, 444]]
+    handshake, decoded = _batch_stream_test(driver, port, samples, 2, 16, 48000)
+
+    assert len(decoded) >= 2
+    assert decoded[0] == [111, 222]
+    assert decoded[1] == [333, 444]
+    driver.shutdown()
+
+
+def test_audio_batch_32bit(port):
+    """32-bit audio batch frames are handled correctly."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128, bit_depth=32)
+
+    samples = [[100000, -200000], [300000, -400000]]
+    handshake, decoded = _batch_stream_test(driver, port, samples, 2, 32, 48000)
+
+    assert handshake['bit_depth'] == 32
+    assert len(decoded) >= 2
+    assert decoded[0] == [100000, -200000]
+    assert decoded[1] == [300000, -400000]
+    driver.shutdown()
+
+
+def test_audio_batch_multiple_batches(port):
+    """Multiple consecutive audio_batch frames accumulate correctly."""
+    driver = HlaDriver('0,1', port=port, buffer_size=256)
+
+    # Connect first
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5.0)
+    sock.connect(('127.0.0.1', port))
+    time.sleep(0.1)
+
+    batch1 = _make_audio_batch_frame(
+        [[1, 2], [3, 4]], 2, 16, 48000, start_frame_num=0)
+    batch2 = _make_audio_batch_frame(
+        [[5, 6], [7, 8]], 2, 16, 48000, start_frame_num=2,
+        start_time=2/48000)
+    batch3 = _make_audio_batch_frame(
+        [[9, 10], [11, 12]], 2, 16, 48000, start_frame_num=4,
+        start_time=4/48000)
+
+    driver.feed([batch1, batch2, batch3])
+    time.sleep(0.3)
+
+    # Read handshake + all PCM
+    sock.settimeout(2.0)
+    buf = b''
+    while b'\n' not in buf:
+        buf += sock.recv(4096)
+    line, remainder = buf.split(b'\n', 1)
+    handshake = json.loads(line)
+
+    decoded = _read_frames_from_sock(sock, 2, 16, remainder, timeout=1.0)
+    sock.close()
+
+    assert len(decoded) >= 6, f"Expected 6 frames, got {len(decoded)}"
+    assert decoded[0] == [1, 2]
+    assert decoded[1] == [3, 4]
+    assert decoded[2] == [5, 6]
+    assert decoded[3] == [7, 8]
+    assert decoded[4] == [9, 10]
+    assert decoded[5] == [11, 12]
+    driver.shutdown()
+
+
+def test_audio_batch_empty_pcm_ignored(port):
+    """Batch frame with empty pcm_data is silently ignored."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128)
+
+    empty_batch = FakeFrame('audio_batch', 0.0, 0.001, {
+        'pcm_data': b'',
+        'num_frames': 0,
+        'channels': 2,
+        'bit_depth': 16,
+        'sample_rate': 48000,
+        'start_frame_number': 0,
+    })
+    result = driver._hla.decode(empty_batch)
+    assert result is None
+    assert driver._hla._frame_count == 0
+    driver.shutdown()
+
+
+def test_audio_batch_missing_fields_handled(port):
+    """Batch frame with missing optional fields doesn't crash."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128)
+
+    # Minimal batch frame - some fields missing
+    minimal_batch = FakeFrame('audio_batch', 0.0, 0.001, {
+        'pcm_data': struct.pack('<2h', 42, 43),
+        'num_frames': 1,
+        'channels': 2,
+        'bit_depth': 16,
+        'sample_rate': 48000,
+    })
+    result = driver._hla.decode(minimal_batch)
+    assert result is None
+    driver.shutdown()
+
+
+def test_audio_batch_mixed_with_slot_frames(port):
+    """Slot frames followed by batch frames both work in the same session."""
+    driver = HlaDriver('0,1', port=port, buffer_size=256)
+
+    # First: send slot frames to derive sample rate and stream some data
+    warmup(driver, sample_rate=48000, n=5)
+    driver._hla._flush_batch()
+
+    initial_count = driver._hla._frame_count
+
+    # Then: send a batch frame
+    samples = [[1000, 2000], [3000, 4000]]
+    batch = _make_audio_batch_frame(samples, 2, 16, 48000)
+    driver.feed([batch])
+
+    # frame_count should increase by num_frames in batch
+    assert driver._hla._frame_count == initial_count + 2
+
+    driver.shutdown()
+
+
+def test_audio_batch_no_sample_rate_waits(port):
+    """Batch frame without sample_rate field doesn't send data."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128)
+
+    # Batch with sample_rate=0 means unknown
+    batch = FakeFrame('audio_batch', 0.0, 0.001, {
+        'pcm_data': struct.pack('<2h', 1, 2),
+        'num_frames': 1,
+        'channels': 2,
+        'bit_depth': 16,
+        'sample_rate': 0,
+        'start_frame_number': 0,
+    })
+    result = driver._hla.decode(batch)
+    assert result is None
+    # Sample rate should still be None
+    assert driver._hla._sample_rate is None
+    driver.shutdown()
