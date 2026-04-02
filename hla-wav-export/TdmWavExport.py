@@ -333,13 +333,17 @@ class TdmWavExport(HighLevelAnalyzer):
         if not pcm_data or num_frames == 0:
             return None
 
-        # Set sample rate from LLA metadata
+        # Set sample rate and bit depth from LLA batch metadata.
+        # The batch's bit_depth is authoritative (it matches the packed PCM),
+        # so override the HLA's own bit_depth setting for WAV header accuracy.
         if self._sample_rate is None and sample_rate > 0:
             self._sample_rate = sample_rate
+        if bit_depth > 0:
+            self._bit_depth = bit_depth
 
         # Open WAV file if not yet opened
         if self._wav is None and self._sample_rate is not None:
-            self._open_wav()
+            self._open_wav(self._sample_rate)
         if self._wav is None:
             return None
 
