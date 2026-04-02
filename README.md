@@ -285,16 +285,25 @@ documentation, platform-specific setup, test harness, and debugging tips.
 
    ```bash
    pip install tools/tdm-audio-bridge/
-   tdm-audio-bridge gui
    ```
 
-   Or double-click `tools/tdm-audio-bridge/launch-gui.bat` (Windows) or run `./launch-gui.sh` (macOS/Linux).
+   Double-click `tools/tdm-audio-bridge/launch-gui.bat` (Windows) or run `./launch-gui.sh` (macOS/Linux). No terminal window on Windows.
+
+   To verify your setup before streaming, run `python check_setup.py` from the repo root.
 
 4. **Start a live capture** in Logic 2. The bridge GUI will connect and begin playing audio:
 
    ![Live streaming setup](pictures/streaming_setup.png)
 
    ![Audio bridge GUI - playing](pictures/bridge_gui_playing.png)
+
+**Audio bridge features:**
+- Volume slider (0-150%) with real-time adjustment
+- Mute toggle
+- Buffer level and underrun counter
+- Smart state detection: "Connected - waiting for stream", "Playing", "Stream ended - waiting for stream"
+- Automatic reconnection when captures start/stop
+- Detects idle streams (no data for 2 seconds) and stops playback cleanly
 
 **Important:** The HLA progress indicator must show **100%** for clean streaming. If it shows less (e.g., 54%), increase the Audio Batch Size in the LLA settings. See [Audio Batch Mode](#audio-batch-mode-for-real-time-streaming) for recommended values.
 

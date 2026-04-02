@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-04-01
+
+### Added
+
+- **Audio Batch Mode** - new "Audio Batch Size" LLA setting (Off, 1-1024 in powers of 2) packs N TDM frames into a single FrameV2 with a PCM byte array via `AddByteArray`. Reduces HLA decode() calls from 96,000/sec to 750/sec (at batch=64), enabling real-time audio streaming at stereo 48kHz and above. Both HLAs (Audio Stream and WAV Export) detect the `audio_batch` frame type and forward PCM data directly to their output, bypassing per-slot accumulation.
+- **Audio bridge volume and mute** - volume slider (0-150%) with real-time adjustment and mute toggle in the bridge GUI. Applied in the audio callback via numpy scaling with clipping. Volume above 100% acts as gain.
+- **Audio bridge smart state detection** - GUI shows distinct states: "Connecting", "Connected - waiting for stream", "Buffering", "Playing", "Stream ended - waiting for stream". Detects idle streams after 2 seconds of no data and stops playback cleanly. Detects stale HLA connections (handshake but no data). Underrun counter persists across reconnections.
+- **Buffer level display** - bridge GUI shows buffer fill percentage in real time.
+- **System check script** - `check_setup.py` validates Python, pip packages, audio dependencies, PortAudio, HLA extensions, Cython, LLA DLL, network ports, and Logic 2 automation. Provides actionable fix instructions for each failing component.
+- **`__main__.py` for tdm-audio-bridge** - package can now be run as `python -m tdm_audio_bridge`.
+- **Launch scripts** - `launch-gui.bat` (Windows, no terminal window via pythonw) and `launch-gui.sh` (macOS/Linux) for double-click GUI launch. Errors logged to `%TEMP%\tdm-audio-bridge-error.log`.
+- **Comprehensive batch mode tests** - 21 C++ LLA tests (happy path, PCM oracle with exact byte verification, multi-channel/bit-depth, edge cases, robustness) and 10 Python HLA tests (TCP streaming, slot filtering, 32-bit, multiple batches, empty/missing fields, mixed frames). Total: 79 C++ tests, 74 Python tests, all passing.
+- **Batch size recommendation table** - README includes minimum and recommended batch sizes for configurations from mono 48kHz through 256-channel 192kHz with the formula for calculating custom configurations.
+
+### Fixed
+
+- **HLA TCP server port conflict on every capture** - Logic 2 instantiates HLAs multiple times without calling shutdown(). Fixed with class-level `_prev_instance` tracking and `gc.get_objects()` socket scan to close stale sockets before binding.
+- **HLA Cython extension not loading in Logic 2** - Logic 2's embedded Python does not include the HLA directory in `sys.path`. Fixed by inserting the directory at module load time.
+- **Windows `SO_EXCLUSIVEADDRUSE` blocking rebind** - removed in favor of default socket behavior; TIME_WAIT connections no longer prevent the new HLA instance from binding.
+- **WAV Export batch mode crash** - `_open_wav()` was called without the required `sample_rate` argument when handling batch frames.
+- **WAV Export bit depth mismatch** - batch frame's bit_depth (from LLA) now overrides the HLA's own setting for correct WAV header.
+- **Em-dash in gen_version.py** - caused SyntaxError in Logic 2's Python due to non-UTF-8 encoding.
+- **CI build failure** - `GIT_SHALLOW True` with a pinned commit hash fails when the commit is no longer at the branch tip. Switched to full clone.
+
+### Changed
+
+- **Looping capture now works for audio streaming** - with Audio Batch Mode keeping the HLA at 100% throughput, the data is consumed before Logic 2 can evict it. Updated documentation to reflect this.
+- **HLA bit depth labels** - both HLAs now indicate "ignored in Audio Batch Mode - LLA bit depth is used" to clarify that the LLA is authoritative when batching.
+
 ## [2.4.0] - 2026-03-25
 
 ### Added
