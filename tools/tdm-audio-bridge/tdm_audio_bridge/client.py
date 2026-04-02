@@ -23,12 +23,14 @@ class StreamClient:
 
     def __init__(self, host='127.0.0.1', port=4011,
                  on_handshake=None, on_data=None, on_disconnect=None,
+                 on_connected=None,
                  reconnect=True, reconnect_delay=1.0):
         self._host = host
         self._port = port
         self._on_handshake = on_handshake
         self._on_data = on_data
         self._on_disconnect = on_disconnect
+        self._on_connected = on_connected
         self._reconnect = reconnect
         self._reconnect_delay = reconnect_delay
         self._stop = threading.Event()
@@ -62,7 +64,10 @@ class StreamClient:
                 sock.connect((self._host, self._port))
                 log.info("Connected to %s:%d", self._host, self._port)
 
-                # Read handshake — use a longer timeout since the HLA
+                if self._on_connected:
+                    self._on_connected()
+
+                # Read handshake - use a longer timeout since the HLA
                 # may need time to derive the sample rate before it can
                 # send the handshake (deferred handshake pattern).
                 sock.settimeout(10.0)

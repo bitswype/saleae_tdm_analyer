@@ -7,6 +7,9 @@ HLA and playing decoded audio, without requiring a terminal.
 import logging
 import queue
 import threading
+import time as _time_mod
+
+_time_monotonic = _time_mod.monotonic
 
 log = logging.getLogger('tdm-audio-bridge')
 
@@ -45,21 +48,27 @@ def _ensure_tk():
 # State constants
 _DISCONNECTED = 'disconnected'
 _CONNECTING = 'connecting'
+_WAITING = 'waiting'
 _BUFFERING = 'buffering'
 _PLAYING = 'playing'
+_STREAM_ENDED = 'stream_ended'
 
 _STATE_COLORS = {
     _DISCONNECTED: '#888888',
     _CONNECTING: '#cc8800',
-    _BUFFERING: '#cc8800',
+    _WAITING: '#cc8800',
+    _BUFFERING: '#4488cc',
     _PLAYING: '#22aa22',
+    _STREAM_ENDED: '#cc8800',
 }
 
 _STATE_LABELS = {
     _DISCONNECTED: 'Disconnected',
     _CONNECTING: 'Connecting...',
+    _WAITING: 'Connected - waiting for stream',
     _BUFFERING: 'Buffering...',
     _PLAYING: 'Playing',
+    _STREAM_ENDED: 'Stream ended - waiting for stream',
 }
 
 
@@ -75,6 +84,8 @@ class BridgeApp:
         self._state = _DISCONNECTED
         self._handshake = None
         self._last_underruns = -1
+        self._last_data_time = 0.0
+        self._data_timeout = 2.0  # seconds with no data before "stream ended"
 
         root.title('TDM Audio Bridge')
         root.resizable(False, False)
@@ -157,8 +168,11 @@ class BridgeApp:
 
         stats_inner = ttk.Frame(stats_frame)
         stats_inner.pack(fill='x', **pad)
+        self._buffer_label = ttk.Label(stats_inner, text='Buffer:    --')
+        self._buffer_label.pack(anchor='w')
         self._underruns_label = ttk.Label(stats_inner, text='Underruns: 0')
         self._underruns_label.pack(anchor='w')
+        self._total_underruns = 0
 
         # -- About button --
         bottom_row = ttk.Frame(root)
@@ -213,6 +227,7 @@ class BridgeApp:
             on_handshake=self._on_handshake,
             on_data=self._on_data,
             on_disconnect=self._on_disconnect,
+            on_connected=self._on_connected,
             reconnect=True,
         )
         self._client.start()
@@ -237,6 +252,9 @@ class BridgeApp:
 
     # -- StreamClient callbacks (called from background thread) --
 
+    def _on_connected(self):
+        self._queue.put(('connected', None))
+
     def _on_handshake(self, handshake):
         self._queue.put(('handshake', handshake))
 
@@ -245,6 +263,7 @@ class BridgeApp:
             if self._player is None:
                 return
             self._player.feed(data)
+            self._last_data_time = _time_monotonic()
             if self._player.is_playing and self._state != _PLAYING:
                 self._queue.put(('playing', None))
 
@@ -261,22 +280,55 @@ class BridgeApp:
                     msg_type, payload = self._queue.get_nowait()
                 except queue.Empty:
                     break
-                if msg_type == 'handshake':
+                if msg_type == 'connected':
+                    self._set_state(_WAITING)
+                elif msg_type == 'handshake':
                     self._handle_handshake(payload)
                 elif msg_type == 'playing':
                     self._set_state(_PLAYING)
                 elif msg_type == 'disconnect':
+                    # Accumulate underruns from the player before stopping it
+                    with self._player_lock:
+                        if self._player is not None:
+                            self._total_underruns += self._player.underruns
+                            self._player.stop()
+                            self._player = None
                     if self._client is not None:
-                        # Auto-reconnecting
-                        self._set_state(_CONNECTING)
-                        with self._player_lock:
-                            if self._player is not None:
-                                self._player.stop()
-                                self._player = None
+                        # Client will auto-reconnect. Show transitional state.
+                        # _on_connected will fire if reconnect succeeds
+                        # (Logic still open -> "waiting for stream").
+                        # If reconnect keeps failing, we stay at this state
+                        # until the user disconnects manually.
+                        was_streaming = self._state in (_PLAYING, _BUFFERING)
+                        if was_streaming:
+                            self._set_state(_STREAM_ENDED)
+                        else:
+                            self._set_state(_CONNECTING)
                     else:
                         self._set_state(_DISCONNECTED)
 
             self._update_stats()
+
+            # Detect stream ended: playing/buffering but no data received recently
+            if self._state in (_PLAYING, _BUFFERING) and self._last_data_time > 0:
+                silence = _time_monotonic() - self._last_data_time
+                if silence > self._data_timeout:
+                    with self._player_lock:
+                        if self._player is not None:
+                            self._total_underruns += self._player.underruns
+                            self._player.stop()
+                            self._player = None
+                    self._set_state(_STREAM_ENDED)
+            # Also catch buffering with no data ever received (stale HLA)
+            elif self._state == _BUFFERING and self._last_data_time == 0.0:
+                if hasattr(self, '_buffering_since'):
+                    if _time_monotonic() - self._buffering_since > self._data_timeout:
+                        with self._player_lock:
+                            if self._player is not None:
+                                self._player.stop()
+                                self._player = None
+                        self._set_state(_WAITING)
+
         except Exception as e:
             log.error('Error in GUI poll: %s', e, exc_info=True)
             self._set_state(_DISCONNECTED, f'Error: {e}')
@@ -288,6 +340,8 @@ class BridgeApp:
         from .player import Player, find_device
 
         self._handshake = handshake
+        self._buffering_since = _time_monotonic()
+        self._last_data_time = 0.0
         self._set_state(_BUFFERING)
 
         self._rate_label.config(text=f'Rate:   {handshake.sample_rate} Hz')
@@ -310,14 +364,20 @@ class BridgeApp:
             self._player.start()
 
     def _update_stats(self):
-        """Update live stats from the player (only when changed)."""
+        """Update live stats from the player."""
         with self._player_lock:
             if self._player is not None:
-                count = self._player.underruns
-                if count != self._last_underruns:
-                    self._last_underruns = count
+                total = self._total_underruns + self._player.underruns
+                if total != self._last_underruns:
+                    self._last_underruns = total
                     self._underruns_label.config(
-                        text=f'Underruns: {count}')
+                        text=f'Underruns: {total}')
+
+                level = self._player.buffer_level
+                pct = min(int(level * 100), 999)
+                self._buffer_label.config(text=f'Buffer:    {pct}%')
+            else:
+                self._buffer_label.config(text='Buffer:    --')
 
     def _set_state(self, state, detail=''):
         """Update the state indicator and label."""
@@ -326,6 +386,11 @@ class BridgeApp:
         label = detail or _STATE_LABELS.get(state, state)
         self._state_indicator.config(fg=color)
         self._state_label.config(text=label)
+
+        if state == _DISCONNECTED:
+            self._rate_label.config(text='Rate:   --')
+            self._format_label.config(text='Format: --')
+            self._slots_label.config(text='Slots:  --')
 
     # -- About modal --
 
