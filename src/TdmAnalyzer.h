@@ -33,6 +33,7 @@ class TdmAnalyzer : public Analyzer2
     void GetTdmFrame();
     void SetupForGettingFirstBit();
     void GetNextBit( BitState& data, BitState& frame, U64& sample_number );
+    void GetNextDataBit( BitState& data, U64& sample_number );
     void AccumulateSlotIntoBatch( S64 signed_value );
     void EmitAudioBatch();
 

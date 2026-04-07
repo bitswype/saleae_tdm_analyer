@@ -302,6 +302,11 @@ void TdmAnalyzer::GetTdmFrame()
     mLastDataState = mCurrentDataState;
     mLastSample = mCurrentSample;
 
+    // Fast-path flag: skip frame channel reads for interior bits when
+    // advanced analysis is off and markers are not per-bit.
+    const bool use_fast_bits = ( mSettings->mEnableAdvancedAnalysis == false )
+                            && ( mSettings->mMarkerDensity != MARKERS_ALL );
+
     for( ;; )
     {
         if( mDataBits.size() >= mSettings->mBitsPerSlot)
@@ -309,7 +314,22 @@ void TdmAnalyzer::GetTdmFrame()
             AnalyzeTdmSlot();
         }
 
-        GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
+        {
+            // Use fast data-only reads for interior bits of a slot (bits 1..N-2).
+            // Bit 0 (first after slot boundary) and bit N-1 (last before next slot)
+            // use the full read to check frame sync state.
+            U32 bits_in_slot = U32( mDataBits.size() );
+            if( use_fast_bits
+                && bits_in_slot >= 1
+                && bits_in_slot < mSettings->mBitsPerSlot - 1 )
+            {
+                GetNextDataBit( mCurrentDataState, mCurrentSample );
+            }
+            else
+            {
+                GetNextBit( mCurrentDataState, mCurrentFrameState, mCurrentSample );
+            }
+        }
 
         if( ((mSettings->mFrameSyncInverted == FS_NOT_INVERTED) && (mCurrentFrameState == BIT_HIGH) && (mLastFrameState == BIT_LOW)) ||
             ((mSettings->mFrameSyncInverted == FS_INVERTED) && (mCurrentFrameState == BIT_LOW) && (mLastFrameState == BIT_HIGH)))
@@ -421,6 +441,24 @@ void TdmAnalyzer::GetNextBit( BitState& data, BitState& frame, U64& sample_numbe
             mBitFlag |= MISSED_FRAME_SYNC | DISPLAY_AS_ERROR_FLAG;
         }
     }
+}
+
+void TdmAnalyzer::GetNextDataBit( BitState& data, U64& sample_number )
+{
+    // Fast path: read only clock and data channels. No frame sync read,
+    // no markers, no advanced analysis. Used for interior bits of a slot
+    // where frame boundary detection is not needed.
+    mBitFlag = 0;
+
+    mClock->AdvanceToNextEdge();
+    U64 data_valid_sample = mClock->GetSampleNumber();
+
+    mData->AdvanceToAbsPosition( data_valid_sample );
+    data = mData->GetBitState();
+
+    sample_number = data_valid_sample;
+
+    mClock->AdvanceToNextEdge();
 }
 
 void TdmAnalyzer::AnalyzeTdmSlot()
