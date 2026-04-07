@@ -814,6 +814,61 @@ binary blob) and HLA changes (unpack the batch in one decode() call).
     .py file are invisible to import. Explicitly inserting the directory into
     sys.path at module load time is required.
 
+## Phase 11: GetNextDataBit A/B Test on Real SDK
+
+**Date:** 2026-04-06
+**Hardware:** Khadas VIM4 -> 8ch/32bit/48kHz TDM -> Saleae Logic 2
+**Settings:** Minimal FrameV2 + Slot markers, "Show in data table" OFF, "Stream to terminal" OFF
+
+The `GetNextDataBit` optimization (committed in Phase 8, `711f01b`) skips frame
+channel reads for interior bits of each slot. On the mock benchmark it was
+unmeasurable because mock SDK calls are trivially cheap. This phase tests it
+against the real Saleae SDK using a compile-time toggle (`DISABLE_FAST_BITS`).
+
+### Build setup
+
+Two DLLs built with `ENABLE_BENCHMARK_TIMING=ON`:
+- **Baseline:** `DISABLE_FAST_BITS=ON` - all bits use full `GetNextBit` (clock + data + frame)
+- **Optimized:** `DISABLE_FAST_BITS=OFF` - interior bits use `GetNextDataBit` (clock + data only)
+
+### Results
+
+| Variant | Frames | Decode (s) | Frames/sec | Mbit/s |
+|---------|--------|-----------|------------|--------|
+| Baseline (GetNextBit only) | 338,613 | 7.07 | 47,868 | 1.53 |
+| Optimized (GetNextDataBit) | 415,497 | 8.62 | 48,219 | 1.54 |
+| **Delta** | - | - | **+0.7%** | **+0.7%** |
+
+### Analysis
+
+The optimization provides **no measurable improvement** on the real SDK. The 0.7%
+delta is within run-to-run noise.
+
+**Real SDK vs mock throughput:** The real SDK achieves ~1.54 Mbit/s vs the mock's
+~7.5 Mbit/s - roughly 5x slower per SDK call. At 8ch/32bit/48kHz (12.3 Mbit/s
+bit clock), the analyzer runs at approximately **0.12x real-time**.
+
+**Root cause confirmed:** The bottleneck is per-edge SDK call overhead, not which
+channels we read per bit. Each bit requires ~3 SDK calls regardless of the
+optimization. At 12.3M bits/sec that's ~37M SDK calls/sec - far beyond what the
+SDK can service.
+
+### Implications
+
+No analyzer-side optimization that preserves the per-bit SDK call pattern can
+achieve real-time 8ch/32bit/48kHz. The only paths forward are:
+1. Bulk edge or raw sample APIs from Saleae (does not exist today)
+2. Accepting that high-channel-count configs are not real-time capable
+3. Reducing bit depth or channel count to fit within the ~1.5 Mbit/s ceiling
+
+### Lesson learned
+
+23. **Mock benchmarks can be misleading for SDK-bound code.** The mock's
+    `AdvanceToNextEdge` is a simple array scan with no memory management overhead.
+    Real SDK calls are ~5x more expensive. Optimizations that reduce call count by
+    10-30% show zero improvement when the per-call cost dominates and the reduction
+    is insufficient to change the throughput regime.
+
 ## Document Index
 
 | Document | What it contains |

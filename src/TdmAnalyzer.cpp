@@ -304,8 +304,12 @@ void TdmAnalyzer::GetTdmFrame()
 
     // Fast-path flag: skip frame channel reads for interior bits when
     // advanced analysis is off and markers are not per-bit.
+#ifdef TDM_DISABLE_FAST_BITS
+    const bool use_fast_bits = false;
+#else
     const bool use_fast_bits = ( mSettings->mEnableAdvancedAnalysis == false )
                             && ( mSettings->mMarkerDensity != MARKERS_ALL );
+#endif
 
     for( ;; )
     {
