@@ -367,11 +367,20 @@ int main( int argc, char** argv )
         { FV2_OFF,     MARKERS_NONE,      "Off + NoMarkers (fastest)" },
     };
 
+    // Also include batch mode configs (batch=64, markers=slot)
+    struct BatchModeLabel { U32 batch_size; TdmMarkerDensity markers; const char* name; };
+    BatchModeLabel batch_modes[] = {
+        { 64,   MARKERS_SLOT_ONLY, "Batch=64 + SlotMarkers" },
+        { 64,   MARKERS_NONE,      "Batch=64 + NoMarkers" },
+        { 256,  MARKERS_NONE,      "Batch=256 + NoMarkers" },
+    };
+
     struct CompareConfig { const char* label; U32 slots; U32 bits; U32 data_bits; U32 rate; };
     CompareConfig compare_cfgs[] = {
-        { "Stereo 16-bit",    2,  16, 16, 48000 },
-        { "8-channel 16-bit", 8,  16, 16, 48000 },
-        { "8-channel 32-bit", 8,  32, 32, 48000 },
+        { "Stereo 16-bit",     2,  16, 16, 48000 },
+        { "8-channel 16-bit",  8,  16, 16, 48000 },
+        { "8-channel 32-bit",  8,  32, 32, 48000 },
+        { "16-channel 32-bit", 16, 32, 32, 48000 },
     };
 
     for( const auto& cc : compare_cfgs )
@@ -396,6 +405,42 @@ int main( int argc, char** argv )
 
             std::cout << std::fixed << std::setprecision( 1 );
             std::cout << "    " << std::setw( 35 ) << std::left << mode.name
+                      << "  " << std::setw( 8 ) << std::right << r.decode_ms << " ms"
+                      << "  " << std::setw( 5 ) << mbits << " Mbit/s"
+                      << "  " << std::setw( 5 ) << rtx << "x RT" << std::endl;
+            TDM_PROFILE_RESET();
+        }
+        std::cout << std::endl;
+    }
+
+    // Batch mode comparison
+    std::cout << "Batch Mode Comparison" << std::endl;
+    std::cout << "=====================" << std::endl;
+    std::cout << std::endl;
+
+    for( const auto& cc : compare_cfgs )
+    {
+        std::cout << "  " << cc.label << ":" << std::endl;
+        for( const auto& bm : batch_modes )
+        {
+            Config c = DefaultConfig( cc.label, num_frames );
+            c.slots_per_frame = cc.slots;
+            c.bits_per_slot = cc.bits;
+            c.data_bits_per_slot = cc.data_bits;
+            c.frame_rate = cc.rate;
+            c.sample_rate = U64( cc.rate ) * cc.slots * cc.bits * 4;
+            c.framev2_detail = FV2_FULL; // ignored by batch mode
+            c.marker_density = bm.markers;
+            c.audio_batch_size = bm.batch_size;
+
+            BenchResult r = RunBenchmark( c );
+            U64 total_bits = r.slots_decoded * cc.data_bits;
+            double decode_sec = r.decode_ms / 1000.0;
+            double mbits = ( decode_sec > 0 ) ? ( double( total_bits ) / decode_sec / 1e6 ) : 0;
+            double rtx = ( cc.rate > 0 ) ? ( double( r.slots_decoded / cc.slots ) / decode_sec / cc.rate ) : 0;
+
+            std::cout << std::fixed << std::setprecision( 1 );
+            std::cout << "    " << std::setw( 35 ) << std::left << bm.name
                       << "  " << std::setw( 8 ) << std::right << r.decode_ms << " ms"
                       << "  " << std::setw( 5 ) << mbits << " Mbit/s"
                       << "  " << std::setw( 5 ) << rtx << "x RT" << std::endl;
