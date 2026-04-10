@@ -1,4 +1,4 @@
-# TDM Audio Stream — Live PCM Streaming HLA
+# TDM Audio Stream - Live PCM Streaming HLA
 
 A Saleae Logic 2 High Level Analyzer (HLA) that streams selected TDM slots as
 live PCM audio over TCP. Listen to decoded TDM audio in real time as Logic 2
@@ -19,7 +19,7 @@ tdm-audio-bridge listen
 ```
 
 The bridge auto-detects sample rate, channels, and bit depth from the HLA
-handshake — no manual configuration needed.
+handshake - no manual configuration needed.
 
 ### GUI Mode
 
@@ -30,10 +30,10 @@ tdm-audio-bridge gui
 ```
 
 On Windows, `tdm-audio-bridge-gui.exe` (installed by pip) can be
-double-clicked directly — no console window appears.
+double-clicked directly - no console window appears.
 
-![GUI — disconnected](pictures/gui_disconnected.png)
-![GUI — playing](pictures/gui_playing.png)
+![GUI - disconnected](pictures/gui_disconnected.png)
+![GUI - playing](pictures/gui_playing.png)
 
 ## How It Works
 
@@ -73,7 +73,7 @@ On connect, the HLA sends a single newline-terminated JSON handshake:
 ```
 
 After the handshake, raw interleaved little-endian PCM follows continuously
-(int16 for 16-bit, int32 for 32-bit). There is no framing — the client uses
+(int16 for 16-bit, int32 for 32-bit). There is no framing - the client uses
 the handshake metadata to interpret the byte stream.
 
 A ring buffer (configurable size, default 128 frames) smooths timing between
@@ -95,16 +95,16 @@ Add it to your analyzer chain after the **TdmAnalyzer** LLA.
 
 | Setting | Description | Default | Example |
 |---------|-------------|---------|---------|
-| **Slots** | Slot indices to stream (comma-separated or ranges) | — | `0,1` or `0-3` or `1,3-5,7` |
+| **Slots** | Slot indices to stream (comma-separated or ranges) | - | `0,1` or `0-3` or `1,3-5,7` |
 | **TCP Port** | Local TCP server port | `4011` | `4012` |
 | **Ring Buffer Size** | Frame buffer capacity (oldest dropped on overflow) | `128` | `256` |
-| **Bit Depth** | Sample bit depth | `16` | `32` |
+| **Bit Depth** | Sample bit depth (ignored in Audio Batch Mode - LLA bit depth is used) | `16` | `32` |
 
 ## Companion CLI: tdm-audio-bridge
 
 ### Installation
 
-**Prerequisites:** Python 3.8+ and PortAudio.
+**Prerequisites:** Python 3.9+ and PortAudio.
 
 Install PortAudio first (platform-specific), then install the bridge from the
 repository root (or the root of the release zip):
@@ -248,7 +248,7 @@ HLA's decode path, and verifies the TCP output.
 pip install tools/tdm-test-harness/
 ```
 
-No additional dependencies — the harness uses only the Python standard library
+No additional dependencies - the harness uses only the Python standard library
 and Click.
 
 ### Commands
@@ -342,7 +342,7 @@ tdm-test-harness signals
 
 - Logic 2 and the HLA run normally.
 - Install the bridge with `pip install tools\tdm-audio-bridge\`.
-- PortAudio is bundled with the `sounddevice` Python package — no separate
+- PortAudio is bundled with the `sounddevice` Python package - no separate
   install needed.
 - If using WSL2 with Logic 2 on Windows, the bridge should run on Windows
   (not WSL2) for reliable audio output. The HLA's TCP server on WSL2 is
@@ -408,11 +408,11 @@ behavior when processing can't keep up with capture.
 
 **References:**
 
-- [Capture Modes](https://support.saleae.com/product/user-guide/using-logic/capture-modes) — Saleae documentation on looping mode
-- [Backlog Error](https://support.saleae.com/getting-help/troubleshooting/backlog-error) — Saleae acknowledgment of analyzer/buffer interaction issues
-- [Analyzer error in looping mode](https://discuss.saleae.com/t/analyzer-error-causes-api-code-to-wait-infinitely/3551/1) — Community report confirming buffer-size correlation
-- [Memory buffer size inaccuracy](https://discuss.saleae.com/t/logic-2-3-19-how-to-make-the-memory-buffer-size-work/944) — Buffer size does not account for analyzer memory usage
-- [Analyzer temp file accumulation](https://discuss.saleae.com/t/i2c-analyzer-hoarding-temp-files/1249) — Analyzer results not garbage-collected during looping capture
+- [Capture Modes](https://support.saleae.com/product/user-guide/using-logic/capture-modes) - Saleae documentation on looping mode
+- [Backlog Error](https://support.saleae.com/getting-help/troubleshooting/backlog-error) - Saleae acknowledgment of analyzer/buffer interaction issues
+- [Analyzer error in looping mode](https://discuss.saleae.com/t/analyzer-error-causes-api-code-to-wait-infinitely/3551/1) - Community report confirming buffer-size correlation
+- [Memory buffer size inaccuracy](https://discuss.saleae.com/t/logic-2-3-19-how-to-make-the-memory-buffer-size-work/944) - Buffer size does not account for analyzer memory usage
+- [Analyzer temp file accumulation](https://discuss.saleae.com/t/i2c-analyzer-hoarding-temp-files/1249) - Analyzer results not garbage-collected during looping capture
 
 ## Debugging
 
@@ -435,7 +435,7 @@ behavior when processing can't keep up with capture.
 1. Increase the ring buffer size in the HLA settings (default 128, try 512 or
    1024).
 2. Use `--latency high` on the bridge (default).
-3. Check system audio load — close other audio-heavy applications.
+3. Check system audio load - close other audio-heavy applications.
 4. On WSL2, switch to native Windows playback (see WSL2 Limitations above).
 5. Use `tdm-test-harness capture` + `analyze` to determine if glitches are in
    the pipeline or the audio output path.
@@ -443,7 +443,7 @@ behavior when processing can't keep up with capture.
 ### Bridge connects but no audio plays
 
 1. Verify the HLA has derived the sample rate (it needs at least 2 frames from
-   the same slot to calculate timing). Check the bridge output — it should
+   the same slot to calculate timing). Check the bridge output - it should
    show the handshake details.
 2. Verify the correct slots are selected. If the selected slots don't appear in
    the TDM data, the HLA produces silence.
@@ -481,9 +481,9 @@ tdm-test-harness analyze test.wav --freq 440
 
 ```
 decode(frame) calls:
-    ├── _try_derive_sample_rate()  — measures inter-frame timing
-    ├── _try_flush()               — flush-before-accumulate boundary detection
-    └── _accum[slot] = sample      — accumulate current frame's data
+    ├── _try_derive_sample_rate()  - measures inter-frame timing
+    ├── _try_flush()               - flush-before-accumulate boundary detection
+    └── _accum[slot] = sample      - accumulate current frame's data
                 │
                 ▼ (on frame boundary)
          _enqueue_frame()
@@ -529,13 +529,14 @@ Player (player.py)
 
 ```
 hla-audio-stream/
-├── TdmAudioStream.py    # The HLA — runs inside Logic 2
+├── TdmAudioStream.py    # The HLA - runs inside Logic 2
 ├── _tdm_utils.py        # Shared utilities (slot parsing, sign extension)
 └── extension.json       # Logic 2 extension manifest
 
 tools/tdm-audio-bridge/
 ├── tdm_audio_bridge/
-│   ├── cli.py           # Click CLI (listen, devices commands)
+│   ├── cli.py           # Click CLI (listen, gui, devices commands)
+│   ├── gui.py           # tkinter GUI (~500 lines)
 │   ├── client.py        # Auto-reconnecting TCP client
 │   ├── player.py        # sounddevice playback engine
 │   └── protocol.py      # Handshake parsing and PCM unpacking
@@ -597,4 +598,4 @@ covering Linux, macOS, and Windows.
 
 ## License
 
-Licensed under the Apache License 2.0 — see [LICENSE](../LICENSE) for details.
+Licensed under the Apache License 2.0 - see [LICENSE](../LICENSE) for details.

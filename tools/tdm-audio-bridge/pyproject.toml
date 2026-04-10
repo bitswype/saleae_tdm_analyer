@@ -6,7 +6,7 @@ backend-path = ["."]
 [project]
 name = "tdm-audio-bridge"
 version = "0.1.0"
-description = "Companion CLI for the TDM Audio Stream HLA — plays decoded TDM audio in real time"
+description = "Companion CLI for the TDM Audio Stream HLA - plays decoded TDM audio in real time"
 requires-python = ">=3.9"
 dependencies = ["click>=8.0", "sounddevice>=0.4", "numpy>=1.20"]
 

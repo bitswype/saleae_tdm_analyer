@@ -33,7 +33,7 @@ default port).
 tdm-audio-bridge listen
 
 # Specify port and output device
-tdm-audio-bridge listen --port 4011 --device 3
+tdm-audio-bridge listen --port 4011 --output 3
 
 # List available audio output devices
 tdm-audio-bridge devices
@@ -44,7 +44,7 @@ tdm-audio-bridge devices
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--port` | 4011 | TCP port to connect to |
-| `--device` | system default | Audio output device index (see `devices` command) |
+| `--output` | system default | Audio output device index or name (see `devices` command) |
 | `-v` / `-vv` | off | Verbose / debug logging |
 
 ## How it works
@@ -62,7 +62,7 @@ capture).
 ```
 tdm_audio_bridge/
   cli.py       Click CLI entry point (listen, gui, devices)
-  gui.py       tkinter GUI (~400 lines)
+  gui.py       tkinter GUI (~500 lines)
   client.py    Auto-reconnecting TCP client
   player.py    sounddevice playback engine
   protocol.py  Handshake parsing and PCM unpacking

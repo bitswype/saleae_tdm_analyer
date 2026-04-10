@@ -499,13 +499,15 @@ full configuration guide and recommended batch sizes.
 
 ## v2.4.0 - Performance tuning and OOM fix
 
-Two new analyzer settings control the decode speed/detail tradeoff. Existing
-captures will use the default (Full + All markers), so no action is needed
-for backward compatibility.
+Two new analyzer settings control the decode speed/detail tradeoff: "Data
+Table / HLA Output" (Full/Minimal/Off) and "Waveform Markers" (All/Slot/None).
+Existing captures will use the default (Full + All markers), so no action is
+needed for backward compatibility.
 
-**For realtime audio streaming users:** Set "Audio Batch Size" to 64 and
-disable "Show in data table" and "Stream to terminal" (right-click analyzer
-in sidebar). See [Performance Tuning](#performance-tuning) for details.
+**For realtime audio streaming users:** Use **Minimal + Slot boundaries** for
+a 1.8x decode speedup, and disable "Show in data table" and "Stream to
+terminal" (right-click analyzer in sidebar). See [Performance Tuning](#performance-tuning)
+for details. For batch mode (added in v2.5.0), see [the v2.5.0 section above](#v250---audio-batch-mode-for-real-time-streaming).
 
 ## v2.1.0 - FrameV2 schema overhaul
 

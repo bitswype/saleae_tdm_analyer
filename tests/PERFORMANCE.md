@@ -877,5 +877,6 @@ achieve real-time 8ch/32bit/48kHz. The only paths forward are:
 | [PROFILING_RESULTS.md](PROFILING_RESULTS.md) | Per-function timing breakdown, 16 configs, 9 instrumented sections |
 | [OPTIMIZATION_RESULTS.md](OPTIMIZATION_RESULTS.md) | LLA mode comparison: Full/Minimal/Off x All/Slot/None markers |
 | [C_EXTENSION_DESIGN.md](C_EXTENSION_DESIGN.md) | C extension design: Cython/cffi/raw C tradeoffs, scope levels, results |
-| [TESTING.md](TESTING.md) | Test architecture: 58 C++ LLA tests + 64 Python HLA tests, audit history |
+| [BENCHMARK_BASELINE_v2.5.md](BENCHMARK_BASELINE_v2.5.md) | v2.5 throughput: batch mode and 16-channel configs added to comparison matrix |
+| [TESTING.md](TESTING.md) | Test architecture: 79 C++ LLA tests + 74 Python HLA tests, audit history |
 | [../CLAUDE.md](../CLAUDE.md) | Project-level: build commands, settings, critical patterns |

@@ -137,11 +137,11 @@ for full numbers. Summary:
 Cython wins because it generates optimized C that accesses Python dicts
 directly from compiled code. cffi loses because per-call Python-to-C
 marshaling overhead dominates at high call frequencies. Raw C is between
-the two. All four backends pass the 64-test oracle.
+the two. All four backends pass the 74-test oracle.
 
 ## Correctness Oracle
 
-Any implementation must pass all 64 tests in `tests/test_hla_decode.py`:
+Any implementation must pass all 74 tests in `tests/test_hla_decode.py`:
 
 ```bash
 pytest tests/test_hla_decode.py -v

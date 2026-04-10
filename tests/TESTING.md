@@ -4,9 +4,9 @@
 
 Two test suites cover the TDM analyzer decode pipeline:
 
-**C++ LLA correctness tests** (`tests/tdm_correctness`) -- 58 tests verifying the Low Level Analyzer's decode logic via the SDK testlib. See detailed documentation below.
+**C++ LLA correctness tests** (`tests/tdm_correctness`) -- 79 tests verifying the Low Level Analyzer's decode logic via the SDK testlib. See detailed documentation below.
 
-**Python HLA decode tests** (`tests/test_hla_decode.py`) -- 64 pytest tests verifying both HLAs (audio stream and WAV export) at the unit level. Covers every branch of decode(): frame/slot filtering, sign conversion, error handling, frame boundary detection, accumulator behavior, PCM packing via TCP, batch buffer mechanics, sample rate derivation, WAV output, and C-port safety (negative ints, overflow, missing keys, ring buffer overflow, large frame numbers). Run with `pytest tests/test_hla_decode.py -v`. This suite serves as the correctness oracle for any future C/Cython reimplementation of the decode() hot path.
+**Python HLA decode tests** (`tests/test_hla_decode.py`) -- 74 pytest tests verifying both HLAs (audio stream and WAV export) at the unit level. Covers every branch of decode(): frame/slot filtering, sign conversion, error handling, frame boundary detection, accumulator behavior, PCM packing via TCP, batch buffer mechanics, sample rate derivation, WAV output, and C-port safety (negative ints, overflow, missing keys, ring buffer overflow, large frame numbers). Run with `pytest tests/test_hla_decode.py -v`. This suite serves as the correctness oracle for any future C/Cython reimplementation of the decode() hot path.
 
 **What is not tested:** GenerateBubbleText/GenerateTabularText (formatting logic), CSV/WAV export format details, settings validation (SetSettingsFromInterfaces), LoadSettings/SaveSettings serialization.
 
@@ -26,7 +26,7 @@ cmake --build build-test --target tdm_correctness                    # Linux/mac
 cmake --build build-test --config Release --target tdm_correctness   # Windows
 
 # Run (exit code 0 = all pass, 1 = any failure)
-./build-test/tests/tdm_correctness                                   # Linux/macOS
+./build-test/bin/tdm_correctness                                      # Linux/macOS
 build-test\bin\Release\tdm_correctness.exe                           # Windows
 ```
 
@@ -110,10 +110,11 @@ Before the capture mock existed, all FrameV2 stubs were no-ops, making the entir
 | `test_advanced_analysis.cpp` | 3 | Hand-crafted signals for BITCLOCK_ERROR, MISSED_DATA, MISSED_FRAME_SYNC |
 | `test_generator_blindspots.cpp` | 3 | Padding bits HIGH, DSP Mode A offset bit, low sample rate |
 | `test_framev2.cpp` | 7 | FrameV2 severity, error booleans, frame numbering, low SR advisory |
+| `test_audio_batch.cpp` | 21 | Audio batch mode: happy path (8), PCM oracle (4), multi-channel/bit-depth (4), edge cases (3), error handling (2) |
 | `tdm_test_helpers.h` | - | Declarations and macros (inline RunTest, CHECK) |
 | `tdm_test_helpers.cpp` | - | Helper implementations and shared signal generators |
 | `tdm_correctness.cpp` | - | Test runner: main() with forward declarations |
-| **Total** | **58** | |
+| **Total** | **79** | |
 
 ## Test Categories
 
@@ -225,9 +226,11 @@ The test suite was built over three rounds, each driven by independent adversari
 
 **Round 4 (cleanup):** Three more agents audited the split and documentation. Fixes: extracted signal generators to eliminate cross-file coupling, moved large functions from header to .cpp, deduplicated BitDesc conversion and misconfig boilerplate, added ERROR_FLAG_MASK constant, fixed runner category groupings, removed dead code (RunWithoutCrash), and added this documentation.
 
+**Round 5 (+21 = 79 tests):** Audio batch mode tests added for v2.5.0: batch emission, PCM byte-level oracle verification, multi-channel and 32-bit depth, edge cases (batch=1, partial flush), and error handling (batch with error frames).
+
 **HLA Round 1 (42 tests):** Initial Python HLA decode() unit test suite covering frame/slot filtering, sign conversion, error handling, frame boundaries, accumulator behavior, PCM packing via TCP, batch mechanics, sample rate derivation, init errors, and WAV export.
 
-**HLA Round 2 (+22 = 64 tests):** Three adversarial agents found: hollow tests (silence test checked count not PCM, shutdown test called flush manually), missing C port safety (negative ints, overflow, missing keys, ring overflow, large frame_nums, zero delta), weak tests (error substitution unverified, batch flush not ring-verified), missing WAV edge cases, and missing parse_slot_spec edge cases. All addressed.
+**HLA Round 2 (+22 = 64 tests, +10 batch = 74 total):** Three adversarial agents found: hollow tests (silence test checked count not PCM, shutdown test called flush manually), missing C port safety (negative ints, overflow, missing keys, ring overflow, large frame_nums, zero delta), weak tests (error substitution unverified, batch flush not ring-verified), missing WAV edge cases, and missing parse_slot_spec edge cases. All addressed.
 
 ## Known Remaining Gaps
 

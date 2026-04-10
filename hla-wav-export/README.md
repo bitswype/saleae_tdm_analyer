@@ -1,4 +1,4 @@
-# TDM WAV Export — Real-Time WAV File HLA
+# TDM WAV Export - Real-Time WAV File HLA
 
 A Saleae Logic 2 High Level Analyzer (HLA) that exports selected TDM slots to
 a WAV file in real time during capture.
@@ -14,15 +14,15 @@ than requiring a post-capture export step.
 3. Navigate to the `hla-wav-export/` folder and select `extension.json`.
 4. Add **"TDM WAV Export"** to your analyzer chain after the **TdmAnalyzer** LLA.
 5. Configure the settings (slots, output path, bit depth).
-6. Start capturing — the WAV file is written as frames arrive.
+6. Start capturing - the WAV file is written as frames arrive.
 
 ## Settings
 
 | Setting | Description | Default | Example |
 |---------|-------------|---------|---------|
-| **Slots** | Slot indices to export as WAV channels (comma-separated or ranges) | — | `0,2` or `0-3` or `1,3-5,7` |
-| **Output Path** | **Absolute** path to the output `.wav` file | — | `/home/user/captures/output.wav` |
-| **Bit Depth** | Sample bit depth | `16` | `32` |
+| **Slots** | Slot indices to export as WAV channels (comma-separated or ranges) | - | `0,2` or `0-3` or `1,3-5,7` |
+| **Output Path** | **Absolute** path to the output `.wav` file | - | `/home/user/captures/output.wav` |
+| **Bit Depth** | Sample bit depth (ignored in Audio Batch Mode - LLA bit depth is used) | `16` | `32` |
 
 ### Absolute Paths Required
 
@@ -36,14 +36,14 @@ against the Logic 2 application directory, not your working directory.
 ## How It Works
 
 - The HLA reads FrameV2 slot frames from the upstream TdmAnalyzer LLA.
-- Only the slots listed in **Slots** are written — others are discarded.
+- Only the slots listed in **Slots** are written - others are discarded.
 - Channels appear in the WAV in the order slots were specified, not sorted
   ascending. Specifying `4,2,0` produces a 3-channel WAV with slot 4 as
   channel 1, slot 2 as channel 2, and slot 0 as channel 3.
 - The sample rate is derived automatically from the timing of decoded frames
   (same mechanism as the Audio Stream HLA).
 - The WAV header is updated after every frame, so partial captures are
-  playable — if you stop capture early, the WAV file is still valid.
+  playable - if you stop capture early, the WAV file is still valid.
 - LLA error frames (short slot, bitclock error) produce silence in the WAV
   rather than crashing or corrupting the output.
 - If **Output Path** is empty or **Slots** is invalid, the HLA emits a readable
@@ -64,17 +64,11 @@ Duplicates are removed while preserving insertion order.
 
 ## Output Format
 
-- **Standard PCM WAV** for captures that fit within 4 GiB.
-- **RF64** (EBU TECH 3306) for captures exceeding 4 GiB — the threshold is
-  computed automatically from frame count, channel count, and bit depth.
-- Bit depth mapping:
-  ```
-   2 -  8 data bits :  8 bits per channel
-   9 - 16 data bits : 16 bits per channel
-  17 - 32 data bits : 32 bits per channel
-  ```
-- Data values are always scaled so that the full range of the output bit depth
-  is used.
+- **Standard PCM WAV** using Python's `wave` module.
+- Output bit depth is 16 or 32 as selected in the HLA settings (no automatic
+  tiering based on data bits).
+- Data values are sign-extended to the output bit depth and written as-is
+  (no scaling is applied).
 
 ## Comparison with LLA WAV Export
 
@@ -87,7 +81,7 @@ action. The key differences:
 | Slot selection | All slots (channel count from settings) | User-selected slots only |
 | Channel ordering | Sequential | User-specified order |
 | Partial capture | Must complete export | WAV valid at any point |
-| RF64 support | Yes (>4 GiB) | Yes (>4 GiB) |
+| RF64 support | Yes (>4 GiB) | No (standard PCM WAV only) |
 | Configuration | Analyzer settings dropdown | HLA settings panel |
 
 Use the HLA when you want real-time output, slot selection, or custom channel
@@ -101,7 +95,7 @@ after capture.
   error in the Logic 2 protocol table.
 - **LLA error frames** (short slot, bitclock error) produce zero-value samples
   rather than propagating corrupted data.
-- The **deferred-error pattern** ensures that `__init__` never raises — Logic 2
+- The **deferred-error pattern** ensures that `__init__` never raises - Logic 2
   would silently swallow the exception, leaving the user with no feedback.
 
 ## Architecture
@@ -111,9 +105,9 @@ TdmAnalyzer LLA
     │ FrameV2 slot frames
     ▼
 TdmWavExport HLA (decode)
-    ├── _try_derive_sample_rate()  — measures inter-frame timing
-    ├── _try_flush()               — flush-before-accumulate boundary detection
-    ├── _accum[slot] = sample      — accumulate current frame's data
+    ├── _try_derive_sample_rate()  - measures inter-frame timing
+    ├── _try_flush()               - flush-before-accumulate boundary detection
+    ├── _accum[slot] = sample      - accumulate current frame's data
     │         │
     │         ▼ (on frame boundary)
     │    _flush_frame()
@@ -126,11 +120,11 @@ TdmWavExport HLA (decode)
 
 ### Key Design Patterns
 
-- **Settings at class level** — Logic 2 injects setting values before `__init__`
+- **Settings at class level** - Logic 2 injects setting values before `__init__`
   runs. Settings are declared as class attributes, not constructor parameters.
 - **`ChoicesSetting.default`** must be set as a separate statement after
-  declaration, not as a kwarg — passing `default=` raises TypeError.
-- **Flush-before-accumulate** — `_try_flush(frame_num)` is called before
+  declaration, not as a kwarg - passing `default=` raises TypeError.
+- **Flush-before-accumulate** - `_try_flush(frame_num)` is called before
   accumulating the new slot's data, ensuring the flush reads the previous
   frame's clean accumulator.
 - **`try/except ImportError`** guard around `saleae.analyzers` enables running
@@ -157,4 +151,4 @@ for details and workarounds.
 
 ## License
 
-Licensed under the Apache License 2.0 — see [LICENSE](../LICENSE) for details.
+Licensed under the Apache License 2.0 - see [LICENSE](../LICENSE) for details.

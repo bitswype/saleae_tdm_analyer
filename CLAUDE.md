@@ -29,7 +29,7 @@ hla-audio-stream/             Python HLA - live audio streaming
   extension.json              Logic 2 extension manifest
 
 tools/tdm-test-harness/       Standalone test harness (no Logic 2 needed)
-  tdm_test_harness/cli.py     Click CLI: serve, verify, capture, analyze, quality-sweep, signals
+  tdm_test_harness/cli.py     Click CLI: serve, verify, capture, analyze, quality-sweep, signals, profile
   tdm_test_harness/signals.py Signal generators (sine, silence, ramp, WAV)
   tdm_test_harness/frame_emitter.py  Converts samples to fake AnalyzerFrames
   tdm_test_harness/hla_driver.py     Drives HLA outside Logic 2
@@ -39,7 +39,7 @@ tools/tdm-audio-bridge/       Companion CLI + GUI - plays streamed audio
   _build.py                   Custom setuptools backend (auto-generates _version.py)
   gen_version.py              Generates _version.py from git describe
   tdm_audio_bridge/cli.py     Click CLI: listen, gui, devices
-  tdm_audio_bridge/gui.py     tkinter GUI (~400 lines)
+  tdm_audio_bridge/gui.py     tkinter GUI (~500 lines)
   tdm_audio_bridge/client.py  Auto-reconnecting TCP client
   tdm_audio_bridge/player.py  sounddevice playback engine
   tdm_audio_bridge/protocol.py  Handshake parsing and PCM unpacking
@@ -62,7 +62,7 @@ cmake -B build -A x64
 cmake --build build --config Release
 ```
 
-Output: `build/Analyzers/libtdm_analyzer.so` (Linux/macOS) or `build\Analyzers\Release\tdm_analyzer.dll` (Windows).
+Output: `build/Analyzers/libtdm_analyzer.so` (Linux), `build/<arch>/Analyzers/libtdm_analyzer.so` (macOS), or `build\Analyzers\Release\tdm_analyzer.dll` (Windows).
 
 ### Python tools
 
@@ -156,7 +156,7 @@ cmake --build build-bench --config Release
 
 When `ENABLE_BENCHMARK_TIMING` is ON, the DLL records `steady_clock` timestamps at decode start and after each TDM frame. On analyzer destruction (closing the capture tab), it writes timing to `%USERPROFILE%\tdm_benchmark_timing.json`. Use with `tools/prepare_benchmark_captures.py` to generate .sal files with `showInDataTable=false` and `streamToTerminal=false` for accurate measurement without UI overhead. See `tests/PERFORMANCE.md` Phase 9 for the full methodology.
 
-**Correctness tests** (`tdm_correctness`): 67 tests in eleven categories: happy path (11), sign conversion (6), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (10), advanced analysis error detection (3), generator blind spot tests (4), FrameV2 field verification (8), and audio batch mode (9, verifying batch emission, PCM correctness, frame numbering, sample rate propagation, V1 frame preservation, 32-bit packing, signed values, and batch=1).
+**Correctness tests** (`tdm_correctness`): 79 tests in eleven categories: happy path (11), sign conversion (8), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (9), advanced analysis error detection (3), generator blind spot tests (3), FrameV2 field verification (8), and audio batch mode (21 across 5 sub-categories: happy path 8, PCM oracle 4, multi-channel/bit-depth 4, edge cases 3, error handling 2).
 
 **Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
 
@@ -205,7 +205,7 @@ python setup_cython.py build_ext --inplace
 
 Four backends were implemented and compared (Cython, raw C extension, cffi, pure Python). Cython is the fastest (4-7x over baseline), with a four-tier fallback chain: Cython > rawc > cffi > Python. See `tests/PERFORMANCE.md` for the full comparison and `tests/C_EXTENSION_DESIGN.md` for the design rationale.
 
-All backends validated by a 64-test oracle (`tests/test_hla_decode.py`) covering every branch of decode() including C-port-specific edge cases.
+All backends validated by a 74-test oracle (`tests/test_hla_decode.py`) covering every branch of decode() including C-port-specific edge cases.
 
 ### Sender batching optimization
 
@@ -239,7 +239,7 @@ Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. 
 - JSON handshake line (newline-terminated) with: protocol, sample_rate, channels, bit_depth, slot_list, buffer_size, byte_order
 - Then raw interleaved little-endian PCM (int16 or int32)
 - Ring buffer (deque with maxlen) drops oldest frames on overflow
-- `SO_REUSEADDR` on all platforms (SO_EXCLUSIVEADDRUSE was removed in v2.5.0 to fix port rebind during HLA re-instantiation)
+- `SO_REUSEADDR` on non-Windows platforms; Windows uses default socket behavior (SO_EXCLUSIVEADDRUSE was removed in v2.5.0 to fix port rebind during HLA re-instantiation)
 
 ### FrameV2 schema (v2.1.0+)
 

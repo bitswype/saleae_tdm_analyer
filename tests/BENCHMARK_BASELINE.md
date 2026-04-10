@@ -35,7 +35,7 @@ Realtime factor = decoded TDM frames per second / frame rate (>1.0 means faster 
 | 15 | 96 kHz 16-channel 32-bit | 4.8 | 0.1x |
 | 16 | 32-channel 32-bit +advanced | 3.9 | 0.1x |
 
-### WSL2 (g++ 13.3.0, Release, x86_64) — same hardware
+### WSL2 (g++ 13.3.0, Release, x86_64) - same hardware
 
 | # | Configuration | Throughput (Mbit/s) | Realtime factor |
 |---|--------------|--------------------:|----------------:|
@@ -62,7 +62,7 @@ Realtime factor = decoded TDM frames per second / frame rate (>1.0 means faster 
 
 - **MSVC is ~30-40% faster** than GCC under WSL2 across all configurations.
   Native Windows throughput ranges 3.9-6.5 Mbit/s vs WSL2's 2.1-4.7 Mbit/s.
-- **Best throughput:** Stereo 64-bit at 6.5 Mbit/s (MSVC) — wider slots amortize
+- **Best throughput:** Stereo 64-bit at 6.5 Mbit/s (MSVC) - wider slots amortize
   per-slot overhead.
 - **Advanced analysis overhead:** ~20-25% slower than basic mode (consistent across
   both platforms).
@@ -71,5 +71,5 @@ Realtime factor = decoded TDM frames per second / frame rate (>1.0 means faster 
 - **Memory:** All 16 tests ran at full 48000 frames on native Windows. WSL2 hit memory
   limits on test 16 (had to reduce to 5000 frames).
 - **High channel counts** (32-64 channels) are throughput-limited by per-slot frame
-  generation overhead, not raw decode speed — throughput stays roughly constant while
+  generation overhead, not raw decode speed - throughput stays roughly constant while
   realtime factor drops proportionally to channel count.

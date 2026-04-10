@@ -20,7 +20,7 @@ This project is a work in progress, and so is this contributing guide. If anythi
 **Python (HLAs and tools):**
 - Python 3.9+
 - pip (for installing the tools in editable mode)
-- PortAudio (for tdm-audio-bridge playback - `sudo apt install portaudio19-dev` on Linux)
+- PortAudio (for tdm-audio-bridge playback - `sudo apt install libportaudio2` on Linux, `brew install portaudio` on macOS)
 - sox (optional, for audio quality analysis)
 
 ### Clone and build
@@ -29,9 +29,13 @@ This project is a work in progress, and so is this contributing guide. If anythi
 git clone git@github.com:bitswype/saleae_tdm_analyer.git
 cd saleae_tdm_analyer
 
-# Build the C++ LLA
+# Build the C++ LLA (Linux/macOS)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
+
+# Build the C++ LLA (Windows - from Developer Command Prompt)
+# cmake -B build -A x64
+# cmake --build build --config Release
 
 # Install the Python tools (editable mode, so changes take effect immediately)
 pip install -e tools/tdm-test-harness/
@@ -114,10 +118,17 @@ receiver knows how to unpack the PCM data.
 Before submitting, make sure the tests pass:
 
 ```bash
-# C++ correctness tests (67 tests, requires BUILD_TESTS=ON cmake build)
+# C++ correctness tests (79 tests, requires BUILD_TESTS=ON cmake build)
 cmake -B build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release  # Linux/macOS
-cmake --build build-test --target tdm_correctness
-./build-test/bin/tdm_correctness                                  # exit code 0 = pass
+cmake -B build-test -DBUILD_TESTS=ON -A x64                      # Windows
+cmake --build build-test --target tdm_correctness                 # Linux/macOS
+cmake --build build-test --config Release --target tdm_correctness  # Windows
+./build-test/bin/tdm_correctness                                  # Linux/macOS
+build-test\bin\Release\tdm_correctness.exe                        # Windows
+
+# Python HLA decode tests (74 tests)
+pip install pytest
+pytest tests/test_hla_decode.py -v
 
 # Stress/reliability tests
 python tests/test_stress_reliability.py
@@ -149,7 +160,7 @@ The C++ correctness tests run against mock SDK stubs - no Logic 2 needed. The Py
 
 ### CI
 
-GitHub Actions builds the C++ LLA on all three platforms (Windows, macOS x86_64 + arm64, Linux) and runs the correctness test suite (67 tests) on every push and PR. You'll see the results on your PR automatically.
+GitHub Actions builds the C++ LLA on all three platforms (Windows, macOS x86_64 + arm64, Linux) and runs the correctness test suite (79 tests) on every push and PR. You'll see the results on your PR automatically.
 
 ---
 
