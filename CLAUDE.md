@@ -1,12 +1,12 @@
-# CLAUDE.md — TDM Analyzer
+# CLAUDE.md - TDM Analyzer
 
 ## Overview
 
 Saleae Logic 2 analyzer plugin for decoding TDM (Time Division Multiplexing) audio data. Three layers:
 
-1. **C++ LLA** (`src/`) — Low Level Analyzer plugin, decodes raw signals into FrameV2 slot frames
-2. **Python HLA: WAV Export** (`hla-wav-export/`) — writes selected slots to a WAV file during capture
-3. **Python HLA: Audio Stream** (`hla-audio-stream/`) — streams selected slots as live PCM over TCP
+1. **C++ LLA** (`src/`) - Low Level Analyzer plugin, decodes raw signals into FrameV2 slot frames
+2. **Python HLA: WAV Export** (`hla-wav-export/`) - writes selected slots to a WAV file during capture
+3. **Python HLA: Audio Stream** (`hla-audio-stream/`) - streams selected slots as live PCM over TCP
 
 Plus two companion Python CLI tools in `tools/`.
 
@@ -14,16 +14,16 @@ Plus two companion Python CLI tools in `tools/`.
 
 ```
 src/                          C++ LLA plugin (CMake build)
-  TdmAnalyzer.cpp/h           Main analyzer — WorkerThread decodes TDM frames
+  TdmAnalyzer.cpp/h           Main analyzer - WorkerThread decodes TDM frames
   TdmAnalyzerSettings.cpp/h   User-configurable settings
   TdmAnalyzerResults.cpp/h    FrameV2 output (10 fields per slot frame)
   TdmSimulationDataGenerator.* Simulation data for Logic 2
 
-hla-wav-export/               Python HLA — WAV export
+hla-wav-export/               Python HLA - WAV export
   TdmWavExport.py             Writes selected slots to WAV file
   extension.json              Logic 2 extension manifest
 
-hla-audio-stream/             Python HLA — live audio streaming
+hla-audio-stream/             Python HLA - live audio streaming
   TdmAudioStream.py           TCP server streaming PCM to companion CLI
   _tdm_utils.py               Shared utilities (parse_slot_spec, _as_signed)
   extension.json              Logic 2 extension manifest
@@ -35,7 +35,7 @@ tools/tdm-test-harness/       Standalone test harness (no Logic 2 needed)
   tdm_test_harness/hla_driver.py     Drives HLA outside Logic 2
   tdm_test_harness/verifier.py       TCP client for automated verification
 
-tools/tdm-audio-bridge/       Companion CLI + GUI — plays streamed audio
+tools/tdm-audio-bridge/       Companion CLI + GUI - plays streamed audio
   _build.py                   Custom setuptools backend (auto-generates _version.py)
   gen_version.py              Generates _version.py from git describe
   tdm_audio_bridge/cli.py     Click CLI: listen, gui, devices
@@ -66,9 +66,11 @@ Output: `build/Analyzers/libtdm_analyzer.so` (Linux/macOS) or `build\Analyzers\R
 
 ### Python tools
 
+Requires Python 3.9+.
+
 ```bash
 pip install tools/tdm-test-harness/
-pip install tools/tdm-audio-bridge/  # requires PortAudio
+pip install tools/tdm-audio-bridge/  # requires PortAudio (Linux: libportaudio2, macOS: brew install portaudio)
 ```
 
 ## Testing
@@ -111,7 +113,7 @@ The `analyze` command uses sox to:
 1. Signal integrity: 24kHz, 44.1kHz, 48kHz, 96kHz mono 16-bit
 2. Multi-channel: stereo, 4-channel
 3. 32-bit depth
-4. Loop boundary: phase-perfect 440Hz sine (sox-generated), captures across 2+ boundaries, notch-filter verified — any detected glitch is a pipeline bug, not content mismatch
+4. Loop boundary: phase-perfect 440Hz sine (sox-generated), captures across 2+ boundaries, notch-filter verified - any detected glitch is a pipeline bug, not content mismatch
 5. Reconnection resilience: disconnect mid-stream, reconnect, verify clean handshake + data
 6. Buffer pressure: 32-frame ring buffer, verify data integrity (frame alignment, amplitude, sign balance) despite heavy overflow
 
@@ -122,16 +124,16 @@ The `analyze` command uses sox to:
 cmake -B build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build-test --target tdm_correctness --target tdm_benchmark
 
-# Build (Windows — from Developer Command Prompt)
+# Build (Windows - from Developer Command Prompt)
 cmake -B build-test -DBUILD_TESTS=ON -A x64
 cmake --build build-test --config Release --target tdm_correctness --target tdm_benchmark
 
 # Correctness tests (exit code 0 = pass)
-./build-test/tests/tdm_correctness              # Linux/macOS
+./build-test/bin/tdm_correctness                 # Linux/macOS
 build-test\bin\Release\tdm_correctness.exe       # Windows
 
 # Performance benchmark (48000 frames = 1 second at 48 kHz)
-./build-test/tests/tdm_benchmark 48000           # Linux/macOS
+./build-test/bin/tdm_benchmark 48000             # Linux/macOS
 build-test\bin\Release\tdm_benchmark.exe 48000   # Windows
 
 # Profiled benchmark (per-function timing breakdown)
@@ -224,11 +226,11 @@ Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. 
 
 ### Logic 2 HLA conventions
 
-- **Logic 2 instantiates HLAs multiple times** — a setup pass then a capture pass. The first instance is never cleaned up (no `shutdown()` call). TCP servers must use class-level `_prev_instance` tracking + `gc.get_objects()` socket scan to close stale sockets before binding.
-- **Settings at class level** — Logic 2 injects values before `__init__` runs
+- **Logic 2 instantiates HLAs multiple times** - a setup pass then a capture pass. The first instance is never cleaned up (no `shutdown()` call). TCP servers must use class-level `_prev_instance` tracking + `gc.get_objects()` socket scan to close stale sockets before binding.
+- **Settings at class level** - Logic 2 injects values before `__init__` runs
 - `ChoicesSetting.default` must be set as a separate statement, not a kwarg
-- **Deferred error** — `__init__` wraps in try/except, stores in `self._init_error`, `decode()` emits error frame once on first call
-- **Flush-before-accumulate** — `_try_flush(frame_num)` MUST be called before `self._accum[slot] = sample`
+- **Deferred error** - `__init__` wraps in try/except, stores in `self._init_error`, `decode()` emits error frame once on first call
+- **Flush-before-accumulate** - `_try_flush(frame_num)` MUST be called before `self._accum[slot] = sample`
 - `try/except ImportError` guard around `saleae.analyzers` enables running outside Logic 2
 - `decode()` returns `None` for normal operation
 
@@ -237,7 +239,7 @@ Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. 
 - JSON handshake line (newline-terminated) with: protocol, sample_rate, channels, bit_depth, slot_list, buffer_size, byte_order
 - Then raw interleaved little-endian PCM (int16 or int32)
 - Ring buffer (deque with maxlen) drops oldest frames on overflow
-- `SO_EXCLUSIVEADDRUSE` on Windows, `SO_REUSEADDR` on Unix
+- `SO_REUSEADDR` on all platforms (SO_EXCLUSIVEADDRUSE was removed in v2.5.0 to fix port rebind during HLA re-instantiation)
 
 ### FrameV2 schema (v2.1.0+)
 
@@ -245,7 +247,7 @@ Slot frames have these fields: `slot`, `data`, `frame_number`, `severity`, `shor
 
 ## Git Conventions
 
-- Tags: `vX.Y.Z` (e.g. v2.0.0, v2.1.0, v2.2.0, v2.3.0) - semantic versioning
+- Tags: `vX.Y.Z` (e.g. v2.0.0 through v2.5.0) - semantic versioning
 - Remote: SSH (`git@github.com:bitswype/saleae_tdm_analyer.git`)
 
 ## CI / Release
@@ -253,10 +255,11 @@ Slot frames have these fields: `slot`, `data`, `frame_number`, `severity`, `shor
 - GitHub Actions workflow: `.github/workflows/build.yml`
 - Triggers on push to main, tags, and PRs
 - Builds C++ LLA for Windows, macOS (x86_64 + arm64), Linux
+- Runs `tdm_correctness` (67 C++ tests) on all three platforms
 - Tagged builds create a GitHub Release with `analyzer.zip` containing:
-  - Platform-specific LLA binaries
-  - `hla-wav-export/` and `hla-audio-stream/` (Python HLAs)
-  - `tools/` (tdm-audio-bridge and tdm-test-harness)
-  - `README.md` and `LICENSE`
-  - Pre-generated `_version.py` (via `gen_version.py` with `fetch-depth: 0`)
+ - Platform-specific LLA binaries
+ - `hla-wav-export/` and `hla-audio-stream/` (Python HLAs)
+ - `tools/` (tdm-audio-bridge and tdm-test-harness)
+ - `README.md` and `LICENSE`
+ - Pre-generated `_version.py` (via `gen_version.py` with `fetch-depth: 0`)
 - `_build.py` custom setuptools backend auto-generates `_version.py` during `pip install`
