@@ -1,9 +1,5 @@
 build/
-build-release/
-build-debug/
-build-test/
-build-prof/
-build-bench/
+build-*/
 **.vscode
 **.code-workspace
 **.vscode-ctags
@@ -11,3 +7,11 @@ __pycache__/
 *.egg-info/
 _version.py
 tmp/
+dist/
+.pytest_cache/
+
+# Cython / C extension build artifacts
+hla-audio-stream/*.c
+hla-audio-stream/*.pyd
+hla-audio-stream/*.so
+hla-audio-stream/Release/

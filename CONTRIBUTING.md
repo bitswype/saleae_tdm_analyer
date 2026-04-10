@@ -18,7 +18,7 @@ This project is a work in progress, and so is this contributing guide. If anythi
   - Windows: Visual Studio 2017+ with "Desktop development with C++"
 
 **Python (HLAs and tools):**
-- Python 3.8+
+- Python 3.9+
 - pip (for installing the tools in editable mode)
 - PortAudio (for tdm-audio-bridge playback - `sudo apt install portaudio19-dev` on Linux)
 - sox (optional, for audio quality analysis)
@@ -43,14 +43,17 @@ The Saleae AnalyzerSDK is fetched automatically by CMake - no manual download ne
 ### Verify everything works
 
 ```bash
+# Check your environment (Python, PortAudio, packages, HLA files, LLA binary)
+python check_setup.py
+
 # Run the stress/reliability tests (no Logic 2 or hardware needed)
-python3 tests/test_stress_reliability.py
+python tests/test_stress_reliability.py
 
 # Run the test harness verification suite
 tdm-test-harness verify --signal sine:440 --duration 0.5 --json
 ```
 
-If both pass, you're good to go.
+`check_setup.py` reports PASS, WARN, or FAIL for each component. FAIL items must be fixed (missing packages, wrong Python version). WARN items are optional (Cython not compiled, LLA not built yet, Logic 2 not running). If the stress tests and verification pass, you're good to go.
 
 ---
 
@@ -111,8 +114,13 @@ receiver knows how to unpack the PCM data.
 Before submitting, make sure the tests pass:
 
 ```bash
+# C++ correctness tests (67 tests, requires BUILD_TESTS=ON cmake build)
+cmake -B build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release  # Linux/macOS
+cmake --build build-test --target tdm_correctness
+./build-test/bin/tdm_correctness                                  # exit code 0 = pass
+
 # Stress/reliability tests
-python3 tests/test_stress_reliability.py
+python tests/test_stress_reliability.py
 
 # Signal verification (quick check)
 tdm-test-harness verify --signal sine:440 --duration 0.5 --json
@@ -121,7 +129,7 @@ tdm-test-harness verify --signal sine:440 --duration 0.5 --json
 tdm-test-harness quality-sweep
 ```
 
-The test harness runs entirely without Logic 2 or real hardware. It drives the HLA code directly using a fake frame emitter, so you can test the full audio pipeline from your development machine.
+The C++ correctness tests run against mock SDK stubs - no Logic 2 needed. The Python test harness drives the HLA code directly using a fake frame emitter, so you can test the full audio pipeline from your development machine.
 
 ---
 
@@ -141,7 +149,7 @@ The test harness runs entirely without Logic 2 or real hardware. It drives the H
 
 ### CI
 
-GitHub Actions builds the C++ LLA on all three platforms (Windows, macOS x86_64 + arm64, Linux) on every push and PR. You'll see the results on your PR automatically.
+GitHub Actions builds the C++ LLA on all three platforms (Windows, macOS x86_64 + arm64, Linux) and runs the correctness test suite (67 tests) on every push and PR. You'll see the results on your PR automatically.
 
 ---
 

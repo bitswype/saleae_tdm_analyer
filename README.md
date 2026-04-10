@@ -1,43 +1,179 @@
 # TDM Analyzer
 
-A Saleae Logic 2 analyzer for decoding TDM audio data — from raw bitclock and frame sync signals to playable audio in real time.
+A [Saleae Logic 2](https://www.saleae.com/) analyzer plugin for decoding **TDM** (Time Division Multiplexing) audio data - from raw bitclock and frame sync signals to playable audio in real time.
 
-- **Decode** — Supports 1-256 slots, 2-64 bit depth, MSB/LSB, left/right justified, with full error detection
-- **Stream** — Hear decoded audio live through your speakers or route it to a virtual sound card (VB-Cable, BlackHole) for recording in any DAW
-- **Export** — Write selected slots to WAV files in real time during capture, with RF64 support for recordings over 4 GiB
+TDM is a multi-channel digital audio bus used in professional audio ICs, automotive infotainment systems, DSPs, and codec chips. If you're probing I2S, LJ, RJ, DSP, or TDM signals with a Saleae logic analyzer, this plugin decodes them.
+
+- **Decode** - Supports 1-256 slots, 2-64 bit depth, MSB/LSB, left/right justified, with full error detection
+- **Stream** - Hear decoded audio live through your speakers or route it to a virtual sound card (VB-Cable, BlackHole) for recording in any DAW
+- **Export** - Write selected slots to WAV files in real time during capture, with RF64 support for recordings over 4 GiB
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?style=flat&logo=buy-me-a-coffee)](https://buymeacoffee.com/bitswype)
 
+## Quick Start
+
+### Prerequisites
+
+| Requirement | Details |
+|-------------|---------|
+| **Saleae Logic 2** | Version 2.3.43 or later. [Download here](https://www.saleae.com/downloads/). |
+| **A Saleae logic analyzer** | Any model that supports digital channels (Logic 8, Logic Pro 8, Logic Pro 16). |
+| **A TDM/I2S signal to capture** | Three wires: bit clock (BCLK/SCK), frame sync (LRCLK/WS/FSYNC), and serial data (DOUT/SD). |
+
+### Step 1: Download the release
+
+Download `analyzer.zip` from the [latest GitHub Release](https://github.com/bitswype/saleae_tdm_analyer/releases/latest) and unzip it.
+
+The zip contains platform-specific binaries (`windows/`, `macos_x86_64/`, `macos_arm64/`, `linux/`), two Python HLA extensions, and companion tools.
+
+### Step 2: Load the analyzer in Logic 2
+
+1. In Logic 2, go to **Preferences** (gear icon)
+2. Under **Custom Low Level Analyzers**, click **Browse** and select the folder for your platform (e.g., `windows/` for the DLL, `linux/` for the .so)
+3. Restart Logic 2
+
+### Step 3: Add the TDM analyzer to a capture
+
+1. Click the **+** button in the Analyzers panel (right sidebar)
+2. Select **TDM Analyzer**
+3. Configure: assign your clock, frame sync, and data channels, set the number of slots per frame, bits per slot, and sample rate
+4. Start a capture - decoded TDM frames appear in the data table
+
+That's it. You're decoding TDM data. The sections below cover optional features like live audio streaming and WAV export.
+
+### Terminology
+
+This README uses two Saleae-specific terms:
+
+- **LLA** (Low Level Analyzer) - the C++ plugin that reads raw digital signals and produces decoded frames. This is the core TDM decoder.
+- **HLA** (High Level Analyzer) - a Python extension that processes the LLA's output. The two HLAs in this project add audio streaming and WAV export on top of the TDM decoder.
+
+---
+
 ## Table of Contents
 
-- [Low Level Analyzer (LLA)](#low-level-analyzer-lla)
-  - [Features](#features)
-  - [Advanced Analysis Features](#advanced-analysis-features)
+- [Quick Start](#quick-start)
+- [Which output method should I use?](#which-output-method-should-i-use)
+- [Live Audio Streaming](#live-audio-streaming)
+- [WAV Export (HLA)](#wav-export-hla)
+- [LLA Features](#lla-features)
+  - [Advanced Analysis](#advanced-analysis-features)
   - [Settings](#settings)
   - [Performance Tuning](#performance-tuning)
-  - [Exporting data as a wave file](#exporting-data-as-a-wave-file)
-- [High Level Analyzers (HLAs)](#high-level-analyzers-hlas)
-  - [HLA: TDM WAV Export](#hla-tdm-wav-export)
-  - [HLA: TDM Audio Stream](#hla-tdm-audio-stream) (with streaming quick start)
+  - [CSV/WAV Export (built-in)](#exporting-data-as-a-wave-file)
 - [Known Limitations](#known-limitations)
-- [Install instructions](#install-instructions)
-- [Building from source](#building-from-source)
+- [Building from Source](#building-from-source)
 - [Debugging on Linux](#debugging-on-linux)
 - [Migration Guide](#migration-guide)
 
-# Low Level Analyzer (LLA)
+---
 
-The C++ LLA plugin decodes raw TDM signals — bitclock, frame sync, and serial
-data — into structured slot frames with full error detection.
+## Which output method should I use?
 
-## Features
+There are three ways to get audio out of a TDM capture:
+
+| Method | What it does | When to use it |
+|--------|-------------|----------------|
+| **Live Audio Streaming** (HLA) | Streams selected slots as real-time PCM over TCP to a companion app that plays audio through your speakers | You want to **hear** the audio while capturing - monitoring, debugging, live analysis |
+| **WAV Export** (HLA) | Writes selected slots to a WAV file incrementally during capture | You want a **file** of specific slots for offline analysis, and want to pick which slots to include |
+| **CSV/WAV Export** (built-in LLA) | Exports all slots to CSV or WAV after capture completes | You want a **complete dump** of all channels, or need CSV for custom processing |
+
+---
+
+## Live Audio Streaming
+
+Stream decoded TDM audio to your speakers in real time. Requires the Audio Stream HLA and the companion tdm-audio-bridge app.
+
+### Streaming prerequisites
+
+In addition to the [base prerequisites](#prerequisites):
+
+| Requirement | Details |
+|-------------|---------|
+| **Python 3.9+** | [Download here](https://www.python.org/downloads/). On Windows, use the python.org installer - not the Microsoft Store version. |
+| **PortAudio** | Linux: `sudo apt install libportaudio2`. macOS: `brew install portaudio`. Windows: bundled with sounddevice (no action needed). |
+
+### Streaming setup
+
+1. **Install the companion app** from the release zip (or cloned repo):
+
+   ```bash
+   pip install tools/tdm-audio-bridge/
+   ```
+
+2. **Load the Audio Stream HLA** in Logic 2:
+   - Extensions panel (puzzle piece icon) -> three-dot menu -> **Load Existing Extension**
+   - Navigate to the `hla-audio-stream/` folder
+
+3. **Configure the LLA** - set **Audio Batch Size to 64** (or higher for many channels - see [batch size table](#audio-batch-mode-for-real-time-streaming)):
+
+   ![LLA settings with batch mode](pictures/streaming_setup_1.png)
+
+4. **Add the Audio Stream HLA** on top of the TDM LLA. Configure the slots to stream, TCP port, and output bit depth:
+
+   ![HLA Audio Stream settings](pictures/hla_audio_stream_settings.png)
+
+5. **Disable data table indexing** (mandatory for real-time performance):
+   - Right-click the TDM Analyzer name in Logic 2's sidebar
+   - Uncheck **Show in data table**
+   - Uncheck **Stream to terminal**
+
+   Without this, Logic 2's indexing overhead is 50-100x the decode time. Streaming will not keep up.
+
+6. **Launch the audio bridge:**
+
+   Double-click `tools/tdm-audio-bridge/launch-gui.bat` (Windows) or run `./launch-gui.sh` (macOS/Linux).
+
+   Or from a terminal: `tdm-audio-bridge gui`
+
+7. **Start a live capture** in Logic 2. The bridge connects and begins playing:
+
+   ![Live streaming setup](pictures/streaming_setup.png)
+
+   ![Audio bridge GUI - playing](pictures/bridge_gui_playing.png)
+
+**Verify your setup:** Run `python check_setup.py` from the repo root (or release zip root). It checks Python, PortAudio, pip packages, HLA files, the LLA DLL, and network ports. FAIL items must be fixed; WARN items are optional.
+
+### Audio bridge features
+
+- Volume slider (0-150%) with real-time adjustment
+- Mute toggle
+- Buffer level and underrun counter
+- Smart state detection: Connecting, Waiting for stream, Buffering, Playing, Stream ended
+- Automatic reconnection when captures start/stop
+- Detects idle streams (no data for 2 seconds) and stops playback cleanly
+
+**Important:** The HLA progress indicator in Logic 2 must show **100%** for clean streaming. If it shows less (e.g., 54%), increase the Audio Batch Size in the LLA settings. See [Audio Batch Mode](#audio-batch-mode-for-real-time-streaming) for recommended values.
+
+See the [Audio Stream HLA README](hla-audio-stream/README.md) for platform-specific notes, test harness, and debugging tips.
+
+---
+
+## WAV Export (HLA)
+
+Exports selected TDM slots to a WAV file in real time during capture. This is separate from the built-in LLA export - the HLA approach lets you pick which slots to include and writes incrementally during capture rather than as a post-capture step.
+
+Note: use a standard (non-looping) capture for WAV export - see [Known Limitations](#known-limitations).
+
+1. Load the extension in Logic 2 (Extensions -> Load Existing Extension -> `hla-wav-export/`)
+2. Add **"TDM WAV Export"** after the TDM Analyzer LLA
+3. Configure slots (e.g., `0,1`), output path (**must be an absolute path**), and bit depth
+4. Start capturing - the WAV file is written in real time
+
+See the [WAV Export HLA README](hla-wav-export/README.md) for full documentation.
+
+---
+
+## LLA Features
+
+The C++ LLA plugin decodes raw TDM signals - bitclock, frame sync, and serial data - into structured slot frames with full error detection.
 
 ![Example of full captured frame](pictures/full_frame.PNG)
 ![Example of full captured slot](pictures/valid_bits.PNG)
 
 - 1 to 256 slots per frame
 - Slot sizes from 2 to 64 bits
-- data bits / slot from 2 to 64 bits
+- Data bits per slot from 2 to 64 bits
 - Data can be exported as a `.wav` or a `.csv` file
 - Live audio streaming over TCP with companion playback CLI and GUI
 - Frame sync can be asserted on last bit before a new frame, or on first bit of new frame
@@ -50,6 +186,7 @@ data — into structured slot frames with full error detection.
 - Searchable warnings and errors in protocol table
 
 ## Advanced Analysis Features
+
 - Checks for bitclock discrepancies and generates an error
 - Identifies and marks slots with data changing that is not captured by the bitclock
 - Identifies and marks missed frame sync pulses
@@ -186,19 +323,9 @@ Real SDK measurements on 8ch/16bit TDM data (non-batched mode):
 
 For **protocol debugging** (non-batched), use **Minimal + Slot boundaries** for a good balance of speed and data table visibility.
 
-### Disable UI display for streaming (critical)
-
-Logic 2's "Show in data table" and "Stream to terminal" options cause the analyzer results to be indexed for display. **This indexing takes 50-100x longer than the actual decode.** For realtime streaming, you must disable both:
-
-1. Right-click the analyzer name in Logic 2's sidebar
-2. Uncheck **Show in data table**
-3. Uncheck **Stream to terminal**
-
-With these enabled, a 3-second 8ch/16bit capture takes over 100 seconds to process. With these disabled, the same capture processes in under 3 seconds.
-
 ## Exporting data as a wave file
 
-Logic 2 does not support custom export types for Low Level Analyzers — the only export mechanism available to analyzer plugins is the `TXT/CSV` export path. This is a confirmed Saleae design decision, not a temporary limitation. This analyzer works around this by adding an export format selector in the analyzer settings: the "Export to TXT/CSV" action produces either CSV or WAV output based on that setting. To export the captured data as a wave file, follow these steps:
+Logic 2 does not support custom export types for Low Level Analyzers - the only export mechanism available to analyzer plugins is the `TXT/CSV` export path. This is a confirmed Saleae design decision, not a temporary limitation. This analyzer works around this by adding an export format selector in the analyzer settings: the "Export to TXT/CSV" action produces either CSV or WAV output based on that setting. To export the captured data as a wave file, follow these steps:
 
 1. Open the analyzer settings, click on the "Select export file type" dropdown and select "WAV" from the list. ![Analyzer setting to select the output of the TXT/CSV export option](pictures/select_export_option.PNG)
 1. Save the settings
@@ -239,73 +366,7 @@ Logic 2 does not support custom export types for Low Level Analyzers — the onl
     ```
 - The headers of the wave file are updated every 10 ms of audio data, so if the analyzer crashes or the export is cancelled early, the most data that will be lost is the most recently written 10 ms.
 
-# High Level Analyzers (HLAs)
-
-Two HLAs extend the TDM LLA with audio-focused features. Both run as Logic 2
-extensions on top of the TdmAnalyzer.
-
-## HLA: TDM WAV Export
-
-Exports selected TDM slots to a WAV file in real time during capture. This is
-separate from the built-in LLA export - the HLA approach allows slot selection
-and writes incrementally during capture rather than as a post-capture step.
-Note: use a standard (non-looping) capture for WAV export - see
-[Known Limitations](#known-limitations).
-
-See the [TDM WAV Export README](hla-wav-export/README.md) for full documentation.
-
-**Quick start:**
-
-1. Load the extension in Logic 2 (Extensions → Load Existing Extension → `hla-wav-export/`)
-2. Add **"TDM WAV Export"** after the TdmAnalyzer LLA
-3. Configure slots, output path, and bit depth
-4. Start capturing — the WAV file is written in real time
-
-## HLA: TDM Audio Stream
-
-Streams selected TDM slots as live PCM audio over TCP. A companion CLI tool
-and GUI connect to the stream and play it through any audio output device -
-hear decoded TDM audio in real time. Works with both standard and looping
-captures when Audio Batch Mode keeps the HLA at 100% throughput.
-
-See the [TDM Audio Stream README](hla-audio-stream/README.md) for full
-documentation, platform-specific setup, test harness, and debugging tips.
-
-**Quick start - live audio streaming:**
-
-1. **Configure the LLA** with Audio Batch Size set to 64 (or higher for many channels):
-
-   ![LLA settings with batch mode](pictures/streaming_setup_1.png)
-
-2. **Add the Audio Stream HLA** on top of the TDM LLA. Configure the slots to stream, TCP port, and output bit depth:
-
-   ![HLA Audio Stream settings](pictures/hla_audio_stream_settings.png)
-
-3. **Install and launch the companion tool:**
-
-   ```bash
-   pip install tools/tdm-audio-bridge/
-   ```
-
-   Double-click `tools/tdm-audio-bridge/launch-gui.bat` (Windows) or run `./launch-gui.sh` (macOS/Linux). No terminal window on Windows.
-
-   To verify your setup before streaming, run `python check_setup.py` from the repo root.
-
-4. **Start a live capture** in Logic 2. The bridge GUI will connect and begin playing audio:
-
-   ![Live streaming setup](pictures/streaming_setup.png)
-
-   ![Audio bridge GUI - playing](pictures/bridge_gui_playing.png)
-
-**Audio bridge features:**
-- Volume slider (0-150%) with real-time adjustment
-- Mute toggle
-- Buffer level and underrun counter
-- Smart state detection: "Connected - waiting for stream", "Playing", "Stream ended - waiting for stream"
-- Automatic reconnection when captures start/stop
-- Detects idle streams (no data for 2 seconds) and stops playback cleanly
-
-**Important:** The HLA progress indicator must show **100%** for clean streaming. If it shows less (e.g., 54%), increase the Audio Batch Size in the LLA settings. See [Audio Batch Mode](#audio-batch-mode-for-real-time-streaming) for recommended values.
+---
 
 # Known Limitations
 
@@ -329,14 +390,11 @@ buffer rolls over.
 See [Saleae's backlog error documentation](https://support.saleae.com/getting-help/troubleshooting/backlog-error)
 for background on how Logic 2 handles buffer eviction.
 
-# Install instructions
+---
 
-To install a pre-built analyzer, see Saleae's guide:
-[Installing a community shared protocol analyzer](https://support.saleae.com/community/community-shared-protocols#installing-a-low-level-analyzer)
+# Building from Source
 
-# Building from source
-
-This project uses CMake with FetchContent to automatically download the Saleae AnalyzerSDK from GitHub during the configure step — no manual SDK installation is needed. An internet connection is required on the first configure run.
+This project uses CMake with FetchContent to automatically download the Saleae AnalyzerSDK from GitHub during the configure step - no manual SDK installation is needed. An internet connection is required on the first configure run.
 
 The build produces a shared library in the `Analyzers/` subdirectory of your build directory:
 
@@ -346,7 +404,7 @@ The build produces a shared library in the `Analyzers/` subdirectory of your bui
 | macOS | `build/<arch>/Analyzers/libtdm_analyzer.so` |
 | Windows | `build\Analyzers\Release\tdm_analyzer.dll` |
 
-## Prerequisites
+## Build Prerequisites
 
 All platforms require **CMake 3.13+** and **git**.
 
@@ -424,9 +482,11 @@ If you get a "ptrace: Operation not permitted" error:
 sudo sysctl -w kernel.yama.ptrace_scope=0
 ```
 
+---
+
 # Migration Guide
 
-## v2.5.0 — Audio Batch Mode for real-time streaming
+## v2.5.0 - Audio Batch Mode for real-time streaming
 
 New "Audio Batch Size" setting enables real-time audio streaming at stereo
 48kHz and above. Set to 64 for most configurations. When enabled, the LLA
@@ -437,7 +497,7 @@ to Off (batch=0) with no behavior change.
 See [Audio Batch Mode](#audio-batch-mode-for-real-time-streaming) for the
 full configuration guide and recommended batch sizes.
 
-## v2.4.0 — Performance tuning and OOM fix
+## v2.4.0 - Performance tuning and OOM fix
 
 Two new analyzer settings control the decode speed/detail tradeoff. Existing
 captures will use the default (Full + All markers), so no action is needed
@@ -447,7 +507,7 @@ for backward compatibility.
 disable "Show in data table" and "Stream to terminal" (right-click analyzer
 in sidebar). See [Performance Tuning](#performance-tuning) for details.
 
-## v2.1.0 — FrameV2 schema overhaul
+## v2.1.0 - FrameV2 schema overhaul
 
 The FrameV2 schema was reworked for structured error reporting. HLA scripts that
 read decoded slot frames must update their field access:
@@ -472,7 +532,7 @@ low_rate = frame.data["low_sample_rate"]  # bool
 A new `"advisory"` frame type (distinct from `"slot"`) is emitted as the first
 row when the capture sample rate is below 4x the bit clock.
 
-## v2.0.0 — FrameV2 key rename
+## v2.0.0 - FrameV2 key rename
 
 The `"frame #"` FrameV2 field has been renamed to `"frame_number"`.
 Update any HLA scripts that access this field:

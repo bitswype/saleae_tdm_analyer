@@ -40,32 +40,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Performance tuning settings** — two new analyzer settings: "Data Table / HLA Output" (Full/Minimal/Off) and "Waveform Markers" (All/Slot/None). Minimal+Slot is 1.8x faster than the default Full+All; Off+None is 3.1x faster. These are user-configurable in the analyzer settings panel.
-- **Cython fast decode for Audio Stream HLA** — moves the entire decode() hot path to C via Cython, with a four-tier fallback chain (Cython > raw C > cffi > pure Python). 4-7x faster than pure Python.
-- **Batch PCM packing in Audio Stream HLA** — accumulates up to 1024 frames per TCP send, reducing GIL contention from 44K+ individual sends/sec to ~43 batched sends/sec.
-- **C++ correctness test suite** — 58 tests across 10 categories verifying decode accuracy, sign conversion, error detection, boundary values, and FrameV2 field correctness.
-- **C++ performance benchmark** — 16-configuration throughput benchmark with optional per-function profiling instrumentation (`ENABLE_PROFILING`).
-- **Real SDK benchmark timing** — compile-time flag (`ENABLE_BENCHMARK_TIMING`) embeds self-timing in the DLL that writes decode duration to `%USERPROFILE%\tdm_benchmark_timing.json`. Zero overhead when compiled out.
-- **Logic 2 automation benchmark tooling** — `tools/benchmark_logic2.py` for API-driven benchmarks, `tools/prepare_benchmark_captures.py` for generating .sal files with UI display disabled via meta.json patching.
-- **Python HLA: TDM Audio Stream** — a Logic 2 High Level Analyzer that streams selected TDM slots as live PCM audio over a TCP socket, with configurable ring buffer, 16 or 32-bit depth, and auto-derived sample rate.
-- **Companion CLI: tdm-audio-bridge** — connects to the Audio Stream HLA's TCP server and plays decoded audio through local audio devices or virtual sound cards, with auto-reconnect and tkinter GUI.
-- **Test harness: tdm-test-harness** — standalone testing tool that drives the HLA without Logic 2 or hardware; supports automated verification, quality sweep, and signal generation.
-- **64-test Python HLA test suite** — covers all decode paths including C-port-specific edge cases for all four backends.
+- **Performance tuning settings** - two new analyzer settings: "Data Table / HLA Output" (Full/Minimal/Off) and "Waveform Markers" (All/Slot/None). Minimal+Slot is 1.8x faster than the default Full+All; Off+None is 3.1x faster. These are user-configurable in the analyzer settings panel.
+- **Cython fast decode for Audio Stream HLA** - moves the entire decode() hot path to C via Cython, with a four-tier fallback chain (Cython > raw C > cffi > pure Python). 4-7x faster than pure Python.
+- **Batch PCM packing in Audio Stream HLA** - accumulates up to 1024 frames per TCP send, reducing GIL contention from 44K+ individual sends/sec to ~43 batched sends/sec.
+- **C++ correctness test suite** - 58 tests across 10 categories verifying decode accuracy, sign conversion, error detection, boundary values, and FrameV2 field correctness.
+- **C++ performance benchmark** - 16-configuration throughput benchmark with optional per-function profiling instrumentation (`ENABLE_PROFILING`).
+- **Real SDK benchmark timing** - compile-time flag (`ENABLE_BENCHMARK_TIMING`) embeds self-timing in the DLL that writes decode duration to `%USERPROFILE%\tdm_benchmark_timing.json`. Zero overhead when compiled out.
+- **Logic 2 automation benchmark tooling** - `tools/benchmark_logic2.py` for API-driven benchmarks, `tools/prepare_benchmark_captures.py` for generating .sal files with UI display disabled via meta.json patching.
+- **Python HLA: TDM Audio Stream** - a Logic 2 High Level Analyzer that streams selected TDM slots as live PCM audio over a TCP socket, with configurable ring buffer, 16 or 32-bit depth, and auto-derived sample rate.
+- **Companion CLI: tdm-audio-bridge** - connects to the Audio Stream HLA's TCP server and plays decoded audio through local audio devices or virtual sound cards, with auto-reconnect and tkinter GUI.
+- **Test harness: tdm-test-harness** - standalone testing tool that drives the HLA without Logic 2 or hardware; supports automated verification, quality sweep, and signal generation.
+- **64-test Python HLA test suite** - covers all decode paths including C-port-specific edge cases for all four backends.
 
 ### Fixed
 
-- **Critical: FrameV2 member reuse OOM crash** — the SDK's Add* methods append (not overwrite) and provide no Clear/Reset. Reusing a FrameV2 across frames caused O(N^2) memory growth, consuming 28 GB of RAM on a <1 second 8-channel capture. Reverted to local FrameV2 per frame.
+- **Critical: FrameV2 member reuse OOM crash** - the SDK's Add* methods append (not overwrite) and provide no Clear/Reset. Reusing a FrameV2 across frames caused O(N^2) memory growth, consuming 28 GB of RAM on a <1 second 8-channel capture. Reverted to local FrameV2 per frame.
 
 ### Changed
 
-- **HLA decode performance** — inlined sign conversion with pre-computed masks, batch PCM packing via struct.pack_into, sender loop batching (1024 frames per sendall).
-- **Documentation** — comprehensive performance narrative (tests/PERFORMANCE.md), profiling results, optimization results, C extension design rationale, test architecture documentation.
+- **HLA decode performance** - inlined sign conversion with pre-computed masks, batch PCM packing via struct.pack_into, sender loop batching (1024 frames per sendall).
+- **Documentation** - comprehensive performance narrative (tests/PERFORMANCE.md), profiling results, optimization results, C extension design rationale, test architecture documentation.
+
+## [2.3.0] - 2026-03-13
+
+### Added
+
+- **Python HLA: TDM Audio Stream** - a Logic 2 High Level Analyzer that streams selected TDM slots as live PCM audio over a TCP socket, with configurable ring buffer, 16 or 32-bit output, and auto-derived sample rate from frame timing
+- **Companion CLI: tdm-audio-bridge** - connects to the Audio Stream HLA's TCP socket and plays decoded audio through local audio devices, with tkinter GUI, auto-reconnect, and buffer management
+- **Test harness: tdm-test-harness** - standalone testing tool that drives the HLA without Logic 2 or hardware; supports automated verification, quality sweep (11 tests), and signal generation (sine, silence, ramp, WAV)
+- **Apache 2.0 license**
+
+### Changed
+
+- Renamed `hla/` directory to `hla-wav-export/` for clarity now that there are two HLAs
+- Release artifacts now include HLAs, Python tools, and pre-generated `_version.py`
+- Custom setuptools build backend (`_build.py`) auto-generates `_version.py` during `pip install`
+
+### Fixed
+
+- TCP sender loop batching to reduce per-frame GIL overhead
+- Queue flooding prevention in the audio bridge player
+- Loop boundary gaps in continuous streaming
 
 ## [2.2.0] - 2026-03-02
 
 ### Added
 
-- **Python HLA: TDM WAV Export** — a Logic 2 High Level Analyzer (`hla-wav-export/TdmWavExport.py`) that exports selected TDM slots to a WAV file in real time during capture, with slot selection via comma/range syntax, 16 or 32-bit depth, and auto-derived sample rate from frame timing
+- **Python HLA: TDM WAV Export** - a Logic 2 High Level Analyzer (`hla-wav-export/TdmWavExport.py`) that exports selected TDM slots to a WAV file in real time during capture, with slot selection via comma/range syntax, 16 or 32-bit depth, and auto-derived sample rate from frame timing
 
 ## [2.1.0] - 2026-02-25
 
@@ -79,14 +100,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **RF64 WAV export for captures exceeding 4 GiB** — produces valid RF64 files (EBU TECH 3306) that open in Audacity, FFmpeg, and other standard tools [RF64-03]
+- **RF64 WAV export for captures exceeding 4 GiB** - produces valid RF64 files (EBU TECH 3306) that open in Audacity, FFmpeg, and other standard tools [RF64-03]
 - **FrameV2 schema:** Added boolean fields `short_slot`, `extra_slot`, `bitclock_error`, `missed_data`, `missed_frame_sync` to every decoded slot row [FRM2-01 through FRM2-05]
-- **FrameV2 schema:** Added boolean `low_sample_rate` field to every decoded slot row — true when capture rate < 4x bit clock [SRAT-01]
+- **FrameV2 schema:** Added boolean `low_sample_rate` field to every decoded slot row - true when capture rate < 4x bit clock [SRAT-01]
 - **FrameV2 advisory:** New "advisory" frame type emitted as row 0 when sample rate is below 4x bit clock, with human-readable message showing the math [SRAT-01]
 
 ### Removed
 
-- **4 GiB text-error guard in WAV export** — replaced by conditional RF64 path; exports that exceed 4 GiB now produce a valid RF64 file instead of a text message explaining the abort [RF64-04]
+- **4 GiB text-error guard in WAV export** - replaced by conditional RF64 path; exports that exceed 4 GiB now produce a valid RF64 file instead of a text message explaining the abort [RF64-04]
 
 ### Migration
 
@@ -134,11 +155,13 @@ low_rate = frame.data["low_sample_rate"]        # True or False
 ### Removed
 
 - Removed unused `mResultsFrameV2` member variable from `TdmAnalyzer` class.
-  This was dead code — the implementation correctly uses a local `FrameV2` variable
+  This was dead code - the implementation correctly uses a local `FrameV2` variable
   in `AnalyzeTdmSlot()`.
 
-[Unreleased]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/bitswype/saleae_tdm_analyer/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/bitswype/saleae_tdm_analyer/releases/tag/v2.0.0

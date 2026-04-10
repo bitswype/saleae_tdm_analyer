@@ -19,6 +19,12 @@ jobs:
       run: |
         cmake -B ${{github.workspace}}/build -A x64
         cmake --build ${{github.workspace}}/build --config Release
+    - name: Build tests
+      run: |
+        cmake -B ${{github.workspace}}/build-test -DBUILD_TESTS=ON -A x64
+        cmake --build ${{github.workspace}}/build-test --config Release --target tdm_correctness
+    - name: Run correctness tests
+      run: ${{github.workspace}}/build-test/bin/Release/tdm_correctness.exe
     - name: Upload windows build
       uses: actions/upload-artifact@v4
       with:
@@ -34,6 +40,11 @@ jobs:
         cmake --build ${{github.workspace}}/build/x86_64
         cmake -B ${{github.workspace}}/build/arm64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
         cmake --build ${{github.workspace}}/build/arm64
+    - name: Build and run correctness tests
+      run: |
+        cmake -B ${{github.workspace}}/build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+        cmake --build ${{github.workspace}}/build-test --target tdm_correctness
+        ${{github.workspace}}/build-test/bin/tdm_correctness
     - name: Upload MacOS x86_64 build
       uses: actions/upload-artifact@v4
       with:
@@ -52,6 +63,14 @@ jobs:
       run: |
         cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Release
         cmake --build ${{github.workspace}}/build
+      env:
+        CC:   gcc-14
+        CXX:  g++-14
+    - name: Build and run correctness tests
+      run: |
+        cmake -B ${{github.workspace}}/build-test -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+        cmake --build ${{github.workspace}}/build-test --target tdm_correctness
+        ${{github.workspace}}/build-test/bin/tdm_correctness
       env:
         CC:   gcc-14
         CXX:  g++-14
