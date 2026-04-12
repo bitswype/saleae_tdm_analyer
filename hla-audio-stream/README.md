@@ -596,6 +596,31 @@ The HLA depends on the TdmAnalyzer C++ LLA for upstream FrameV2 data. See the
 [main project README](../README.md#building-from-source) for build instructions
 covering Linux, macOS, and Windows.
 
+## Why TCP instead of UDP?
+
+The audio stream uses TCP over localhost (`127.0.0.1`), not UDP. This is a
+deliberate choice:
+
+- **Localhost has no network.** TCP's overhead (retransmission, congestion
+  control, head-of-line blocking) never activates on loopback. The kernel just
+  copies bytes between socket buffers. Latency difference vs UDP is effectively
+  zero.
+- **Raw PCM has no resync mechanism.** The stream is unframed interleaved PCM
+  bytes. Losing even one byte misaligns every subsequent sample - channels swap,
+  values corrupt, and there is no way to recover without restarting. UDP would
+  require adding our own framing (sequence numbers, packet boundaries, length
+  headers) to detect and handle drops - reimplementing half of TCP.
+- **The handshake requires reliability.** The first thing sent is a JSON
+  metadata line (sample rate, channels, bit depth). It must arrive intact. UDP
+  would need ACK/retry logic for this anyway.
+- **Backpressure is handled by the ring buffer.** The HLA's ring buffer drops
+  oldest frames when the consumer falls behind. TCP flow control just means the
+  sender blocks when the kernel buffer fills, which is fine - the ring buffer
+  decouples decode from send.
+- **UDP's advantages don't apply.** UDP wins when you have real network latency,
+  can tolerate loss (codecs with resync points), or need multicast. None of
+  those apply here: loopback path, lossless PCM, single consumer.
+
 ## License
 
 Licensed under the Apache License 2.0 - see [LICENSE](../LICENSE) for details.
