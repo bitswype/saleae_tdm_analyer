@@ -24,14 +24,17 @@ class HlaDriver:
     the TCP server lifecycle.
     """
 
-    def __init__(self, slot_spec, port=4011, buffer_size=128, bit_depth=16):
+    def __init__(self, slot_spec, port=4011, buffer_size=128, bit_depth=16,
+                 source_bit_depth=''):
         """Create and initialize the HLA.
 
         Args:
             slot_spec: Slot specification string (e.g. "0,1" or "0-3").
             port: TCP port number.
             buffer_size: Ring buffer size in frames.
-            bit_depth: 16 or 32.
+            bit_depth: Output bit depth, 16 or 32.
+            source_bit_depth: LLA data bits per slot (2-64), or '' to
+                auto-detect from the LLA's 'format' frame.
         """
         hla = TdmAudioStream.__new__(TdmAudioStream)
         # Inject settings as Logic 2 would
@@ -39,6 +42,7 @@ class HlaDriver:
         hla.tcp_port = str(port)
         hla.buffer_size = str(buffer_size)
         hla.bit_depth = str(bit_depth)
+        hla.source_bit_depth = str(source_bit_depth)
         hla.__init__()
 
         if hla._init_error is not None:

@@ -689,12 +689,13 @@ def test_init_error_emitted_once(port):
 # 11. WAV export
 # ===========================================================================
 
-def make_wav_hla(output_path, slots='0,1', bit_depth='16'):
+def make_wav_hla(output_path, slots='0,1', bit_depth='16', source_bit_depth=''):
     """Create a TdmWavExport HLA instance configured for testing."""
     from TdmWavExport import TdmWavExport
     hla = TdmWavExport.__new__(TdmWavExport)
     hla.slots = slots
     hla.bit_depth = bit_depth
+    hla.source_bit_depth = source_bit_depth
     hla.output_path = output_path
     hla.__init__()
     return hla
@@ -1112,13 +1113,14 @@ def _make_audio_batch_frame(samples, channels, bit_depth, sample_rate,
     """
     num_frames = len(samples)
     bytes_per_sample = (bit_depth + 7) // 8
-    fmt_char = {1: 'b', 2: '<h', 4: '<i'}[bytes_per_sample]
 
+    # Pack exactly like the LLA's AccumulateSlotIntoBatch: little-endian,
+    # truncated to bytes_per_sample (1, 2, 3, or 4 bytes)
     pcm = bytearray()
     for frame_samples in samples:
         for ch in range(channels):
             val = frame_samples[ch] if ch < len(frame_samples) else 0
-            pcm.extend(struct.pack(fmt_char, val))
+            pcm.extend(val.to_bytes(bytes_per_sample, 'little', signed=True))
 
     end_time = start_time + num_frames / sample_rate
     return FakeFrame('audio_batch', start_time, end_time, {
@@ -1132,11 +1134,15 @@ def _make_audio_batch_frame(samples, channels, bit_depth, sample_rate,
 
 
 def _batch_stream_test(driver, port, samples, channels, bit_depth, sample_rate,
-                        slot_filter_channels=None):
+                        slot_filter_channels=None, out_bit_depth=None):
     """Helper: connect TCP client, feed batch frames, read decoded PCM.
 
     Connects the client first so the handshake can be sent during decode.
     Returns (handshake_dict, decoded_frames_list).
+
+    out_bit_depth is the width used to unpack the TCP stream. It defaults
+    to bit_depth; pass 16 or 32 when the LLA width (e.g. 24) is expected to
+    be widened by the HLA to a protocol-supported width.
     """
     # Connect client first
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1166,7 +1172,8 @@ def _batch_stream_test(driver, port, samples, channels, bit_depth, sample_rate,
     handshake = json.loads(line)
 
     out_ch = slot_filter_channels or handshake['channels']
-    decoded = _read_frames_from_sock(sock, out_ch, bit_depth, remainder, timeout=1.0)
+    decoded = _read_frames_from_sock(sock, out_ch, out_bit_depth or bit_depth,
+                                     remainder, timeout=1.0)
     sock.close()
     return handshake, decoded
 
@@ -1368,3 +1375,353 @@ def test_audio_batch_no_sample_rate_waits(port):
     # Sample rate should still be None
     assert driver._hla._sample_rate is None
     driver.shutdown()
+
+
+# ===========================================================================
+# 17. Source bit depth conversion (GitHub issue #10)
+#
+# The LLA emits 'data' already sign-converted at ITS bit depth (e.g. 24).
+# The HLA must rescale that value to the OUTPUT bit depth (16 or 32), not
+# mask it at the output width. Masking a 24-bit value to 16 bits discards
+# the upper byte and wraps the waveform: 0x012345 -> 0x2345, and full scale
+# 0x7FFFFF -> 0xFFFF (which is -1 as int16).
+#
+# Conversion contract:
+#   source > output : rounded right shift (round half up), clamped to the
+#                     output range so +full-scale does not wrap negative
+#   source < output : left shift (zero-filled low bits)
+#   source == output: unchanged
+# Source depth comes from the 'source_bit_depth' setting, or when blank,
+# from the LLA's one-time 'format' frame; with neither, it equals output.
+# ===========================================================================
+
+def format_frame(bit_depth, slots_per_frame=2, sample_rate=48000, signed=True):
+    """Create a FakeFrame mimicking the LLA's one-time 'format' frame."""
+    return FakeFrame('format', 0.0, 0.0, {
+        'bit_depth': bit_depth,
+        'slots_per_frame': slots_per_frame,
+        'sample_rate': sample_rate,
+        'signed': signed,
+    })
+
+
+def _accum_after(driver, value, frame_num=10):
+    driver._hla.decode(slot_frame(0, value, frame_num=frame_num))
+    return driver._hla._accum.get(0)
+
+
+def test_source24_to_16_scales_reporter_example(port):
+    """The exact example from issue #10: 0x012345 must become 0x0123, not 0x2345."""
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=24)
+    warmup(driver)
+    assert _accum_after(driver, 0x012345) == 0x0123
+    driver.shutdown()
+
+
+def test_source24_to_16_rounds_half_up(port):
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=24)
+    warmup(driver)
+    assert _accum_after(driver, 0x01237F, 10) == 0x0123   # just below half: down
+    assert _accum_after(driver, 0x012380, 11) == 0x0124   # exactly half: up
+    assert _accum_after(driver, 0x0123C0, 12) == 0x0124   # above half: up
+    driver.shutdown()
+
+
+def test_source24_to_16_full_scale_clamps(port):
+    """+full scale would round up to 0x8000 and wrap to -32768 without a clamp."""
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=24)
+    warmup(driver)
+    assert _accum_after(driver, 0x7FFFFF, 10) == 32767
+    assert _accum_after(driver, -0x800000, 11) == -32768
+    driver.shutdown()
+
+
+def test_source24_to_16_negative_values(port):
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=24)
+    warmup(driver)
+    assert _accum_after(driver, -1, 10) == 0          # (-1 + 128) >> 8
+    assert _accum_after(driver, -0x100, 11) == -1     # exact multiple
+    assert _accum_after(driver, -0x180, 12) == -1     # -1.5 rounds half up to -1
+    assert _accum_after(driver, -0x181, 13) == -2
+    driver.shutdown()
+
+
+def test_source24_unsigned_style_input_treated_as_twos_complement(port):
+    """LLA in Unsigned mode emits raw 24-bit values; the HLA still treats them
+    as two's complement at the SOURCE width, not the output width."""
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=24)
+    warmup(driver)
+    assert _accum_after(driver, 0xFFFFFF, 10) == 0        # -1 at 24 bits
+    assert _accum_after(driver, 0x800000, 11) == -32768   # min at 24 bits
+    driver.shutdown()
+
+
+def test_source24_to_32_left_shifts(port):
+    """24-bit into a 32-bit container must occupy the top 24 bits, not sit
+    48 dB down in the bottom 24."""
+    driver = HlaDriver('0', port=port, bit_depth=32, source_bit_depth=24)
+    warmup(driver)
+    assert _accum_after(driver, 0x012345, 10) == 0x01234500
+    assert _accum_after(driver, -1, 11) == -256
+    assert _accum_after(driver, 0x7FFFFF, 12) == 0x7FFFFF00
+    assert _accum_after(driver, -0x800000, 13) == -0x80000000
+    driver.shutdown()
+
+
+def test_source32_to_16(port):
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=32)
+    warmup(driver)
+    assert _accum_after(driver, 0x12345678, 10) == 0x1234
+    assert _accum_after(driver, 0x12348000, 11) == 0x1235
+    assert _accum_after(driver, 0x7FFFFFFF, 12) == 32767
+    assert _accum_after(driver, -0x80000000, 13) == -32768
+    driver.shutdown()
+
+
+def test_source16_to_32(port):
+    driver = HlaDriver('0', port=port, bit_depth=32, source_bit_depth=16)
+    warmup(driver)
+    assert _accum_after(driver, 0x1234, 10) == 0x12340000
+    assert _accum_after(driver, -1, 11) == -65536
+    assert _accum_after(driver, -0x8000, 12) == -0x80000000
+    driver.shutdown()
+
+
+def test_source_equals_output_unchanged(port):
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=16)
+    warmup(driver)
+    assert _accum_after(driver, 0x1234, 10) == 0x1234
+    assert _accum_after(driver, 0x8000, 11) == -32768
+    driver.shutdown()
+
+
+def test_source_odd_width_20_to_16(port):
+    """The LLA allows any data width from 2 to 64; 20-bit is common on ADCs."""
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=20)
+    warmup(driver)
+    assert _accum_after(driver, 0x7FFFF, 10) == 32767
+    assert _accum_after(driver, 0x12345, 11) == 0x1234     # (0x12345 + 8) >> 4
+    assert _accum_after(driver, 0x80000, 12) == -32768
+    driver.shutdown()
+
+
+def test_source_bit_depth_auto_from_format_frame(port):
+    """Blank setting: the LLA's 'format' frame supplies the source width."""
+    driver = HlaDriver('0', port=port, bit_depth=16)  # source_bit_depth=''
+    driver._hla.decode(format_frame(24))
+    warmup(driver)
+    assert _accum_after(driver, 0x012345) == 0x0123
+    driver.shutdown()
+
+
+def test_format_frame_returns_none_and_is_not_a_slot(port):
+    driver = HlaDriver('0', port=port, bit_depth=16)
+    assert driver._hla.decode(format_frame(24)) is None
+    assert driver._hla._frame_count == 0
+    assert driver._hla._accum == {}
+    driver.shutdown()
+
+
+def test_source_bit_depth_setting_overrides_format_frame(port):
+    """An explicit setting wins over the LLA's format frame."""
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=24)
+    driver._hla.decode(format_frame(16))  # contradicts the setting
+    warmup(driver)
+    assert _accum_after(driver, 0x012345) == 0x0123
+    driver.shutdown()
+
+
+def test_source_bit_depth_auto_without_format_defaults_to_output(port):
+    """No setting and no format frame (older LLA): behave as before, i.e.
+    source width == output width."""
+    driver = HlaDriver('0', port=port, bit_depth=16)
+    warmup(driver)
+    assert _accum_after(driver, 0x1234, 10) == 0x1234
+    assert _accum_after(driver, 0x8000, 11) == -32768
+    driver.shutdown()
+
+
+def test_source_bit_depth_invalid_setting_is_init_error(port):
+    from TdmAudioStream import TdmAudioStream
+    for bad in ('0', '1', '65', 'abc', '-8'):
+        h = TdmAudioStream.__new__(TdmAudioStream)
+        h.slots = '0'
+        h.tcp_port = str(port)
+        h.buffer_size = '128'
+        h.bit_depth = '16'
+        h.source_bit_depth = bad
+        h.__init__()
+        assert h._init_error is not None, f"{bad!r} should be rejected"
+        assert 'source bit depth' in h._init_error.lower(), h._init_error
+        assert '2' in h._init_error and '64' in h._init_error, h._init_error
+        h.shutdown()
+
+
+def test_source24_to_16_pcm_roundtrip_over_tcp(port):
+    """End-to-end: conversion survives packing and the TCP send path, on
+    whichever decode backend is active (Cython, rawc, cffi, or Python)."""
+    driver = HlaDriver('0,1', port=port, bit_depth=16, source_bit_depth=24,
+                       buffer_size=128)
+    warmup(driver)
+    samples = [
+        [0x012345, -1],
+        [0x7FFFFF, -0x800000],
+        [0x0123C0, -0x100],
+    ]
+    frames = list(emit_frames(samples, 48000, [0, 1], start_frame_num=10))
+    # One extra frame to flush the last real one
+    frames += list(emit_frames([[0, 0]], 48000, [0, 1], start_frame_num=13))
+    driver.feed(frames)
+
+    handshake, decoded = read_pcm(port, 2, 16, 3)
+    assert handshake['bit_depth'] == 16
+    # Warmup frames are silence; find our data
+    data = [f for f in decoded if f != [0, 0]]
+    assert data[:3] == [
+        [0x0123, 0],
+        [32767, -32768],
+        [0x0124, -1],
+    ]
+    driver.shutdown()
+
+
+def test_source24_to_32_pcm_roundtrip_over_tcp(port):
+    driver = HlaDriver('0', port=port, bit_depth=32, source_bit_depth=24,
+                       buffer_size=128)
+    warmup(driver)
+    samples = [[0x012345], [-1], [0x7FFFFF]]
+    frames = list(emit_frames(samples, 48000, [0], start_frame_num=10))
+    frames += list(emit_frames([[0]], 48000, [0], start_frame_num=13))
+    driver.feed(frames)
+
+    handshake, decoded = read_pcm(port, 1, 32, 3)
+    assert handshake['bit_depth'] == 32
+    data = [f for f in decoded if f != [0]]
+    assert data[:3] == [[0x01234500], [-256], [0x7FFFFF00]]
+    driver.shutdown()
+
+
+# ===========================================================================
+# 18. Audio Batch Mode width handling (issue #10 follow-on findings)
+#
+# The TCP protocol carries int16 or int32 only. The LLA packs batch PCM at
+# 1, 2, 3, or 4 bytes per sample depending on its data width. The stream
+# HLA must (a) adopt the LLA's width instead of advertising its own setting,
+# and (b) widen 1-byte and 3-byte samples to int16/int32 before sending.
+# Before the fix the handshake advertised the user's setting while the
+# payload was 3 bytes/sample, and the bridge misaligned or crashed.
+# ===========================================================================
+
+def test_audio_batch_24bit_widens_to_32(port):
+    driver = HlaDriver('0,1', port=port, buffer_size=128, bit_depth=16)
+    samples = [[0x012345, -1], [0x7FFFFF, -0x800000]]
+    handshake, decoded = _batch_stream_test(driver, port, samples, 2, 24, 48000,
+                                            out_bit_depth=32)
+    assert handshake is not None
+    assert handshake['bit_depth'] == 32
+    assert decoded == [[0x01234500, -256], [0x7FFFFF00, -0x80000000]]
+    driver.shutdown()
+
+
+def test_audio_batch_8bit_widens_to_16(port):
+    driver = HlaDriver('0,1', port=port, buffer_size=128, bit_depth=32)
+    samples = [[1, -1], [127, -128]]
+    handshake, decoded = _batch_stream_test(driver, port, samples, 2, 8, 48000,
+                                            out_bit_depth=16)
+    assert handshake is not None
+    assert handshake['bit_depth'] == 16
+    assert decoded == [[256, -256], [32512, -32768]]
+    driver.shutdown()
+
+
+def test_audio_batch_handshake_uses_lla_width_not_setting(port):
+    """User set 32 but the LLA is 16-bit: the stream is int16 and must say so."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128, bit_depth=32)
+    samples = [[100, -100], [200, -200]]
+    handshake, decoded = _batch_stream_test(driver, port, samples, 2, 16, 48000,
+                                            out_bit_depth=16)
+    assert handshake is not None
+    assert handshake['bit_depth'] == 16
+    assert decoded == samples
+    driver.shutdown()
+
+
+def test_audio_batch_24bit_slot_subset_widened(port):
+    driver = HlaDriver('1', port=port, buffer_size=128, bit_depth=16)
+    samples = [[0x111111, 0x012345], [0x222222, -1]]
+    handshake, decoded = _batch_stream_test(driver, port, samples, 2, 24, 48000,
+                                            slot_filter_channels=1, out_bit_depth=32)
+    assert handshake is not None
+    assert handshake['bit_depth'] == 32
+    assert handshake['channels'] == 1
+    assert decoded == [[0x01234500], [-256]]
+    driver.shutdown()
+
+
+# ===========================================================================
+# 19. WAV export source bit depth conversion (issue #10, the reported path)
+# ===========================================================================
+
+def _wav_feed(hla, values, warm=3):
+    """Feed mono slot-0 frames with timing, then one flush frame."""
+    for i in range(warm):
+        hla.decode(slot_frame(0, 0, frame_num=i, start_time=i / 48000))
+    for i, v in enumerate(values):
+        fn = warm + i
+        hla.decode(slot_frame(0, v, frame_num=fn, start_time=fn / 48000))
+    fn = warm + len(values)
+    hla.decode(slot_frame(0, 0, frame_num=fn, start_time=fn / 48000))
+    hla.shutdown()
+
+
+def test_wav_source24_to_16_reporter_example(tmp_path):
+    path = str(tmp_path / 'src24_out16.wav')
+    hla = make_wav_hla(path, '0', '16', source_bit_depth='24')
+    _wav_feed(hla, [0x012345, 0x7FFFFF, -0x800000, -1, 0x0123C0])
+    with wave.open(path, 'rb') as wf:
+        assert wf.getsampwidth() == 2
+    samples = [s[0] for s in read_wav_samples(path)]
+    data = [s for s in samples if s != 0]
+    # -1 rounds to 0 and is filtered out with the warmup silence
+    assert data == [0x0123, 32767, -32768, 0x0124]
+
+
+def test_wav_source24_to_32_left_shift(tmp_path):
+    path = str(tmp_path / 'src24_out32.wav')
+    hla = make_wav_hla(path, '0', '32', source_bit_depth='24')
+    _wav_feed(hla, [0x012345, -1, 0x7FFFFF])
+    with wave.open(path, 'rb') as wf:
+        assert wf.getsampwidth() == 4
+    samples = [s[0] for s in read_wav_samples(path)]
+    data = [s for s in samples if s != 0]
+    assert data == [0x01234500, -256, 0x7FFFFF00]
+
+
+def test_wav_source_bit_depth_auto_from_format_frame(tmp_path):
+    path = str(tmp_path / 'auto.wav')
+    hla = make_wav_hla(path, '0', '16')  # blank source_bit_depth
+    assert hla.decode(format_frame(24, slots_per_frame=1)) is None
+    _wav_feed(hla, [0x012345, 0x7FFFFF])
+    samples = [s[0] for s in read_wav_samples(path)]
+    data = [s for s in samples if s != 0]
+    assert data == [0x0123, 32767]
+
+
+def test_wav_source_bit_depth_setting_overrides_format_frame(tmp_path):
+    path = str(tmp_path / 'override.wav')
+    hla = make_wav_hla(path, '0', '16', source_bit_depth='24')
+    hla.decode(format_frame(16, slots_per_frame=1))
+    _wav_feed(hla, [0x012345])
+    samples = [s[0] for s in read_wav_samples(path)]
+    assert [s for s in samples if s != 0] == [0x0123]
+
+
+def test_wav_source_bit_depth_invalid_is_init_error(tmp_path):
+    path = str(tmp_path / 'bad.wav')
+    for bad in ('0', '1', '65', 'abc'):
+        hla = make_wav_hla(path, '0', '16', source_bit_depth=bad)
+        assert hla._init_error is not None, f"{bad!r} should be rejected"
+        assert 'source bit depth' in hla._init_error.lower()
+        result = hla.decode(slot_frame(0, 1, frame_num=0))
+        assert result is not None and result.type == 'error'
+        hla.shutdown()

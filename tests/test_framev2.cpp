@@ -206,3 +206,77 @@ void test_framev2_low_sample_rate()
     }
     CHECK( found_low_sr_slot, "Should have slot FrameV2 records with low_sample_rate" );
 }
+
+// ---------------------------------------------------------------------------
+// One-time "format" FrameV2 (v2.6.0, GitHub issue #10)
+//
+// Slot FrameV2s carry 'data' already sign-converted at the LLA's data width,
+// but nothing told the HLAs what that width was. They assumed it equalled
+// their own output width and masked 24-bit samples down to 16 bits. The LLA
+// now emits a single "format" FrameV2 at the start of decode, before any
+// slot or advisory frame, so HLAs can rescale correctly without a per-frame
+// field on the hot path.
+// ---------------------------------------------------------------------------
+
+static void CheckFormatFrame( const Config& c, const char* what )
+{
+    auto& fv2s = GetCapturedFrameV2s();
+    CHECK( !fv2s.empty(), std::string( what ) + ": should capture FrameV2 records" );
+
+    // Must be first so an HLA learns the format before it sees any sample
+    const CapturedFrameV2& first = fv2s[ 0 ];
+    CHECK_EQ( first.type, std::string( "format" ),
+              std::string( what ) + ": first FrameV2 should be the format frame" );
+    CHECK_EQ( first.GetInteger( "bit_depth" ), S64( c.data_bits_per_slot ),
+              std::string( what ) + ": format bit_depth" );
+    CHECK_EQ( first.GetInteger( "slots_per_frame" ), S64( c.slots_per_frame ),
+              std::string( what ) + ": format slots_per_frame" );
+    CHECK_EQ( first.GetInteger( "sample_rate" ), S64( c.frame_rate ),
+              std::string( what ) + ": format sample_rate" );
+    CHECK_EQ( first.GetBoolean( "signed" ), c.sign == AnalyzerEnums::SignedInteger,
+              std::string( what ) + ": format signed" );
+    CHECK_EQ( first.starting_sample, U64( 0 ), std::string( what ) + ": format frame at sample 0" );
+
+    // Exactly one, and never confused with a slot frame
+    U32 count = 0;
+    for( const auto& fv2 : fv2s )
+        if( fv2.type == "format" )
+            count++;
+    CHECK_EQ( count, U32( 1 ), std::string( what ) + ": exactly one format frame" );
+}
+
+void test_framev2_format_frame()
+{
+    ClearCapturedFrameV2s();
+
+    Config c = DefaultConfig( "fv2-format", 5 );
+    c.slots_per_frame = 4;
+    c.bits_per_slot = 32;
+    c.data_bits_per_slot = 24;
+    c.frame_rate = 44100;
+    c.sign = AnalyzerEnums::SignedInteger;
+    RunAndCollect( c );
+    CheckFormatFrame( c, "signed 24-in-32" );
+
+    ClearCapturedFrameV2s();
+    Config u = DefaultConfig( "fv2-format-unsigned", 5 );
+    u.sign = AnalyzerEnums::UnsignedInteger;
+    RunAndCollect( u );
+    CheckFormatFrame( u, "unsigned 16-bit" );
+}
+
+void test_framev2_format_frame_batch_mode()
+{
+    // Batch mode replaces slot FrameV2s with audio_batch frames, but HLAs
+    // still need the format frame (and the Minimal tier must carry it too).
+    ClearCapturedFrameV2s();
+
+    Config c = DefaultConfig( "fv2-format-batch", 8 );
+    c.data_bits_per_slot = 24;
+    c.bits_per_slot = 32;
+    c.audio_batch_size = 4;
+    c.framev2_detail = FV2_MINIMAL;
+    c.sign = AnalyzerEnums::SignedInteger;
+    RunAndCollect( c );
+    CheckFormatFrame( c, "batch mode, minimal detail" );
+}

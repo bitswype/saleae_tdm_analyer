@@ -108,6 +108,8 @@ void test_framev2_bitclock_error_severity();
 void test_framev2_missed_data_severity();
 void test_framev2_missed_frame_sync_severity();
 void test_framev2_low_sample_rate();
+void test_framev2_format_frame();
+void test_framev2_format_frame_batch_mode();
 
 // ---------------------------------------------------------------------------
 // Forward declarations: test_audio_batch.cpp
@@ -236,6 +238,8 @@ int main()
     RunTest( "test_framev2_missed_data_severity", test_framev2_missed_data_severity );
     RunTest( "test_framev2_missed_frame_sync_severity", test_framev2_missed_frame_sync_severity );
     RunTest( "test_framev2_low_sample_rate", test_framev2_low_sample_rate );
+    RunTest( "test_framev2_format_frame", test_framev2_format_frame );
+    RunTest( "test_framev2_format_frame_batch_mode", test_framev2_format_frame_batch_mode );
     std::cout << std::endl;
 
     std::cout << "Audio Batch Mode -- Happy Path:" << std::endl;
