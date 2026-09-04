@@ -91,6 +91,23 @@ void TdmAnalyzer::WorkerThread()
     mSampleRate = GetSampleRate();
     mDesiredBitClockPeriod = double (mSampleRate) / double (mSettings->mSlotsPerFrame * mSettings->mBitsPerSlot * mSettings->mTdmFrameRate);
 
+    // Stream format FrameV2 (v2.6.0): emitted exactly once, before any slot,
+    // advisory, or audio_batch frame, so HLAs learn the data width up front.
+    // Slot FrameV2s carry 'data' already sign-converted at mDataBitsPerSlot,
+    // but nothing told the HLAs that width; they assumed their own output
+    // width and masked 24-bit samples down to 16 (GitHub issue #10). A
+    // one-time frame costs nothing on the per-slot hot path, unlike adding
+    // a field to every slot frame.
+    {
+        FrameV2 format;
+        format.AddInteger( "bit_depth", mSettings->mDataBitsPerSlot );
+        format.AddInteger( "slots_per_frame", mSettings->mSlotsPerFrame );
+        format.AddInteger( "sample_rate", mSettings->mTdmFrameRate );
+        format.AddBoolean( "signed", mSettings->mSigned == AnalyzerEnums::SignedInteger );
+        mResults->AddFrameV2( format, "format", 0, 0 );
+        mResults->CommitResults();
+    }
+
     // Phase 6 SRAT-01: Sample rate advisory — emit before first decoded slot
     U64 bit_clock_hz = U64( mSettings->mTdmFrameRate ) * U64( mSettings->mSlotsPerFrame ) * U64( mSettings->mBitsPerSlot );
     U64 recommended_min = bit_clock_hz * kMinOversampleRatio;
@@ -149,6 +166,13 @@ void TdmAnalyzer::WorkerThread()
         U64 total_bytes = U64( mSettings->mAudioBatchSize ) * mBatchBytesPerFrame;
         mBatchBuffer.resize( total_bytes, 0 );
 
+        // Batch PCM is full scale at the packed width. Data narrower than
+        // its container (20-bit in 3 bytes) is shifted up; data wider than
+        // 32 bits is rounded down to the top 32 bits. Packing the raw value
+        // left 20-bit audio 24 dB quiet and truncated 40-bit audio to its
+        // low 32 bits (the batch-mode face of GitHub issue #10).
+        mBatchShift = S32( mBatchBytesPerSample * 8 ) - S32( data_bits );
+
         FrameV2 advisory;
         advisory.AddString( "severity", "info" );
         char msg[ 256 ];
@@ -164,6 +188,7 @@ void TdmAnalyzer::WorkerThread()
     {
         mBatchBytesPerSample = 0;
         mBatchBytesPerFrame = 0;
+        mBatchShift = 0;
     }
 
     SetupForGettingFirstBit();
@@ -565,7 +590,7 @@ void TdmAnalyzer::AnalyzeTdmSlot()
             else
                 signed_value = static_cast<S64>( result );
 
-            AccumulateSlotIntoBatch( signed_value );
+            AccumulateSlotIntoBatch( ScaleToPackedWidth( signed_value ) );
         }
         // Track sample range for this batch
         if( mBatchFrameCount == 0 && mSlotNum == 0 )
@@ -627,6 +652,28 @@ void TdmAnalyzer::AnalyzeTdmSlot()
     mSlotNum++;
 }
 
+S64 TdmAnalyzer::ScaleToPackedWidth( S64 value ) const
+{
+    if( mBatchShift > 0 )
+    {
+        // Shift as unsigned: left-shifting a negative signed value is
+        // undefined before C++20. The bit pattern is what we want.
+        return S64( U64( value ) << mBatchShift );
+    }
+    if( mBatchShift < 0 )
+    {
+        // Round half up without an intermediate add (no overflow at the
+        // top of a 64-bit range), then clamp positive full scale. Same
+        // arithmetic as the HLAs' convert_sample so both paths agree.
+        U32 s = U32( -mBatchShift );
+        value = ( value >> s ) + ( ( value >> ( s - 1 ) ) & 1 );
+        const S64 packed_max = ( S64( 1 ) << ( mBatchBytesPerSample * 8 - 1 ) ) - 1;
+        if( value > packed_max )
+            value = packed_max;
+    }
+    return value;
+}
+
 void TdmAnalyzer::AccumulateSlotIntoBatch( S64 signed_value )
 {
     U32 offset = mBatchFrameCount * mBatchBytesPerFrame
@@ -651,7 +698,10 @@ void TdmAnalyzer::EmitAudioBatch()
                              U64( mBatchFrameCount ) * mBatchBytesPerFrame );
     batch_fv2.AddInteger( "num_frames", mBatchFrameCount );
     batch_fv2.AddInteger( "channels", mSettings->mSlotsPerFrame );
-    batch_fv2.AddInteger( "bit_depth", mSettings->mDataBitsPerSlot );
+    // bit_depth is the PACKED width (8/16/24/32), which is what the PCM
+    // bytes actually are; data_bits is the analyzer's data bits/slot setting
+    batch_fv2.AddInteger( "bit_depth", mBatchBytesPerSample * 8 );
+    batch_fv2.AddInteger( "data_bits", mSettings->mDataBitsPerSlot );
     batch_fv2.AddInteger( "sample_rate", mSettings->mTdmFrameRate );
     batch_fv2.AddInteger( "start_frame_number", S64( mBatchStartFrameNum ) );
 

@@ -125,12 +125,16 @@ def listen(host, port, output_device, latency, no_reconnect):
         else:
             click.echo("Disconnected. Reconnecting...")
 
+    def on_error(message):
+        click.echo(f"Error: {message}", err=True)
+
     client = StreamClient(
         host=host,
         port=port,
         on_handshake=on_handshake,
         on_data=on_data,
         on_disconnect=on_disconnect,
+        on_error=on_error,
         reconnect=not no_reconnect,
     )
 

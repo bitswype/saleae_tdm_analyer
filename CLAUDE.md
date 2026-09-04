@@ -156,7 +156,7 @@ cmake --build build-bench --config Release
 
 When `ENABLE_BENCHMARK_TIMING` is ON, the DLL records `steady_clock` timestamps at decode start and after each TDM frame. On analyzer destruction (closing the capture tab), it writes timing to `%USERPROFILE%\tdm_benchmark_timing.json`. Use with `tools/prepare_benchmark_captures.py` to generate .sal files with `showInDataTable=false` and `streamToTerminal=false` for accurate measurement without UI overhead. See `tests/PERFORMANCE.md` Phase 9 for the full methodology.
 
-**Correctness tests** (`tdm_correctness`): 79 tests in eleven categories: happy path (11), sign conversion (8), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (9), advanced analysis error detection (3), generator blind spot tests (3), FrameV2 field verification (8), and audio batch mode (21 across 5 sub-categories: happy path 8, PCM oracle 4, multi-channel/bit-depth 4, edge cases 3, error handling 2).
+**Correctness tests** (`tdm_correctness`): 82 tests in eleven categories: happy path (11), sign conversion (8), error conditions (3), combination tests (6), robustness/misconfig (6), bit pattern coverage (1), boundary values (9), advanced analysis error detection (3), generator blind spot tests (3), FrameV2 field verification (10, including the one-time `format` frame), and audio batch mode (22 across 5 sub-categories: happy path 8, PCM oracle 4, multi-channel/bit-depth 5, edge cases 3, error handling 2).
 
 **Benchmark** (`tdm_benchmark`): 16 throughput configurations (stereo through 64-channel, 16-bit through 64-bit, with/without advanced analysis). See `tests/BENCHMARK_BASELINE.md` for baseline numbers.
 
@@ -166,7 +166,7 @@ Three user-facing settings control the speed/detail tradeoff:
 
 - **Data Table / HLA Output** (`mFrameV2Detail`): Full (all 10 FrameV2 fields), Minimal (5 fields needed by audio HLAs), or Off (no FrameV2, maximum speed). Default: Full.
 - **Waveform Markers** (`mMarkerDensity`): All bits (per-bit arrows + data dots), Slot boundaries only, or None. Default: All bits.
-- **Audio Batch Size** (`mAudioBatchSize`): Off (one FrameV2 per slot, default) or 1-1024 (powers of 2) TDM frames per FrameV2. When enabled, the Data Table / HLA Output setting is ignored and only `audio_batch` FrameV2 frames with packed PCM data are emitted. Required for real-time streaming at stereo 48kHz or above. V1 Frames, markers, and bubble text are unaffected.
+- **Audio Batch Size** (`mAudioBatchSize`): Off (one FrameV2 per slot, default) or 1-1024 (powers of 2) TDM frames per FrameV2. When enabled, the Data Table / HLA Output setting is ignored and only `audio_batch` FrameV2 frames with packed PCM data are emitted. Required for real-time streaming at stereo 48kHz or above. V1 Frames, markers, and bubble text are unaffected. Batch PCM is packed in 1/2/3/4-byte tiers (data bits up to 8/16/24/anything wider) and is always full scale at the packed width (`ScaleToPackedWidth`: left shift for narrower data, rounded right shift with clamp for >32-bit data). The batch frame's `bit_depth` is the packed width; `data_bits` is the analyzer setting.
 
 Profiling showed FrameV2 construction at 60-90% of decode time and markers at 8-16%. For realtime audio streaming, set Minimal + Slot boundaries (1.8x speedup validated on real SDK). See `tests/PERFORMANCE.md` for the full story from baseline through profiling to optimization.
 
@@ -205,7 +205,14 @@ python setup_cython.py build_ext --inplace
 
 Four backends were implemented and compared (Cython, raw C extension, cffi, pure Python). Cython is the fastest (4-7x over baseline), with a four-tier fallback chain: Cython > rawc > cffi > Python. See `tests/PERFORMANCE.md` for the full comparison and `tests/C_EXTENSION_DESIGN.md` for the design rationale.
 
-All backends validated by a 74-test oracle (`tests/test_hla_decode.py`) covering every branch of decode() including C-port-specific edge cases.
+All backends validated by a 124-test oracle (`tests/test_hla_decode.py`) covering every branch of decode() including C-port-specific edge cases. Run it against each backend with `TDM_HLA_BACKEND=cython|rawc|cffi|python` (fails loudly if the requested extension is not built):
+
+```bash
+for b in cython rawc cffi python; do TDM_HLA_BACKEND=$b python -m pytest tests/test_hla_decode.py -q; done
+python -m pytest tests/test_audio_bridge_protocol.py -q   # bridge wire protocol and client (9 tests)
+```
+
+Any change to sample conversion must be made in all four backends AND the duplicated helpers in `hla-wav-export/TdmWavExport.py` (Logic 2 loads each extension folder in isolation, so the WAV export cannot import `_tdm_utils.py`).
 
 ### Sender batching optimization
 
@@ -233,6 +240,8 @@ Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. 
 - **Flush-before-accumulate** - `_try_flush(frame_num)` MUST be called before `self._accum[slot] = sample`
 - `try/except ImportError` guard around `saleae.analyzers` enables running outside Logic 2
 - `decode()` returns `None` for normal operation
+- **Source vs output bit depth (v2.6.0, issue #10)** - the LLA's slot `data` is already sign-converted at the LLA's data width. HLAs must interpret it at the SOURCE width (from the `source_bit_depth` setting, else the LLA's one-time `format` frame, else assume equal to output) and rescale to the OUTPUT width: rounded right shift clamped to the output range, or left shift. Never mask at the output width; that discards the upper bits of wider sources.
+- **Audio Batch Mode widths** - the LLA packs 1/2/3/4 bytes per sample for data widths up to 8/16/24/64 (use `lla_batch_bytes_per_sample`, not `(bits + 7) // 8`). The stream HLA widens 1- and 3-byte samples to int16/int32 because the TCP protocol carries only those two widths; the WAV export writes the LLA width directly (24-bit WAV is valid) and offsets 8-bit samples to unsigned.
 
 ### TCP protocol (audio stream)
 
@@ -245,9 +254,11 @@ Native Windows audio playback (via Windows Python + tdm-audio-bridge) is clean. 
 
 Slot frames have these fields: `slot`, `data`, `frame_number`, `severity`, `short_slot`, `extra_slot`, `bitclock_error`, `missed_data`, `missed_frame_sync`, `low_sample_rate`.
 
+Other frame types: `advisory` (`severity`, `message`; emitted at sample 0 for low sample rate, FrameV2 off, or batch mode), `audio_batch` (`pcm_data`, `num_frames`, `channels`, `bit_depth`, `sample_rate`, `start_frame_number`; batch mode only), and `format` (v2.6.0+: `bit_depth`, `slots_per_frame`, `sample_rate`, `signed`; emitted exactly once at sample 0 before every other FrameV2 so HLAs learn the source data width without a per-slot field on the hot path).
+
 ## Git Conventions
 
-- Tags: `vX.Y.Z` (e.g. v2.0.0 through v2.5.0) - semantic versioning
+- Tags: `vX.Y.Z` (e.g. v2.0.0 through v2.6.0) - semantic versioning
 - Remote: SSH (`git@github.com:bitswype/saleae_tdm_analyer.git`)
 
 ## CI / Release
@@ -255,7 +266,8 @@ Slot frames have these fields: `slot`, `data`, `frame_number`, `severity`, `shor
 - GitHub Actions workflow: `.github/workflows/build.yml`
 - Triggers on push to main, tags, and PRs
 - Builds C++ LLA for Windows, macOS (x86_64 + arm64), Linux
-- Runs `tdm_correctness` (67 C++ tests) on all three platforms
+- Runs `tdm_correctness` (82 C++ tests) on all three platforms
+- `python-hla-tests` job (Ubuntu) builds the Cython, raw C, and cffi extensions and runs the 124-test HLA oracle against each backend plus the bridge protocol tests. Not a dependency of `publish`, so a Python toolchain problem cannot block a release, but it marks the commit red
 - Tagged builds create a GitHub Release with `analyzer.zip` containing:
  - Platform-specific LLA binaries
  - `hla-wav-export/` and `hla-audio-stream/` (Python HLAs)

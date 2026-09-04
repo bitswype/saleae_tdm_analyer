@@ -14,9 +14,13 @@ ffi.cdef("""
         int slot_list[256];
         int n_slots;
 
-        long long sign_mask;
-        long long sign_threshold;
-        long long sign_subtract;
+        int out_bits;
+
+        int src_bits;
+        unsigned long long src_mask;
+        unsigned long long src_sign_bit;
+        int shift;
+        long long out_max;
 
         long long last_frame_num;
         int last_frame_num_valid;
@@ -36,7 +40,9 @@ ffi.cdef("""
     } DecoderState;
 
     void decoder_init(DecoderState* state, int* slot_list, int n_slots,
-                      int bit_depth, int batch_size, int frame_byte_size);
+                      int bit_depth, int batch_size, int frame_byte_size,
+                      int source_bit_depth);
+    void decoder_set_source_bit_depth(DecoderState* state, int src_bits);
     int decoder_process_frame(DecoderState* state, int slot, long long frame_num,
                               long long data, int has_error);
     void decoder_set_sample_rate_known(DecoderState* state);
@@ -50,9 +56,15 @@ typedef struct {
     int slot_list[256];
     int n_slots;
 
-    long long sign_mask;
-    long long sign_threshold;
-    long long sign_subtract;
+    /* Output width (16 or 32) */
+    int out_bits;
+
+    /* Source width -> output width rescale (see _tdm_utils.conversion_params) */
+    int src_bits;
+    unsigned long long src_mask;
+    unsigned long long src_sign_bit;
+    int shift;
+    long long out_max;
 
     long long last_frame_num;
     int last_frame_num_valid;
@@ -70,6 +82,36 @@ typedef struct {
     long long frame_count;
     int sample_rate_known;
 } DecoderState;
+
+/* Source width handling (GitHub issue #10). Must match _tdm_utils.convert_sample. */
+void decoder_set_source_bit_depth(DecoderState* state, int src_bits) {
+    state->src_bits = src_bits;
+    state->src_mask = (src_bits >= 64) ? ~0ULL : ((1ULL << src_bits) - 1);
+    state->src_sign_bit = 1ULL << (src_bits - 1);
+    state->shift = src_bits - state->out_bits;
+    state->out_max = (1LL << (state->out_bits - 1)) - 1;
+}
+
+static long long convert_sample(const DecoderState* state, long long raw) {
+    unsigned long long u = ((unsigned long long)raw) & state->src_mask;
+    long long v;
+    int sh = state->shift;
+
+    /* Sign-extend from src_bits to 64 bits using unsigned arithmetic */
+    if (u & state->src_sign_bit)
+        u |= ~state->src_mask;
+    v = (long long)u;
+
+    if (sh > 0) {
+        /* Round half up without an intermediate add, then clamp */
+        v = (v >> sh) + ((v >> (sh - 1)) & 1);
+        if (v > state->out_max)
+            v = state->out_max;
+    } else if (sh < 0) {
+        v = (long long)(((unsigned long long)v) << (-sh));
+    }
+    return v;
+}
 
 static void pack_frame(DecoderState* state) {
     int i, s;
@@ -101,7 +143,8 @@ static void pack_frame(DecoderState* state) {
 }
 
 void decoder_init(DecoderState* state, int* slot_list, int n_slots,
-                  int bit_depth, int batch_size, int frame_byte_size) {
+                  int bit_depth, int batch_size, int frame_byte_size,
+                  int source_bit_depth) {
     int i;
     memset(state, 0, sizeof(DecoderState));
 
@@ -112,9 +155,9 @@ void decoder_init(DecoderState* state, int* slot_list, int n_slots,
     }
 
     state->bytes_per_sample = (bit_depth > 16) ? 4 : 2;
-    state->sign_mask = ((long long)1 << bit_depth) - 1;
-    state->sign_threshold = (long long)1 << (bit_depth - 1);
-    state->sign_subtract = (long long)1 << bit_depth;
+    state->out_bits = bit_depth;
+    decoder_set_source_bit_depth(state,
+        source_bit_depth > 0 ? source_bit_depth : bit_depth);
 
     state->batch_size = batch_size;
     state->frame_byte_size = frame_byte_size;
@@ -148,10 +191,7 @@ int decoder_process_frame(DecoderState* state, int slot, long long frame_num,
 
     /* Accumulate sample (skip if error) */
     if (!has_error) {
-        long long v = data & state->sign_mask;
-        if (v >= state->sign_threshold)
-            v -= state->sign_subtract;
-        state->accum[slot] = v;
+        state->accum[slot] = convert_sample(state, data);
         state->accum_valid[slot] = 1;
     }
 

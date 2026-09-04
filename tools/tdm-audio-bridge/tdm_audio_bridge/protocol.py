@@ -40,6 +40,17 @@ class Handshake:
                 f"(expected {PROTOCOL_VERSION})"
             )
 
+        # The wire format is int16 or int32 only. Anything else would make
+        # frame_size and struct_fmt disagree (a 24-bit handshake once did,
+        # and unpack_frames crashed with struct.error on the first frame).
+        if self.bit_depth not in (16, 32):
+            raise ValueError(
+                f"Unsupported bit_depth {self.bit_depth} in handshake: this bridge "
+                f"plays 16 or 32-bit PCM. Update the TDM Audio Stream HLA to v2.6.0 "
+                f"or later, which converts other LLA widths to a supported format "
+                f"before sending."
+            )
+
         bytes_per_sample = self.bit_depth // 8
         self.frame_size = self.channels * bytes_per_sample
         fmt_char = 'h' if self.bit_depth == 16 else 'i'

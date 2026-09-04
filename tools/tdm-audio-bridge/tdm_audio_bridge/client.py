@@ -23,7 +23,7 @@ class StreamClient:
 
     def __init__(self, host='127.0.0.1', port=4011,
                  on_handshake=None, on_data=None, on_disconnect=None,
-                 on_connected=None,
+                 on_connected=None, on_error=None,
                  reconnect=True, reconnect_delay=1.0):
         self._host = host
         self._port = port
@@ -31,6 +31,8 @@ class StreamClient:
         self._on_data = on_data
         self._on_disconnect = on_disconnect
         self._on_connected = on_connected
+        self._on_error = on_error
+        self._last_protocol_error = None
         self._reconnect = reconnect
         self._reconnect_delay = reconnect_delay
         self._stop = threading.Event()
@@ -93,6 +95,17 @@ class StreamClient:
                     except socket.timeout:
                         continue
 
+            except ValueError as e:
+                # Bad handshake: unsupported protocol version or bit depth,
+                # or malformed JSON. Not transient, so report it once and
+                # keep retrying quietly in case the user fixes the HLA and
+                # restarts the capture.
+                msg = str(e)
+                if msg != self._last_protocol_error:
+                    log.error("%s", msg)
+                    self._last_protocol_error = msg
+                    if self._on_error:
+                        self._on_error(msg)
             except (ConnectionRefusedError, OSError) as e:
                 if not self._stop.is_set():
                     log.debug("Connection attempt failed: %s", e)

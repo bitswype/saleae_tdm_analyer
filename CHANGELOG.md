@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-09-04
+
+### Fixed
+
+- **24-bit (and any non-16/32-bit) source data corrupted by both HLAs** ([#10](https://github.com/bitswype/saleae_tdm_analyer/issues/10)) - the WAV Export and Audio Stream HLAs masked the LLA's already-sign-converted `data` value at the *output* bit depth instead of rescaling it from the *source* bit depth. With a 24-bit LLA and 16-bit output, `0x012345` became `0x2345` and full scale `0x7FFFFF` became `0xFFFF` (-1 as int16), so the result was noise rather than reduced resolution. 24-bit into 32-bit output passed through unscaled, 48 dB too quiet. All four Audio Stream decode backends (Python, Cython, raw C, cffi) shared the bug. Samples are now interpreted at the source width and converted with a rounded (half up) right shift clamped to the output range, or a left shift when the output is wider.
+- **Audio Stream HLA advertised the wrong width in Audio Batch Mode** - the handshake sent the user's 16/32 setting while the payload used the LLA's packed width (3 bytes per sample for 24-bit), so the bridge misaligned every frame. The HLA now adopts the LLA width and widens 1-byte and 3-byte samples to int16/int32 before sending; the handshake reflects what is actually on the wire.
+- **Audio bridge crashed on unsupported handshake widths** - `Handshake` computed a 3-byte frame size but a 4-byte struct format for a 24-bit handshake, and `unpack_frames()` raised `struct.error` on the first frame. The bridge now rejects anything other than 16 or 32 with an actionable message (shown in the CLI and GUI) and keeps retrying quietly.
+- **WAV Export wrote signed bytes into 8-bit WAV files in Audio Batch Mode** - 8-bit WAV is unsigned by specification (silence is 0x80); samples are now offset accordingly.
+- **Batch PCM byte math for LLA data wider than 32 bits** - both HLAs computed `(bits + 7) // 8` bytes per sample, but the LLA packs 4 bytes for anything wider than 24 bits. A 40-bit LLA would have misaligned every frame. The HLAs now mirror the LLA's 1/2/3/4-byte tiers.
+- **Batch PCM was not full scale for non-byte-aligned or >32-bit data** - the LLA packed the raw value, so 20-bit audio in 3-byte samples was 24 dB quiet and 40-bit audio was truncated to its low 32 bits (the batch-mode form of the same upper-bits-discarded defect). The LLA now scales every batch sample to full scale at the packed width: left shift for narrower data, rounded right shift with clamp for wider. The batch frame's `bit_depth` is now the packed width (8/16/24/32) and a new `data_bits` field carries the analyzer setting. Found by the mutation-testing audit of this release.
+- **WAV Export batch mode used the wrong sample width for non-byte-aligned LLA data** - the WAV header took `bit_depth // 8`, so a 20-bit LLA produced a 2-byte header over 3-byte samples (misaligned garbage) and a 40-bit LLA raised `wave.Error` out of `decode()`. The sample width now follows the packed tier.
+- **Audio Stream HLA `shutdown()` crashed after an init error** - if `__init__` failed before the server socket existed (for example, an invalid setting), `shutdown()` raised `AttributeError`. Logic 2 still calls `shutdown()` on that instance.
+
+### Added
+
+- **`Source bit depth` HLA setting** on both HLAs - the LLA's "Data bits/slot" value (2-64). Leave blank to auto-detect from the LLA's new `format` frame. An explicit value wins over the frame, which also lets the fix work with an older LLA binary. With neither, the source width is assumed to equal the output width (the pre-2.6.0 behavior, correct for the common 16-to-16 case).
+- **`format` FrameV2 from the LLA** - emitted exactly once at the start of decode, before any slot, advisory, or batch frame, with `bit_depth`, `slots_per_frame`, `sample_rate`, and `signed`. A one-time frame costs nothing on the per-slot hot path, unlike adding a field to every slot frame. HLAs that switch on `frame.type` should ignore it or use it.
+- **`TDM_HLA_BACKEND` environment variable** - forces the Audio Stream decode backend (`cython`, `rawc`, `cffi`, or `python`) so the oracle can be run against each compiled extension; fails loudly if the requested extension is not built.
+- **Bridge `on_error` callback** on `StreamClient` - non-transient protocol errors (bad handshake) reach the CLI and GUI instead of dying in the receive thread.
+- **Tests** - 50 new Python oracle tests (124 total) covering every source/output width combination including 33/64-bit sources into 32-bit output, rounding, clamping, auto-detect versus explicit setting, malformed `format` frames, width adoption before a client connects, batch widening, and the WAV paths across all packed tiers; 3 new C++ tests (82 total) for the `format` frame in normal, batch, and FrameV2-off mode and for full-scale batch packing; a new 9-test suite for the bridge wire protocol and client error path (`tests/test_audio_bridge_protocol.py`). The test harness `HlaDriver` gained a `source_bit_depth` parameter and the oracle's batch helper packs in the LLA's byte tiers. A new CI job builds all three decode extensions and runs the oracle against each backend, so a divergence between the five conversion implementations can no longer ship unnoticed.
+
+### Changed
+
+- **Audio Stream HLA bit depth label** now states that in Audio Batch Mode the LLA width is used and widened to 16 or 32.
+
 ## [2.5.0] - 2026-04-01
 
 ### Added

@@ -29,7 +29,9 @@ except ImportError:
             pass
         default = '16'
 
-from _tdm_utils import parse_slot_spec, _as_signed, PerfCounters
+from _tdm_utils import (parse_slot_spec, _as_signed, PerfCounters,
+                        parse_source_bit_depth, conversion_params,
+                        lla_batch_bytes_per_sample, widen_pcm)
 
 _USE_FAST = None  # 'cython', 'rawc', 'cffi', or None
 
@@ -41,19 +43,40 @@ _hla_dir = _os.path.dirname(_os.path.abspath(__file__))
 if _hla_dir not in _sys.path:
     _sys.path.insert(0, _hla_dir)
 
-try:
-    from _decode_fast import FastDecoder
-    _USE_FAST = 'cython'
-except ImportError:
+
+def _load_backend(name):
+    if name == 'cython':
+        from _decode_fast import FastDecoder
+        return FastDecoder
+    if name == 'rawc':
+        from _decode_rawc import RawCDecoder
+        return RawCDecoder
+    if name == 'cffi':
+        from _decode_cffi_wrapper import CffiDecoder
+        return CffiDecoder
+    raise ImportError(name)
+
+
+# TDM_HLA_BACKEND forces one backend ('cython', 'rawc', 'cffi', or
+# 'python') so the test oracle can be run against each compiled extension
+# in turn. Unset: first available in the order below.
+_FORCED_BACKEND = _os.environ.get('TDM_HLA_BACKEND', '').strip().lower()
+
+FastDecoder = None
+for _name in ([_FORCED_BACKEND] if _FORCED_BACKEND else ['cython', 'rawc', 'cffi']):
+    if _name == 'python':
+        break
     try:
-        from _decode_rawc import RawCDecoder as FastDecoder
-        _USE_FAST = 'rawc'
+        FastDecoder = _load_backend(_name)
+        _USE_FAST = _name
+        break
     except ImportError:
-        try:
-            from _decode_cffi_wrapper import CffiDecoder as FastDecoder
-            _USE_FAST = 'cffi'
-        except ImportError:
-            FastDecoder = None
+        continue
+
+if _FORCED_BACKEND and _FORCED_BACKEND != 'python' and FastDecoder is None:
+    raise ImportError(
+        f"TDM_HLA_BACKEND={_FORCED_BACKEND!r} requested but that extension is not "
+        f"built. See hla-audio-stream/README.md for build commands.")
 
 PROTOCOL_VERSION = 1
 
@@ -81,8 +104,10 @@ class TdmAudioStream(HighLevelAnalyzer):
     tcp_port = StringSetting(label='TCP Port. Leave blank for 4011.')
     buffer_size = StringSetting(label='Ring buffer size (frames). Leave blank for 128.')
     bit_depth = ChoicesSetting(['16', '32'],
-        label='Output bit depth (ignored in Audio Batch Mode - LLA bit depth is used)')
+        label='Output bit depth (ignored in Audio Batch Mode - LLA width is used, widened to 16 or 32)')
     bit_depth.default = '16'
+    source_bit_depth = StringSetting(
+        label='Source bit depth (LLA data bits/slot, 2-64). Leave blank to auto-detect from the LLA.')
 
     # -------------------------------------------------------------------------
     # result_types — required by Logic 2 for frame label formatting.
@@ -101,9 +126,16 @@ class TdmAudioStream(HighLevelAnalyzer):
 
             self._slots_raw = self.slots
             self._bit_depth = int(self.bit_depth or '16')
-            self._sign_mask = (1 << self._bit_depth) - 1
-            self._sign_threshold = 1 << (self._bit_depth - 1)
-            self._sign_subtract = 1 << self._bit_depth
+
+            # Source bit depth is the LLA's data width. An explicit setting
+            # wins; blank means auto-detect from the LLA's one-time 'format'
+            # frame, falling back to the output width (pre-v2.6.0 behavior)
+            # if that frame never arrives (older LLA build).
+            self._source_bit_depth_setting = parse_source_bit_depth(
+                getattr(self, 'source_bit_depth', ''))
+            self._configure_conversion(self._source_bit_depth_setting or self._bit_depth)
+            self._batch_width_set = False
+
             self._port = int(self.tcp_port or '4011')
             self._buf_size = int(self.buffer_size or '128')
 
@@ -166,7 +198,8 @@ class TdmAudioStream(HighLevelAnalyzer):
                 try:
                     self._fast = FastDecoder(
                         self._slot_list, self._bit_depth,
-                        self._batch_size, self._frame_byte_size)
+                        self._batch_size, self._frame_byte_size,
+                        self._src_bits)
                 except Exception:
                     self._fast = None
 
@@ -215,9 +248,14 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._slot_list = []
             self._slot_set = set()
             self._pcm_fmt = '<'
-            self._sign_mask = 0
-            self._sign_threshold = 0
-            self._sign_subtract = 0
+            self._source_bit_depth_setting = None
+            self._src_bits = 16
+            self._src_mask = 0
+            self._src_sign_bit = 0
+            self._src_modulus = 0
+            self._shift = 0
+            self._out_max = 0
+            self._batch_width_set = False
             self._frame_byte_size = 0
             self._batch_size = 1
             self._batch_buf = bytearray()
@@ -237,6 +275,32 @@ class TdmAudioStream(HighLevelAnalyzer):
             self._current_client = None
             self._handshake_sent = False
             self._shutdown = threading.Event()
+
+    # -------------------------------------------------------------------------
+    # Source width handling (GitHub issue #10)
+    # -------------------------------------------------------------------------
+
+    def _configure_conversion(self, src_bits):
+        """Set the sample rescale constants for a given LLA data width."""
+        (self._src_mask, self._src_sign_bit, self._src_modulus,
+         self._shift, self._out_max) = conversion_params(src_bits, self._bit_depth)
+        self._src_bits = src_bits
+
+    def _apply_format_frame(self, d):
+        """Adopt the LLA's data width from its one-time 'format' frame.
+
+        An explicit 'Source bit depth' setting always wins. Otherwise the
+        frame's bit_depth replaces the default assumption that the source
+        width equals the output width.
+        """
+        if self._source_bit_depth_setting is not None:
+            return
+        bits = d.get('bit_depth')
+        if not isinstance(bits, int) or not 2 <= bits <= 64 or bits == self._src_bits:
+            return
+        self._configure_conversion(bits)
+        if self._fast is not None:
+            self._fast.set_source_bit_depth(bits)
 
     # -------------------------------------------------------------------------
     # TCP server threads
@@ -431,6 +495,12 @@ class TdmAudioStream(HighLevelAnalyzer):
         if frame.type == 'audio_batch':
             return self._decode_audio_batch(frame)
 
+        # One-time stream format from the LLA (v2.6.0+): learn the source
+        # data width unless the user pinned it in settings
+        if frame.type == 'format':
+            self._apply_format_frame(frame.data)
+            return None
+
         # Fast path: Cython or cffi
         if self._fast is not None:
             # Sample rate derivation stays in Python (only first few frames)
@@ -474,6 +544,19 @@ class TdmAudioStream(HighLevelAnalyzer):
         if not pcm_data or num_frames == 0:
             return None
 
+        # The TCP protocol carries int16 or int32 only. Adopt the LLA's
+        # packed width (the user's output setting is ignored in batch mode)
+        # and widen 1-byte and 3-byte samples below. This must be settled
+        # before the handshake is sent, which is why it comes first.
+        bytes_per_sample = lla_batch_bytes_per_sample(bit_depth)
+        if not self._batch_width_set:
+            self._bit_depth = 16 if bytes_per_sample <= 2 else 32
+            self._batch_width_set = True
+        # The advertised width is latched by the first batch; a later batch
+        # claiming a different width (never from a real LLA, but cheap to
+        # honor) is repacked to the latched width so the stream never desyncs
+        out_bytes = self._bit_depth // 8
+
         # Set sample rate from LLA metadata
         if self._sample_rate is None and sample_rate > 0:
             self._sample_rate = sample_rate
@@ -489,7 +572,6 @@ class TdmAudioStream(HighLevelAnalyzer):
         if self._sample_rate is None:
             return None
 
-        bytes_per_sample = (bit_depth + 7) // 8
         lla_frame_size = lla_channels * bytes_per_sample
         hla_channels = len(self._slot_list)
 
@@ -511,6 +593,9 @@ class TdmAudioStream(HighLevelAnalyzer):
                         out[dst_off:dst_off + bytes_per_sample] = \
                             pcm_data[src_off:src_off + bytes_per_sample]
             chunk = bytes(out)
+
+        if bytes_per_sample != out_bytes:
+            chunk = widen_pcm(chunk, bytes_per_sample, out_bytes)
 
         with self._ring_lock:
             self._ring.append(chunk)
@@ -546,9 +631,18 @@ class TdmAudioStream(HighLevelAnalyzer):
         self._perf.end('decode::flush', t1)
 
         if not (d.get('short_slot') or d.get('bitclock_error')):
-            v = d.get('data', 0) & self._sign_mask
-            if v >= self._sign_threshold:
-                v -= self._sign_subtract
+            # Interpret 'data' at the SOURCE width, then rescale to the
+            # output width. Inlined _tdm_utils.convert_sample (issue #10).
+            v = d.get('data', 0) & self._src_mask
+            if v & self._src_sign_bit:
+                v -= self._src_modulus
+            sh = self._shift
+            if sh > 0:
+                v = (v >> sh) + ((v >> (sh - 1)) & 1)
+                if v > self._out_max:
+                    v = self._out_max
+            elif sh < 0:
+                v <<= -sh
             self._accum[slot] = v
 
         self._last_frame_num = frame_num
@@ -594,10 +688,14 @@ class TdmAudioStream(HighLevelAnalyzer):
                 except OSError:
                     pass
                 self._current_client = None
-        try:
-            self._server_sock.close()
-        except OSError:
-            pass
+        # __init__ may have failed (deferred error) before the server socket
+        # was created; Logic 2 still calls shutdown() on that instance
+        server_sock = getattr(self, '_server_sock', None)
+        if server_sock is not None:
+            try:
+                server_sock.close()
+            except OSError:
+                pass
 
 
 if __name__ == '__main__':

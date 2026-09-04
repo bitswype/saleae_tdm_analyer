@@ -4,9 +4,11 @@
 
 Two test suites cover the TDM analyzer decode pipeline:
 
-**C++ LLA correctness tests** (`tests/tdm_correctness`) -- 79 tests verifying the Low Level Analyzer's decode logic via the SDK testlib. See detailed documentation below.
+**C++ LLA correctness tests** (`tests/tdm_correctness`) -- 82 tests verifying the Low Level Analyzer's decode logic via the SDK testlib. See detailed documentation below.
 
-**Python HLA decode tests** (`tests/test_hla_decode.py`) -- 74 pytest tests verifying both HLAs (audio stream and WAV export) at the unit level. Covers every branch of decode(): frame/slot filtering, sign conversion, error handling, frame boundary detection, accumulator behavior, PCM packing via TCP, batch buffer mechanics, sample rate derivation, WAV output, and C-port safety (negative ints, overflow, missing keys, ring buffer overflow, large frame numbers). Run with `pytest tests/test_hla_decode.py -v`. This suite serves as the correctness oracle for any future C/Cython reimplementation of the decode() hot path.
+**Python HLA decode tests** (`tests/test_hla_decode.py`) -- 124 pytest tests verifying both HLAs (audio stream and WAV export) at the unit level. Covers every branch of decode(): frame/slot filtering, sign conversion, error handling, frame boundary detection, accumulator behavior, PCM packing via TCP, batch buffer mechanics, sample rate derivation, WAV output, C-port safety (negative ints, overflow, missing keys, ring buffer overflow, large frame numbers), and source-to-output bit depth conversion (every width combination, rounding, clamping, auto-detect from the `format` frame versus the explicit setting, batch-mode widening). Run with `pytest tests/test_hla_decode.py -v`, and against each compiled backend with `TDM_HLA_BACKEND=cython|rawc|cffi|python`. This suite is the correctness oracle for the C/Cython reimplementations of the decode() hot path.
+
+**Audio bridge protocol tests** (`tests/test_audio_bridge_protocol.py`) -- 9 pytest tests for the bridge's handshake parser, PCM unpacking, rejection of unsupported widths with an actionable message, and the client's once-per-message error reporting with continued reconnection.
 
 **What is not tested:** GenerateBubbleText/GenerateTabularText (formatting logic), CSV/WAV export format details, settings validation (SetSettingsFromInterfaces), LoadSettings/SaveSettings serialization.
 
@@ -109,12 +111,12 @@ Before the capture mock existed, all FrameV2 stubs were no-ops, making the entir
 | `test_error_conditions.cpp` | 9 | Error flags (SHORT_SLOT, UNEXPECTED_BITS) and robustness under misconfig |
 | `test_advanced_analysis.cpp` | 3 | Hand-crafted signals for BITCLOCK_ERROR, MISSED_DATA, MISSED_FRAME_SYNC |
 | `test_generator_blindspots.cpp` | 3 | Padding bits HIGH, DSP Mode A offset bit, low sample rate |
-| `test_framev2.cpp` | 7 | FrameV2 severity, error booleans, frame numbering, low SR advisory |
-| `test_audio_batch.cpp` | 21 | Audio batch mode: happy path (8), PCM oracle (4), multi-channel/bit-depth (4), edge cases (3), error handling (2) |
+| `test_framev2.cpp` | 9 | FrameV2 severity, error booleans, frame numbering, low SR advisory, one-time `format` frame |
+| `test_audio_batch.cpp` | 22 | Audio batch mode: happy path (8), PCM oracle (4), multi-channel/bit-depth (5, including full-scale packing at the packed width), edge cases (3), error handling (2) |
 | `tdm_test_helpers.h` | - | Declarations and macros (inline RunTest, CHECK) |
 | `tdm_test_helpers.cpp` | - | Helper implementations and shared signal generators |
 | `tdm_correctness.cpp` | - | Test runner: main() with forward declarations |
-| **Total** | **79** | |
+| **Total** | **82** | |
 
 ## Test Categories
 
@@ -164,13 +166,14 @@ Address specific blind spots in the standard counting-pattern signal generator:
 - **DSP Mode A offset bit HIGH:** The first FS-coincident data bit is skipped during sync setup. This test sets it to HIGH and verifies it doesn't appear in decoded output.
 - **Low sample rate:** Below 4x oversampling threshold, exercising the `mLowSampleRate` advisory path.
 
-### FrameV2 field verification (7 tests) - `test_framev2.cpp`
+### FrameV2 field verification (9 tests) - `test_framev2.cpp`
 
 Verify FrameV2 output fields that are invisible to V1 Frame inspection:
 
 - **Happy path:** severity="ok", all error booleans=false, frame_number increments
 - **Error severity:** SHORT_SLOT produces "error", EXTRA_SLOT produces "warning", BITCLOCK_ERROR/MISSED_DATA/MISSED_FRAME_SYNC produce "error"
 - **Low sample rate:** Advisory FrameV2 emitted with severity="warning" and message, slot FrameV2s have low_sample_rate=true
+- **Format frame (v2.6.0):** exactly one `format` FrameV2 is the first FrameV2 emitted, at sample 0, carrying `bit_depth`, `slots_per_frame`, `sample_rate`, and `signed`; verified for signed 24-in-32, unsigned 16-bit, and batch mode with Minimal detail (it must precede the low-sample-rate advisory and any slot or batch frame so HLAs learn the source width before the first sample)
 
 Note: `test_framev2_signed_decode` (1 test) lives in `test_sign_conversion.cpp` since it verifies signed conversion correctness, and runs under the "FrameV2 Field Verification" section in the runner.
 
@@ -231,6 +234,8 @@ The test suite was built over three rounds, each driven by independent adversari
 **HLA Round 1 (42 tests):** Initial Python HLA decode() unit test suite covering frame/slot filtering, sign conversion, error handling, frame boundaries, accumulator behavior, PCM packing via TCP, batch mechanics, sample rate derivation, init errors, and WAV export.
 
 **HLA Round 2 (+22 = 64 tests, +10 batch = 74 total):** Three adversarial agents found: hollow tests (silence test checked count not PCM, shutdown test called flush manually), missing C port safety (negative ints, overflow, missing keys, ring overflow, large frame_nums, zero delta), weak tests (error substitution unverified, batch flush not ring-verified), missing WAV edge cases, and missing parse_slot_spec edge cases. All addressed.
+
+**Round 6 (+3 = 82 C++ tests) and HLA Round 3 (+50 = 124 Python tests, +9 bridge protocol tests):** Driven by GitHub issue #10. The 74-test oracle had a blind spot: every test used `bit_depth` 16 or 32 and never fed `data` wider than the output, so masking at the output width instead of rescaling from the source width went undetected in all four backends. Added sections 17-19 (source-to-output conversion for 24/32/16/20-bit sources, rounding, clamping, auto-detect from the `format` frame versus explicit setting, batch-mode widening, WAV paths) and `tests/test_audio_bridge_protocol.py`. The failing tests were committed before the fix, per the bug-fix workflow. Three adversarial audit agents (coverage, assertion quality, mutation/boundary) then reviewed the fix; the mutation agent fuzzed all five conversion implementations against the Python reference over 5,608 cases (exhaustive for 2-8 bit sources) with zero disagreement, and found that the WAV export's batch sample width and the LLA's batch packing of non-byte-aligned and >32-bit data were still wrong. Both were fixed and covered (sections 20-22, `test_batch_scaled_to_packed_width`). The assertion-quality agent mutation-tested the new tests themselves (15 mutants of the conversion code, all killed) and had the zero-filtering assertions replaced with whole-file comparisons so a wrong result of 0 cannot hide.
 
 ## Known Remaining Gaps
 

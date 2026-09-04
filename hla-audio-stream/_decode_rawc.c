@@ -23,9 +23,15 @@ typedef struct {
     int slot_list[256];
     int n_slots;
 
-    long long sign_mask;
-    long long sign_threshold;
-    long long sign_subtract;
+    /* Output width (16 or 32) */
+    int out_bits;
+
+    /* Source width -> output width rescale (see _tdm_utils.conversion_params) */
+    int src_bits;
+    unsigned long long src_mask;
+    unsigned long long src_sign_bit;
+    int shift;
+    long long out_max;
 
     long long last_frame_num;
     int last_frame_num_valid;
@@ -43,6 +49,44 @@ typedef struct {
     long long frame_count;
     int sample_rate_known;
 } DecoderState;
+
+/* =========================================================================
+ * Source width handling (GitHub issue #10)
+ *
+ * The LLA emits 'data' at its own data width. Interpret it there, then
+ * rescale to the output width. Must match _tdm_utils.convert_sample.
+ * ========================================================================= */
+
+static void decoder_configure_source(DecoderState *state, int src_bits) {
+    state->src_bits = src_bits;
+    state->src_mask = (src_bits >= 64) ? ~0ULL : ((1ULL << src_bits) - 1);
+    state->src_sign_bit = 1ULL << (src_bits - 1);
+    state->shift = src_bits - state->out_bits;
+    state->out_max = (1LL << (state->out_bits - 1)) - 1;
+}
+
+static long long convert_sample(const DecoderState *state, long long raw) {
+    unsigned long long u = ((unsigned long long)raw) & state->src_mask;
+    long long v;
+    int sh = state->shift;
+
+    /* Sign-extend from src_bits to 64 bits using unsigned arithmetic so
+     * 63- and 64-bit sources stay defined */
+    if (u & state->src_sign_bit)
+        u |= ~state->src_mask;
+    v = (long long)u;
+
+    if (sh > 0) {
+        /* Round half up without an intermediate add (no overflow at the
+         * top of the source range), then clamp positive full scale */
+        v = (v >> sh) + ((v >> (sh - 1)) & 1);
+        if (v > state->out_max)
+            v = state->out_max;
+    } else if (sh < 0) {
+        v = (long long)(((unsigned long long)v) << (-sh));
+    }
+    return v;
+}
 
 /* =========================================================================
  * pack_frame -- pack accumulated samples into the batch buffer (pure C)
@@ -109,10 +153,7 @@ static int decoder_process_frame(DecoderState *state, int slot, long long frame_
 
     /* Accumulate sample (skip if error) */
     if (!has_error) {
-        long long v = data & state->sign_mask;
-        if (v >= state->sign_threshold)
-            v -= state->sign_subtract;
-        state->accum[slot] = v;
+        state->accum[slot] = convert_sample(state, data);
         state->accum_valid[slot] = 1;
     }
 
@@ -152,15 +193,24 @@ RawCDecoder_init(RawCDecoderObject *self, PyObject *args, PyObject *kwds)
 {
     PyObject *slot_list_obj;
     int bit_depth, batch_size, frame_byte_size;
+    int source_bit_depth = 0;   /* 0 = same as output width */
     Py_ssize_t n_slots, i;
 
     static char *kwlist[] = {"slot_list", "bit_depth", "batch_size",
-                             "frame_byte_size", NULL};
+                             "frame_byte_size", "source_bit_depth", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "Oiii", kwlist,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "Oiii|i", kwlist,
                                       &slot_list_obj, &bit_depth,
-                                      &batch_size, &frame_byte_size))
+                                      &batch_size, &frame_byte_size,
+                                      &source_bit_depth))
         return -1;
+
+    if (source_bit_depth <= 0)
+        source_bit_depth = bit_depth;
+    if (source_bit_depth < 2 || source_bit_depth > 64) {
+        PyErr_SetString(PyExc_ValueError, "source_bit_depth must be 2-64");
+        return -1;
+    }
 
     if (!PyList_Check(slot_list_obj)) {
         PyErr_SetString(PyExc_TypeError, "slot_list must be a list");
@@ -188,9 +238,8 @@ RawCDecoder_init(RawCDecoderObject *self, PyObject *args, PyObject *kwds)
     }
 
     self->state.bytes_per_sample = (bit_depth > 16) ? 4 : 2;
-    self->state.sign_mask = ((long long)1 << bit_depth) - 1;
-    self->state.sign_threshold = (long long)1 << (bit_depth - 1);
-    self->state.sign_subtract = (long long)1 << bit_depth;
+    self->state.out_bits = bit_depth;
+    decoder_configure_source(&self->state, source_bit_depth);
 
     self->state.batch_size = batch_size;
     self->state.frame_byte_size = frame_byte_size;
@@ -310,6 +359,22 @@ RawCDecoder_set_sample_rate_known(RawCDecoderObject *self, PyObject *Py_UNUSED(i
     Py_RETURN_NONE;
 }
 
+/* -- set_source_bit_depth ---------------------------------------------- */
+
+static PyObject *
+RawCDecoder_set_source_bit_depth(RawCDecoderObject *self, PyObject *arg)
+{
+    long bits = PyLong_AsLong(arg);
+    if (bits == -1 && PyErr_Occurred())
+        return NULL;
+    if (bits < 2 || bits > 64) {
+        PyErr_SetString(PyExc_ValueError, "source_bit_depth must be 2-64");
+        return NULL;
+    }
+    decoder_configure_source(&self->state, (int)bits);
+    Py_RETURN_NONE;
+}
+
 /* -- get_batch_data ---------------------------------------------------- */
 
 static PyObject *
@@ -395,6 +460,8 @@ static PyMethodDef RawCDecoder_methods[] = {
      METH_O,                   "Process one FrameV2. Returns 0, 1 (flush needed), or -1 (filtered)."},
     {"set_sample_rate_known",  (PyCFunction)RawCDecoder_set_sample_rate_known,
      METH_NOARGS,              "Signal that sample rate has been derived."},
+    {"set_source_bit_depth",   (PyCFunction)RawCDecoder_set_source_bit_depth,
+     METH_O,                   "Adopt a new LLA source width (2-64) for sample rescaling."},
     {"get_batch_data",         (PyCFunction)RawCDecoder_get_batch_data,
      METH_NOARGS,              "Return batch buffer contents as bytes."},
     {"reset_batch",            (PyCFunction)RawCDecoder_reset_batch,
@@ -404,9 +471,17 @@ static PyMethodDef RawCDecoder_methods[] = {
     {NULL}
 };
 
+static PyObject *
+RawCDecoder_get_source_bit_depth(RawCDecoderObject *self, void *closure)
+{
+    return PyLong_FromLong(self->state.src_bits);
+}
+
 static PyGetSetDef RawCDecoder_getset[] = {
     {"frame_count",    (getter)RawCDecoder_get_frame_count,    NULL,
      "Number of complete PCM frames packed.",  NULL},
+    {"source_bit_depth", (getter)RawCDecoder_get_source_bit_depth, NULL,
+     "Current LLA source width used for rescaling.", NULL},
     {"batch_count",    (getter)RawCDecoder_get_batch_count,    NULL,
      "Number of frames in current batch.",     NULL},
     {"last_frame_num", (getter)RawCDecoder_get_last_frame_num, NULL,

@@ -50,7 +50,11 @@ tdm-audio-bridge devices
 ## How it works
 
 1. Connects to the TCP server started by the TDM Audio Stream HLA
-2. Reads a JSON handshake line (sample rate, channels, bit depth, byte order)
+2. Reads a JSON handshake line (sample rate, channels, bit depth, byte order).
+   Only 16 and 32-bit are valid on the wire; any other value is reported as
+   an error (CLI: stderr, GUI: status label) and the client keeps retrying so
+   you can fix the HLA and restart the capture. HLAs from v2.6.0 on widen
+   other LLA widths before sending.
 3. Receives raw interleaved little-endian PCM (int16 or int32)
 4. Plays through the selected audio device via sounddevice/PortAudio
 

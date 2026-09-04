@@ -35,6 +35,7 @@ class TdmAnalyzer : public Analyzer2
     void GetNextBit( BitState& data, BitState& frame, U64& sample_number );
     void GetNextDataBit( BitState& data, U64& sample_number );
     void AccumulateSlotIntoBatch( S64 signed_value );
+    S64 ScaleToPackedWidth( S64 value ) const;
     void EmitAudioBatch();
 
   protected:
@@ -73,6 +74,7 @@ class TdmAnalyzer : public Analyzer2
     U32 mBatchFrameCount;
     U32 mBatchBytesPerFrame;
     U32 mBatchBytesPerSample;
+    S32 mBatchShift;   // packed bits - data bits: >0 left shift, <0 rounded right shift
     U64 mBatchStartSample;
     U64 mBatchEndSample;
     U64 mBatchStartFrameNum;

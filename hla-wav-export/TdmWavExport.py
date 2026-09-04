@@ -121,6 +121,79 @@ def _as_signed(value: int, bit_depth: int) -> int:
     return value
 
 
+# The three helpers below are duplicated from hla-audio-stream/_tdm_utils.py.
+# Logic 2 loads each extension folder in isolation, so the WAV export cannot
+# import from the audio stream folder. Keep them in sync.
+
+def parse_source_bit_depth(raw):
+    """Parse the 'Source bit depth' HLA setting.
+
+    Blank (or None) means auto-detect from the LLA's one-time 'format'
+    frame, so returns None. Otherwise the value must be the LLA's
+    'Data bits/slot' setting, 2-64.
+
+    Raises:
+        ValueError: with an actionable message for anything else.
+    """
+    # Outside Logic 2 (self-tests, harness) the attribute may still be the
+    # class-level Setting object rather than an injected string: treat as unset
+    if raw is None or not isinstance(raw, (str, int)):
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        bits = int(text)
+    except ValueError:
+        bits = -1
+    if not 2 <= bits <= 64:
+        raise ValueError(
+            f"Source bit depth must be between 2 and 64 (the LLA's 'Data bits/slot' "
+            f"setting), got {text!r}. Leave it blank to auto-detect from the LLA."
+        )
+    return bits
+
+
+def conversion_params(source_bits: int, output_bits: int) -> tuple:
+    """Pre-compute the constants for rescaling LLA samples to the output width.
+
+    The LLA emits each slot's 'data' as an integer at its own data width
+    (mDataBitsPerSlot), already sign-converted when the LLA is in Signed
+    mode. The HLA must interpret that integer at the SOURCE width and then
+    rescale it to the OUTPUT width (16 or 32). Masking at the output width
+    instead discards the upper bits of wider sources (GitHub issue #10).
+
+    Returns (src_mask, src_sign_bit, src_modulus, shift, out_max) where
+    shift > 0 means a rounded right shift by `shift` bits (source wider than
+    output), shift < 0 means a left shift by -shift bits, and out_max is the
+    clamp ceiling for the output range.
+    """
+    if not 2 <= source_bits <= 64:
+        raise ValueError(f"source_bits must be 2-64, got {source_bits}")
+    src_mask = (1 << source_bits) - 1
+    src_sign_bit = 1 << (source_bits - 1)
+    src_modulus = 1 << source_bits
+    shift = source_bits - output_bits
+    out_max = (1 << (output_bits - 1)) - 1
+    return src_mask, src_sign_bit, src_modulus, shift, out_max
+
+
+def lla_batch_bytes_per_sample(bit_depth: int) -> int:
+    """Bytes per packed sample in an LLA 'audio_batch' frame.
+
+    Mirrors TdmAnalyzer::WorkerThread: 1, 2, 3, or 4 bytes for data widths
+    up to 8, 16, 24, and anything wider. Do not compute (bits + 7) // 8;
+    a 40-bit LLA packs 4 bytes, not 5.
+    """
+    if bit_depth <= 8:
+        return 1
+    if bit_depth <= 16:
+        return 2
+    if bit_depth <= 24:
+        return 3
+    return 4
+
+
 class TdmWavExport(HighLevelAnalyzer):
     """Logic 2 High Level Analyzer that exports selected TDM slots to a WAV file.
 
@@ -141,6 +214,8 @@ class TdmWavExport(HighLevelAnalyzer):
     bit_depth = ChoicesSetting(['16', '32'],
         label='Output bit depth (ignored in Audio Batch Mode - LLA bit depth is used)')
     bit_depth.default = '16'  # Must be a separate statement — no default= kwarg allowed
+    source_bit_depth = StringSetting(
+        label='Source bit depth (LLA data bits/slot, 2-64). Leave blank to auto-detect from the LLA.')
 
     # -------------------------------------------------------------------------
     # result_types — required by Logic 2 for frame label formatting in the UI.
@@ -168,9 +243,14 @@ class TdmWavExport(HighLevelAnalyzer):
             # Convert bit depth to int; fallback to 16 handles the edge case where
             # the default attribute was not applied by an older Logic 2 build.
             self._bit_depth = int(self.bit_depth or '16')
-            self._sign_mask = (1 << self._bit_depth) - 1
-            self._sign_threshold = 1 << (self._bit_depth - 1)
-            self._sign_subtract = 1 << self._bit_depth
+
+            # Source bit depth is the LLA's data width. An explicit setting
+            # wins; blank means auto-detect from the LLA's one-time 'format'
+            # frame, falling back to the output width (pre-v2.6.0 behavior)
+            # if that frame never arrives (older LLA build).
+            self._source_bit_depth_setting = parse_source_bit_depth(
+                getattr(self, 'source_bit_depth', ''))
+            self._configure_conversion(self._source_bit_depth_setting or self._bit_depth)
 
             # REQ-16: Validate output_path before proceeding. Raising here is caught
             # by the except block below and stored as a deferred error.
@@ -218,9 +298,13 @@ class TdmWavExport(HighLevelAnalyzer):
             self._slot_list = []
             self._slot_set = set()
             self._pcm_fmt = '<'
-            self._sign_mask = 0
-            self._sign_threshold = 0
-            self._sign_subtract = 0
+            self._source_bit_depth_setting = None
+            self._src_bits = 16
+            self._src_mask = 0
+            self._src_sign_bit = 0
+            self._src_modulus = 0
+            self._shift = 0
+            self._out_max = 0
             self._frame_byte_size = 0
             self._batch_size = 1
             self._batch_buf = bytearray()
@@ -232,6 +316,26 @@ class TdmWavExport(HighLevelAnalyzer):
             self._last_frame_num = None
             self._timing_ref = {}
             self._frame_count = 0
+
+    def _configure_conversion(self, src_bits: int) -> None:
+        """Set the sample rescale constants for a given LLA data width."""
+        (self._src_mask, self._src_sign_bit, self._src_modulus,
+         self._shift, self._out_max) = conversion_params(src_bits, self._bit_depth)
+        self._src_bits = src_bits
+
+    def _apply_format_frame(self, d) -> None:
+        """Adopt the LLA's data width from its one-time 'format' frame.
+
+        An explicit 'Source bit depth' setting always wins. Otherwise the
+        frame's bit_depth replaces the default assumption that the source
+        width equals the output width.
+        """
+        if self._source_bit_depth_setting is not None:
+            return
+        bits = d.get('bit_depth')
+        if not isinstance(bits, int) or not 2 <= bits <= 64 or bits == self._src_bits:
+            return
+        self._configure_conversion(bits)
 
     def _open_wav(self, sample_rate: int) -> None:
         """Open the output WAV file and configure it for streaming write.
@@ -334,13 +438,15 @@ class TdmWavExport(HighLevelAnalyzer):
         if not pcm_data or num_frames == 0:
             return None
 
-        # Set sample rate and bit depth from LLA batch metadata.
-        # The batch's bit_depth is authoritative (it matches the packed PCM),
-        # so override the HLA's own bit_depth setting for WAV header accuracy.
+        # Set sample rate and bit depth from LLA batch metadata. The WAV
+        # sample width must match the PACKED width (1/2/3/4 bytes), which
+        # the LLA derives from its data width in tiers. Using the raw bit
+        # count instead gave a 2-byte header over 3-byte data for a 20-bit
+        # LLA, and wave.Error for 40-bit. Overrides the HLA's own setting.
         if self._sample_rate is None and sample_rate > 0:
             self._sample_rate = sample_rate
         if bit_depth > 0:
-            self._bit_depth = bit_depth
+            self._bit_depth = lla_batch_bytes_per_sample(bit_depth) * 8
 
         # Open WAV file if not yet opened
         if self._wav is None and self._sample_rate is not None:
@@ -348,7 +454,7 @@ class TdmWavExport(HighLevelAnalyzer):
         if self._wav is None:
             return None
 
-        bytes_per_sample = (bit_depth + 7) // 8
+        bytes_per_sample = lla_batch_bytes_per_sample(bit_depth)
         lla_frame_size = lla_channels * bytes_per_sample
         hla_channels = len(self._slot_list)
 
@@ -370,6 +476,10 @@ class TdmWavExport(HighLevelAnalyzer):
                         out[dst_off:dst_off + bytes_per_sample] = \
                             pcm_data[src_off:src_off + bytes_per_sample]
             wav_data = bytes(out)
+
+        # 8-bit WAV is unsigned by specification; the LLA packs signed bytes
+        if bytes_per_sample == 1:
+            wav_data = bytes(b ^ 0x80 for b in wav_data)
 
         self._wav.writeframes(wav_data)
         self._frame_count += num_frames
@@ -404,6 +514,12 @@ class TdmWavExport(HighLevelAnalyzer):
         if frame.type == 'audio_batch':
             return self._decode_audio_batch(frame)
 
+        # One-time stream format from the LLA (v2.6.0+): learn the source
+        # data width unless the user pinned it in settings
+        if frame.type == 'format':
+            self._apply_format_frame(frame.data)
+            return None
+
         if frame.type != 'slot':
             return None
 
@@ -432,9 +548,19 @@ class TdmWavExport(HighLevelAnalyzer):
         # Accumulate sample AFTER flush — error frames contribute silence by
         # not writing to accum; self._accum.get(slot, 0) returns 0 for them.
         if not (d.get('short_slot') or d.get('bitclock_error')):
-            v = d.get('data', 0) & self._sign_mask
-            if v >= self._sign_threshold:
-                v -= self._sign_subtract
+            # Interpret 'data' at the SOURCE width, then rescale to the
+            # output width: rounded right shift (clamped) or left shift.
+            # See conversion_params above and GitHub issue #10.
+            v = d.get('data', 0) & self._src_mask
+            if v & self._src_sign_bit:
+                v -= self._src_modulus
+            sh = self._shift
+            if sh > 0:
+                v = (v >> sh) + ((v >> (sh - 1)) & 1)
+                if v > self._out_max:
+                    v = self._out_max
+            elif sh < 0:
+                v <<= -sh
             self._accum[slot] = v
 
         # Update frame tracker

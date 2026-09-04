@@ -22,7 +22,8 @@ than requiring a post-capture export step.
 |---------|-------------|---------|---------|
 | **Slots** | Slot indices to export as WAV channels (comma-separated or ranges) | - | `0,2` or `0-3` or `1,3-5,7` |
 | **Output Path** | **Absolute** path to the output `.wav` file | - | `/home/user/captures/output.wav` |
-| **Bit Depth** | Sample bit depth (ignored in Audio Batch Mode - LLA bit depth is used) | `16` | `32` |
+| **Bit Depth** | Output sample bit depth (ignored in Audio Batch Mode - LLA bit depth is used) | `16` | `32` |
+| **Source Bit Depth** | The LLA's "Data bits/slot" (2-64). Blank = auto-detect from the LLA's `format` frame; set by hand only with an LLA older than v2.6.0 | blank | `24` |
 
 ### Absolute Paths Required
 
@@ -67,8 +68,17 @@ Duplicates are removed while preserving insertion order.
 - **Standard PCM WAV** using Python's `wave` module.
 - Output bit depth is 16 or 32 as selected in the HLA settings (no automatic
   tiering based on data bits).
-- Data values are sign-extended to the output bit depth and written as-is
-  (no scaling is applied).
+- Samples are interpreted at the LLA's data width (the **Source Bit Depth**,
+  auto-detected from the LLA's `format` frame) and rescaled to the output
+  width: a source wider than the output is right-shifted with rounding (half
+  up) and clamped so positive full scale cannot wrap; a narrower source is
+  left-shifted so full scale stays full scale. Equal widths pass through
+  unchanged. Before v2.6.0 the value was masked at the output width instead,
+  which discarded the upper bits of 24-bit sources
+  ([issue #10](https://github.com/bitswype/saleae_tdm_analyer/issues/10)).
+- In Audio Batch Mode the WAV is written at the LLA's width directly
+  (a 24-bit LLA produces a 24-bit WAV); 8-bit samples are offset to the
+  unsigned encoding the WAV specification requires.
 
 ## Comparison with LLA WAV Export
 

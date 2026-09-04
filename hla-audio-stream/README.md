@@ -76,6 +76,12 @@ After the handshake, raw interleaved little-endian PCM follows continuously
 (int16 for 16-bit, int32 for 32-bit). There is no framing - the client uses
 the handshake metadata to interpret the byte stream.
 
+`bit_depth` is always 16 or 32. In Audio Batch Mode the LLA packs samples at
+1, 2, 3, or 4 bytes depending on its data width; the HLA widens 1-byte and
+3-byte samples to int16/int32 (a left shift, so full scale is preserved) and
+advertises the widened width. The bridge rejects any other value with an
+explanatory error rather than misparsing the stream.
+
 A ring buffer (configurable size, default 128 frames) smooths timing between
 the decode thread and the TCP sender. If the client falls behind, the oldest
 frames are silently dropped.
@@ -98,7 +104,13 @@ Add it to your analyzer chain after the **TdmAnalyzer** LLA.
 | **Slots** | Slot indices to stream (comma-separated or ranges) | - | `0,1` or `0-3` or `1,3-5,7` |
 | **TCP Port** | Local TCP server port | `4011` | `4012` |
 | **Ring Buffer Size** | Frame buffer capacity (oldest dropped on overflow) | `128` | `256` |
-| **Bit Depth** | Sample bit depth (ignored in Audio Batch Mode - LLA bit depth is used) | `16` | `32` |
+| **Bit Depth** | Output sample bit depth (ignored in Audio Batch Mode - the LLA width is used, widened to 16 or 32) | `16` | `32` |
+| **Source Bit Depth** | The LLA's "Data bits/slot" (2-64). Blank = auto-detect from the LLA's `format` frame; set by hand only with an LLA older than v2.6.0 | blank | `24` |
+
+Samples are interpreted at the source width and rescaled to the output width
+(rounded right shift, clamped, or left shift). Before v2.6.0 they were masked
+at the output width, which turned 24-bit audio into noise on a 16-bit stream
+([issue #10](https://github.com/bitswype/saleae_tdm_analyer/issues/10)).
 
 ## Companion CLI: tdm-audio-bridge
 
@@ -458,6 +470,19 @@ The HLA derives the sample rate from the time interval between consecutive
 frames of the same slot. If the Logic 2 capture sample rate is too low relative
 to the TDM bit clock, the derived rate may be inaccurate. Ensure your capture
 sample rate is at least 4x the TDM bit clock frequency.
+
+### Running the decode oracle against each backend
+
+The HLA picks the first compiled decode extension it finds (Cython, then raw
+C, then cffi, then pure Python). A plain `pytest` run therefore exercises only
+one backend. Set `TDM_HLA_BACKEND` to pin one; the import fails loudly if that
+extension is not built:
+
+```bash
+for b in cython rawc cffi python; do
+  TDM_HLA_BACKEND=$b python -m pytest tests/test_hla_decode.py -q
+done
+```
 
 ### Testing without Logic 2
 

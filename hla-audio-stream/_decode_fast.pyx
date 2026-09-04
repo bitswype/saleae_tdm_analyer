@@ -2,12 +2,15 @@
 """Cython fast decode path for TdmAudioStream HLA.
 
 Implements the hot loop of decode() in C-level code: slot filtering,
-frame boundary detection, sign conversion, sample accumulation, and PCM
-packing into a pre-allocated batch buffer.
+frame boundary detection, source-to-output width conversion, sample
+accumulation, and PCM packing into a pre-allocated batch buffer.
 
 The frame object itself comes from Logic 2 (Python), so dict access must
 use Python operations. The win is in eliminating per-sample Python overhead
 for sign conversion, accumulator management, and struct.pack.
+
+Width conversion must match _tdm_utils.convert_sample exactly; the oracle
+in tests/test_hla_decode.py checks this backend against it.
 """
 
 cdef class FastDecoder:
@@ -20,12 +23,16 @@ cdef class FastDecoder:
     cdef long long accum[256]
     cdef bint accum_valid[256]
 
-    # Bit depth parameters
+    # Output width
     cdef int bit_depth
-    cdef long long sign_mask
-    cdef long long sign_threshold
-    cdef long long sign_subtract
     cdef int bytes_per_sample
+
+    # Source width -> output width rescale (see _tdm_utils.conversion_params)
+    cdef int src_bits
+    cdef unsigned long long src_mask
+    cdef unsigned long long src_sign_bit
+    cdef int shift
+    cdef long long out_max
 
     # Batch buffer
     cdef int batch_size
@@ -43,7 +50,8 @@ cdef class FastDecoder:
     # Sample rate known flag (skip sample rate derivation)
     cdef bint _sample_rate_known
 
-    def __init__(self, list slot_list, int bit_depth, int batch_size, int frame_byte_size):
+    def __init__(self, list slot_list, int bit_depth, int batch_size,
+                 int frame_byte_size, int source_bit_depth=0):
         cdef int i, slot
 
         # Initialize slot set bitmap and slot list
@@ -60,12 +68,16 @@ cdef class FastDecoder:
             if 0 <= slot < 256:
                 self.slot_set[slot] = 1
 
-        # Bit depth parameters
+        # Output width parameters
         self.bit_depth = bit_depth
-        self.sign_mask = (<long long>1 << bit_depth) - 1
-        self.sign_threshold = <long long>1 << (bit_depth - 1)
-        self.sign_subtract = <long long>1 << bit_depth
         self.bytes_per_sample = 4 if bit_depth > 16 else 2
+
+        # Source width defaults to the output width (pre-v2.6.0 behavior)
+        if source_bit_depth <= 0:
+            source_bit_depth = bit_depth
+        if source_bit_depth < 2 or source_bit_depth > 64:
+            raise ValueError("source_bit_depth must be 2-64")
+        self._configure_source(source_bit_depth)
 
         # Batch buffer
         self.batch_size = batch_size
@@ -82,6 +94,44 @@ cdef class FastDecoder:
 
         # Sample rate not known yet
         self._sample_rate_known = 0
+
+    cdef void _configure_source(self, int src_bits):
+        self.src_bits = src_bits
+        if src_bits >= 64:
+            self.src_mask = ~(<unsigned long long>0)
+        else:
+            self.src_mask = (<unsigned long long>1 << src_bits) - 1
+        self.src_sign_bit = <unsigned long long>1 << (src_bits - 1)
+        self.shift = src_bits - self.bit_depth
+        self.out_max = (<long long>1 << (self.bit_depth - 1)) - 1
+
+    def set_source_bit_depth(self, int src_bits):
+        """Adopt a new source width (from the LLA's 'format' frame)."""
+        if src_bits < 2 or src_bits > 64:
+            raise ValueError("source_bit_depth must be 2-64")
+        self._configure_source(src_bits)
+
+    cdef inline long long _convert(self, long long raw):
+        """Interpret raw at the source width and rescale to the output width.
+
+        Mirrors _tdm_utils.convert_sample. Sign extension is done with
+        unsigned arithmetic to stay defined for 63- and 64-bit sources, the
+        right shift rounds half up without an intermediate add (no overflow
+        at the top of the range), and positive full scale is clamped.
+        """
+        cdef unsigned long long u = (<unsigned long long>raw) & self.src_mask
+        cdef long long v
+        cdef int sh = self.shift
+        if u & self.src_sign_bit:
+            u |= ~self.src_mask
+        v = <long long>u
+        if sh > 0:
+            v = (v >> sh) + ((v >> (sh - 1)) & 1)
+            if v > self.out_max:
+                v = self.out_max
+        elif sh < 0:
+            v = <long long>((<unsigned long long>v) << (-sh))
+        return v
 
     cdef int _pack_frame(self) except -2:
         """Pack accumulated samples into batch buffer.
@@ -145,7 +195,7 @@ cdef class FastDecoder:
         cdef dict d
         cdef int slot
         cdef long long frame_num
-        cdef long long raw_val, v
+        cdef long long raw_val
         cdef int batch_full
 
         # Filter non-slot frames
@@ -177,10 +227,7 @@ cdef class FastDecoder:
             # Accumulate current sample (if not error)
             if not (d.get('short_slot') or d.get('bitclock_error')):
                 raw_val = d.get('data', 0)
-                v = raw_val & self.sign_mask
-                if v >= self.sign_threshold:
-                    v -= self.sign_subtract
-                self.accum[slot] = v
+                self.accum[slot] = self._convert(raw_val)
                 self.accum_valid[slot] = 1
 
             if batch_full == 1:
@@ -194,10 +241,7 @@ cdef class FastDecoder:
         # Skip error frames
         if not (d.get('short_slot') or d.get('bitclock_error')):
             raw_val = d.get('data', 0)
-            v = raw_val & self.sign_mask
-            if v >= self.sign_threshold:
-                v -= self.sign_subtract
-            self.accum[slot] = v
+            self.accum[slot] = self._convert(raw_val)
             self.accum_valid[slot] = 1
 
         return 0
@@ -222,6 +266,10 @@ cdef class FastDecoder:
         if self._last_frame_num_valid:
             return self._last_frame_num
         return None
+
+    @property
+    def source_bit_depth(self):
+        return self.src_bits
 
     def get_batch_data(self):
         """Return the batch buffer contents as bytes, up to current offset."""

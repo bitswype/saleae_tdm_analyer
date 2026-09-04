@@ -109,7 +109,7 @@ In addition to the [base prerequisites](#prerequisites):
 
    ![LLA settings with batch mode](pictures/streaming_setup_1.png)
 
-4. **Add the Audio Stream HLA** on top of the TDM LLA. Configure the slots to stream, TCP port, and output bit depth:
+4. **Add the Audio Stream HLA** on top of the TDM LLA. Configure the slots to stream, TCP port, and output bit depth. Leave **Source bit depth** blank; the HLA reads the LLA's data width from its `format` frame (set it to the LLA's "Data bits/slot" value only if you are running an LLA binary older than v2.6.0):
 
    ![HLA Audio Stream settings](pictures/hla_audio_stream_settings.png)
 
@@ -157,7 +157,7 @@ Note: use a standard (non-looping) capture for WAV export - see [Known Limitatio
 
 1. Load the extension in Logic 2 (Extensions -> Load Existing Extension -> `hla-wav-export/`)
 2. Add **"TDM WAV Export"** after the TDM Analyzer LLA
-3. Configure slots (e.g., `0,1`), output path (**must be an absolute path**), and bit depth
+3. Configure slots (e.g., `0,1`), output path (**must be an absolute path**), and output bit depth. Leave **Source bit depth** blank to auto-detect the LLA's data width (a 24-bit source is rescaled to the 16- or 32-bit output, not truncated)
 4. Start capturing - the WAV file is written in real time
 
 See the [WAV Export HLA README](hla-wav-export/README.md) for full documentation.
@@ -306,6 +306,16 @@ Audio Batch Mode packs N TDM frames into a single FrameV2 with a PCM byte array,
 | 128-channel 192kHz | 512 | 1024 |
 
 The formula: `minimum batch = ceil(sample_rate * channels / 50000)`, rounded up to the next power of 2. The "recommended" column doubles the minimum for headroom. Higher batch sizes add negligible latency (batch=64 at 48kHz = 1.3ms) and reduce CPU overhead further.
+
+**Batch PCM format (v2.6.0+):** each `audio_batch` frame carries `pcm_data`
+(little-endian, interleaved, signed), `bit_depth` (the packed width: 8, 16,
+24, or 32), `data_bits` (the analyzer's data bits/slot setting), `channels`,
+`num_frames`, `sample_rate`, and `start_frame_number`. Samples are packed in
+the smallest byte width that holds the data bits and are always full scale at
+that width: 20-bit data is shifted up into 24-bit samples, and data wider than
+32 bits is rounded down to its top 32 bits. Before v2.6.0 the raw value was
+packed, which left 20-bit audio 24 dB quiet and truncated 40-bit audio to its
+low 32 bits.
 
 With batching enabled, the HLA progress indicator should show 100%:
 
@@ -485,6 +495,31 @@ sudo sysctl -w kernel.yama.ptrace_scope=0
 ---
 
 # Migration Guide
+
+## v2.6.0 - Correct rescaling of 24-bit (and other) source widths
+
+Before v2.6.0 both HLAs masked the LLA's sample value at the *output* bit
+depth. With a 24-bit LLA and a 16-bit WAV or stream, the upper byte of every
+sample was discarded and the audio came out as noise
+([issue #10](https://github.com/bitswype/saleae_tdm_analyer/issues/10)).
+16-bit-to-16-bit and 32-bit-to-32-bit captures were never affected.
+
+What changed:
+
+- The LLA now emits one `format` FrameV2 at the very start of decode
+  (`bit_depth`, `slots_per_frame`, `sample_rate`, `signed`). Custom HLAs that
+  switch on `frame.type` will see this new type once; ignore it or use it.
+- Both HLAs gained a **Source bit depth** setting. Leave it blank and the
+  HLA takes the width from the `format` frame. Set it to the LLA's
+  "Data bits/slot" value if you must keep an older LLA binary.
+- Samples are rescaled, not masked: rounded right shift (clamped) when the
+  source is wider than the output, left shift when narrower.
+- In Audio Batch Mode the stream HLA now widens 8-bit and 24-bit LLA data to
+  int16/int32 and advertises that width in the handshake. The bridge rejects
+  any other width with a clear message instead of crashing.
+
+To upgrade: replace the LLA binary and both HLA folders together. If you only
+replace the HLAs, set **Source bit depth** by hand.
 
 ## v2.5.0 - Audio Batch Mode for real-time streaming
 

@@ -137,15 +137,25 @@ for full numbers. Summary:
 Cython wins because it generates optimized C that accesses Python dicts
 directly from compiled code. cffi loses because per-call Python-to-C
 marshaling overhead dominates at high call frequencies. Raw C is between
-the two. All four backends pass the 74-test oracle.
+the two. All four backends pass the 124-test oracle.
 
 ## Correctness Oracle
 
-Any implementation must pass all 74 tests in `tests/test_hla_decode.py`:
+Any implementation must pass all 124 tests in `tests/test_hla_decode.py`.
+Set `TDM_HLA_BACKEND` to pin the backend under test; without it the HLA
+picks the first compiled extension it finds and the run silently exercises
+only that one:
 
 ```bash
-pytest tests/test_hla_decode.py -v
+for b in cython rawc cffi python; do
+  TDM_HLA_BACKEND=$b pytest tests/test_hla_decode.py -v
+done
 ```
+
+Sample conversion (source width to output width, see `_tdm_utils.convert_sample`)
+is implemented separately in each backend and must match the Python reference
+bit for bit. The oracle's section 17 pins the contract: interpret at the source
+width, rounded (half up) right shift clamped to the output range, or left shift.
 
 The tests cover every branch of decode() including C-specific edge cases:
 - Negative integer masking (Python arbitrary precision vs C fixed-width)

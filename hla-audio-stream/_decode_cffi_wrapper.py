@@ -9,14 +9,21 @@ from _decode_cffi import ffi, lib
 class CffiDecoder:
     """Drop-in replacement for FastDecoder using cffi."""
 
-    def __init__(self, slot_list, bit_depth, batch_size, frame_byte_size):
+    def __init__(self, slot_list, bit_depth, batch_size, frame_byte_size,
+                 source_bit_depth=0):
+        if source_bit_depth <= 0:
+            source_bit_depth = bit_depth
+        if not 2 <= source_bit_depth <= 64:
+            raise ValueError("source_bit_depth must be 2-64")
+
         self._state = ffi.new('DecoderState*')
         self._slot_list_c = ffi.new('int[]', slot_list)
         self._n_slots = len(slot_list)
         self._slot_list = list(slot_list)
 
         lib.decoder_init(self._state, self._slot_list_c, len(slot_list),
-                         bit_depth, batch_size, frame_byte_size)
+                         bit_depth, batch_size, frame_byte_size,
+                         source_bit_depth)
 
         # Python-owned batch buffer; share memory with C via ffi.from_buffer
         self._batch_buf_py = bytearray(batch_size * frame_byte_size)
@@ -24,6 +31,16 @@ class CffiDecoder:
 
     def set_sample_rate_known(self):
         lib.decoder_set_sample_rate_known(self._state)
+
+    def set_source_bit_depth(self, src_bits):
+        """Adopt a new LLA source width (from the 'format' frame)."""
+        if not 2 <= src_bits <= 64:
+            raise ValueError("source_bit_depth must be 2-64")
+        lib.decoder_set_source_bit_depth(self._state, int(src_bits))
+
+    @property
+    def source_bit_depth(self):
+        return self._state.src_bits
 
     @property
     def frame_count(self):

@@ -86,6 +86,9 @@ class BridgeApp:
         self._last_underruns = -1
         self._last_data_time = 0.0
         self._data_timeout = 2.0  # seconds with no data before "stream ended"
+        # Last non-transient protocol error from the client (bad handshake),
+        # shown while the client keeps retrying; cleared on a good handshake
+        self._last_error = None
 
         root.title('TDM Audio Bridge')
         root.resizable(False, False)
@@ -250,6 +253,7 @@ class BridgeApp:
             on_data=self._on_data,
             on_disconnect=self._on_disconnect,
             on_connected=self._on_connected,
+            on_error=self._on_error,
             reconnect=True,
         )
         self._client.start()
@@ -309,6 +313,9 @@ class BridgeApp:
     def _on_disconnect(self):
         self._queue.put(('disconnect', None))
 
+    def _on_error(self, message):
+        self._queue.put(('error', message))
+
     # -- GUI thread updates --
 
     def _poll(self):
@@ -322,7 +329,12 @@ class BridgeApp:
                 if msg_type == 'connected':
                     self._set_state(_WAITING)
                 elif msg_type == 'handshake':
+                    self._last_error = None
                     self._handle_handshake(payload)
+                elif msg_type == 'error':
+                    # The disconnect that follows re-labels the state, so
+                    # remember the message and let that branch show it
+                    self._last_error = payload
                 elif msg_type == 'playing':
                     self._set_state(_PLAYING)
                 elif msg_type == 'disconnect':
@@ -339,7 +351,9 @@ class BridgeApp:
                         # If reconnect keeps failing, we stay at this state
                         # until the user disconnects manually.
                         was_streaming = self._state in (_PLAYING, _BUFFERING)
-                        if was_streaming:
+                        if self._last_error:
+                            self._set_state(_CONNECTING, self._last_error)
+                        elif was_streaming:
                             self._set_state(_STREAM_ENDED)
                         else:
                             self._set_state(_CONNECTING)

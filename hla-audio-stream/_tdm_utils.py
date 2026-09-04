@@ -59,6 +59,128 @@ import time
 
 _PROFILE = os.environ.get('TDM_HLA_PROFILE', '') == '1'
 
+def parse_source_bit_depth(raw):
+    """Parse the 'Source bit depth' HLA setting.
+
+    Blank (or None) means auto-detect from the LLA's one-time 'format'
+    frame, so returns None. Otherwise the value must be the LLA's
+    'Data bits/slot' setting, 2-64.
+
+    Raises:
+        ValueError: with an actionable message for anything else.
+    """
+    # Outside Logic 2 (self-tests, harness) the attribute may still be the
+    # class-level Setting object rather than an injected string: treat as unset
+    if raw is None or not isinstance(raw, (str, int)):
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        bits = int(text)
+    except ValueError:
+        bits = -1
+    if not 2 <= bits <= 64:
+        raise ValueError(
+            f"Source bit depth must be between 2 and 64 (the LLA's 'Data bits/slot' "
+            f"setting), got {text!r}. Leave it blank to auto-detect from the LLA."
+        )
+    return bits
+
+
+def conversion_params(source_bits: int, output_bits: int) -> tuple:
+    """Pre-compute the constants for rescaling LLA samples to the output width.
+
+    The LLA emits each slot's 'data' as an integer at its own data width
+    (mDataBitsPerSlot), already sign-converted when the LLA is in Signed
+    mode. The HLA must interpret that integer at the SOURCE width and then
+    rescale it to the OUTPUT width (16 or 32). Masking at the output width
+    instead discards the upper bits of wider sources (GitHub issue #10).
+
+    Returns (src_mask, src_sign_bit, src_modulus, shift, out_max) where
+    shift > 0 means a rounded right shift by `shift` bits (source wider than
+    output), shift < 0 means a left shift by -shift bits, and out_max is the
+    clamp ceiling for the output range.
+    """
+    if not 2 <= source_bits <= 64:
+        raise ValueError(f"source_bits must be 2-64, got {source_bits}")
+    src_mask = (1 << source_bits) - 1
+    src_sign_bit = 1 << (source_bits - 1)
+    src_modulus = 1 << source_bits
+    shift = source_bits - output_bits
+    out_max = (1 << (output_bits - 1)) - 1
+    return src_mask, src_sign_bit, src_modulus, shift, out_max
+
+
+def convert_sample(value: int, params: tuple) -> int:
+    """Reference implementation of the sample rescale (see conversion_params).
+
+    The hot paths inline this arithmetic; this function is the readable
+    single source of truth that the C backends are checked against.
+
+    Rounding is round-half-up, written without an intermediate add so the
+    C ports cannot overflow on values near the top of the source range:
+        floor((v + 2^(s-1)) / 2^s) == (v >> s) + ((v >> (s-1)) & 1)
+    Positive full scale can round up past the output maximum, so the result
+    is clamped; negative full scale cannot round below the minimum.
+    """
+    src_mask, src_sign_bit, src_modulus, shift, out_max = params
+    v = value & src_mask
+    if v & src_sign_bit:
+        v -= src_modulus
+    if shift > 0:
+        v = (v >> shift) + ((v >> (shift - 1)) & 1)
+        if v > out_max:
+            v = out_max
+    elif shift < 0:
+        v <<= -shift
+    return v
+
+
+def lla_batch_bytes_per_sample(bit_depth: int) -> int:
+    """Bytes per packed sample in an LLA 'audio_batch' frame.
+
+    Mirrors TdmAnalyzer::WorkerThread: 1, 2, 3, or 4 bytes for data widths
+    up to 8, 16, 24, and anything wider. Do not compute (bits + 7) // 8;
+    a 40-bit LLA packs 4 bytes, not 5.
+    """
+    if bit_depth <= 8:
+        return 1
+    if bit_depth <= 16:
+        return 2
+    if bit_depth <= 24:
+        return 3
+    return 4
+
+
+def widen_pcm(data: bytes, src_bytes: int, dst_bytes: int) -> bytes:
+    """Repack little-endian PCM samples from src_bytes to dst_bytes each.
+
+    Used in Audio Batch Mode to turn the LLA's 1-byte or 3-byte packed
+    samples into int16 or int32 for the TCP protocol, which only carries
+    those two widths. Widening zero-fills the low bytes (a left shift by
+    8 * (dst_bytes - src_bytes), so full scale stays full scale). Narrowing
+    keeps the high bytes (a truncating right shift); it only happens if a
+    batch claims a different width than the first one did, which a real
+    LLA never does, but the stream must stay aligned regardless.
+    Extended-slice assignment keeps the copy in C rather than Python.
+    """
+    if src_bytes == dst_bytes:
+        return bytes(data)
+    n = len(data) // src_bytes
+    end = n * src_bytes  # ignore a trailing partial sample
+    out = bytearray(n * dst_bytes)
+    if dst_bytes > src_bytes:
+        pad = dst_bytes - src_bytes
+        for i in range(src_bytes):
+            out[pad + i::dst_bytes] = data[i:end:src_bytes]
+    else:
+        drop = src_bytes - dst_bytes
+        for i in range(dst_bytes):
+            out[i::dst_bytes] = data[drop + i:end:src_bytes]
+    return bytes(out)
+
+
 class PerfCounters:
     """Accumulates call counts and nanosecond totals per named section.
 

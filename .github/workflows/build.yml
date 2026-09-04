@@ -79,6 +79,35 @@ jobs:
       with:
         name: linux
         path: ${{github.workspace}}/build/Analyzers/*.so
+  # Python HLA decode oracle against every compiled backend, plus the audio
+  # bridge protocol tests. Deliberately not a dependency of `publish`: a
+  # release should not be blocked by a Python toolchain hiccup, but a red
+  # mark on the commit is wanted. Without this job only the pure-Python
+  # backend would ever be exercised automatically, which is how the
+  # source-width bug (issue #10) shipped in all four backends.
+  python-hla-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install build and test dependencies
+      run: python -m pip install --upgrade pip setuptools cython cffi pytest
+    - name: Build decode extensions
+      working-directory: ${{github.workspace}}/hla-audio-stream
+      run: |
+        python setup_cython.py build_ext --inplace
+        python setup_rawc.py build_ext --inplace
+        python _decode_cffi_build.py
+    - name: Run HLA oracle against each backend
+      run: |
+        for b in cython rawc cffi python; do
+          echo "=== backend: $b ==="
+          TDM_HLA_BACKEND=$b python -m pytest tests/test_hla_decode.py -q -p no:cacheprovider
+        done
+    - name: Run audio bridge protocol tests
+      run: python -m pytest tests/test_audio_bridge_protocol.py -q -p no:cacheprovider
   publish:
     needs: [windows, macos, linux]
     runs-on: ubuntu-latest
