@@ -134,6 +134,7 @@ void test_batch_4channel();
 void test_batch_8channel();
 void test_batch_8bit();
 void test_batch_24bit();
+void test_batch_scaled_to_packed_width();
 // Edge cases
 void test_batch_large_1024();
 void test_batch_partial_fewer_than_batch();
@@ -265,6 +266,7 @@ int main()
     RunTest( "test_batch_8channel", test_batch_8channel );
     RunTest( "test_batch_8bit", test_batch_8bit );
     RunTest( "test_batch_24bit", test_batch_24bit );
+    RunTest( "test_batch_scaled_to_packed_width", test_batch_scaled_to_packed_width );
     std::cout << std::endl;
 
     std::cout << "Audio Batch Mode -- Edge Cases:" << std::endl;

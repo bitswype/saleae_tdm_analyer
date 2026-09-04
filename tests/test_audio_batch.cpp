@@ -336,9 +336,10 @@ void test_batch_pcm_oracle_signed()
     // 4-bit signed data in 4-bit slots, batch=2.
     // Counter: 0, 1, 2, 3, 4, 5, 6, 7, 8(=0), 9(=1), ...
     // With 4-bit data, val_mod = 16, values 0-15. Signed: 8+ becomes negative.
-    // Bytes per sample = 1 for 4-bit data.
-    // Frame 0: slot0=0 (signed 0), slot1=1 (signed 1)
-    // Frame 1: slot0=2 (signed 2), slot1=3 (signed 3)
+    // Bytes per sample = 1 for 4-bit data, and since v2.6.0 batch PCM is
+    // full scale at the packed width: 4-bit values are shifted up by 4.
+    // Frame 0: slot0=0 -> 0,  slot1=1 -> 16
+    // Frame 1: slot0=2 -> 32, slot1=3 -> 48
     Config c = DefaultConfig( "batch-pcm-oracle-s", 20 );
     c.slots_per_frame = 2;
     c.bits_per_slot = 4;
@@ -371,11 +372,12 @@ void test_batch_pcm_oracle_signed()
             S64 s2 = ReadLE( pcm.data() + 2, 1 );
             S64 s3 = ReadLE( pcm.data() + 3, 1 );
 
-            // Values 0-7 are positive in 4-bit signed
-            CHECK_EQ( s0, S64( 0 ), "frame 0 slot 0 = 0 (signed 4-bit)" );
-            CHECK_EQ( s1, S64( 1 ), "frame 0 slot 1 = 1 (signed 4-bit)" );
-            CHECK_EQ( s2, S64( 2 ), "frame 1 slot 0 = 2 (signed 4-bit)" );
-            CHECK_EQ( s3, S64( 3 ), "frame 1 slot 1 = 3 (signed 4-bit)" );
+            // Values 0-7 are positive in 4-bit signed; packed at 8 bits
+            // they are scaled by 2^(8-4) = 16 so full scale is preserved
+            CHECK_EQ( s0, S64( 0 << 4 ), "frame 0 slot 0 = 0 (signed 4-bit, scaled to 8)" );
+            CHECK_EQ( s1, S64( 1 << 4 ), "frame 0 slot 1 = 1 (signed 4-bit, scaled to 8)" );
+            CHECK_EQ( s2, S64( 2 << 4 ), "frame 1 slot 0 = 2 (signed 4-bit, scaled to 8)" );
+            CHECK_EQ( s3, S64( 3 << 4 ), "frame 1 slot 1 = 3 (signed 4-bit, scaled to 8)" );
         }
         break;
     }
@@ -791,5 +793,82 @@ void test_batch_v1_values_correct()
                    "V1 frame data should match with and without batch" );
         CHECK_EQ( frames_batch[i].slot, frames_nobatch[i].slot,
                    "V1 frame slot should match with and without batch" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// test_batch_scaled_to_packed_width (v2.6.0, GitHub issue #10)
+//
+// Batch PCM is full scale at the packed width. Data narrower than its byte
+// container is shifted up (20-bit in 3 bytes: x16); data wider than 32 bits
+// is rounded down to its top 32 bits and clamped. Before this, 20-bit audio
+// came out 24 dB quiet and 40-bit audio was truncated to its LOW 32 bits,
+// which is the batch-mode form of the upper-bits-discarded bug.
+// ---------------------------------------------------------------------------
+
+void test_batch_scaled_to_packed_width()
+{
+    // 20-bit data, 2 slots, batch=2: counter 0,1,2,3 -> 0,16,32,48 (3 bytes)
+    ClearCapturedFrameV2s();
+    Config c = DefaultConfig( "batch-scale-20", 10 );
+    c.slots_per_frame = 2;
+    c.bits_per_slot = 32;
+    c.data_bits_per_slot = 20;
+    c.sign = AnalyzerEnums::SignedInteger;
+    c.audio_batch_size = 2;
+    c.sample_rate = U64( 48000 ) * 2 * 32 * 4;
+    RunAndCollect( c );
+    {
+        auto& fv2s = GetCapturedFrameV2s();
+        bool found = false;
+        for( const auto& fv2 : fv2s )
+        {
+            if( fv2.type != "audio_batch" ) continue;
+            found = true;
+            CHECK_EQ( fv2.GetInteger( "bit_depth" ), S64( 24 ), "20-bit data packs as 24-bit" );
+            CHECK_EQ( fv2.GetInteger( "data_bits" ), S64( 20 ), "data_bits reports the analyzer setting" );
+            auto pcm = fv2.GetByteArray( "pcm_data" );
+            CHECK_EQ( U32( pcm.size() ), U32( 12 ), "2 frames * 2 slots * 3 bytes" );
+            if( pcm.size() >= 12 )
+            {
+                CHECK_EQ( ReadLE( pcm.data() + 0, 3 ), S64( 0 << 4 ), "20->24: 0 stays 0" );
+                CHECK_EQ( ReadLE( pcm.data() + 3, 3 ), S64( 1 << 4 ), "20->24: 1 becomes 16" );
+                CHECK_EQ( ReadLE( pcm.data() + 6, 3 ), S64( 2 << 4 ), "20->24: 2 becomes 32" );
+                CHECK_EQ( ReadLE( pcm.data() + 9, 3 ), S64( 3 << 4 ), "20->24: 3 becomes 48" );
+            }
+            break;
+        }
+        CHECK( found, "Should have an audio_batch for 20-bit data" );
+    }
+
+    // 40-bit data, mono, batch=128: frame k carries value k, packed as
+    // 32-bit after a rounded shift by 8. Sample index == frame index:
+    //   127 -> 0, 128 -> 1 (exactly half rounds up), 383 -> 1, 384 -> 2
+    ClearCapturedFrameV2s();
+    Config w = DefaultConfig( "batch-scale-40", 400 );
+    w.slots_per_frame = 1;
+    w.bits_per_slot = 40;
+    w.data_bits_per_slot = 40;
+    w.sign = AnalyzerEnums::SignedInteger;
+    w.audio_batch_size = 128;
+    w.sample_rate = U64( 48000 ) * 1 * 40 * 4;
+    RunAndCollect( w );
+    {
+        auto& fv2s = GetCapturedFrameV2s();
+        std::vector<S64> samples;
+        for( const auto& fv2 : fv2s )
+        {
+            if( fv2.type != "audio_batch" ) continue;
+            CHECK_EQ( fv2.GetInteger( "bit_depth" ), S64( 32 ), "40-bit data packs as 32-bit" );
+            CHECK_EQ( fv2.GetInteger( "data_bits" ), S64( 40 ), "data_bits reports the analyzer setting" );
+            auto pcm = fv2.GetByteArray( "pcm_data" );
+            for( size_t i = 0; i + 4 <= pcm.size(); i += 4 )
+                samples.push_back( ReadLE( pcm.data() + i, 4 ) );
+        }
+        CHECK( samples.size() >= 385, "Should have decoded at least 385 40-bit samples" );
+        CHECK_EQ( samples[ 127 ], S64( 0 ), "40->32: 127 >> 8 rounds down to 0" );
+        CHECK_EQ( samples[ 128 ], S64( 1 ), "40->32: 128 >> 8 is exactly half, rounds up to 1" );
+        CHECK_EQ( samples[ 383 ], S64( 1 ), "40->32: 383 >> 8 rounds down to 1" );
+        CHECK_EQ( samples[ 384 ], S64( 2 ), "40->32: 384 >> 8 rounds up to 2" );
     }
 }

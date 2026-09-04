@@ -1111,8 +1111,11 @@ def _make_audio_batch_frame(samples, channels, bit_depth, sample_rate,
         bit_depth: bits per sample
         sample_rate: audio sample rate
     """
+    from _tdm_utils import lla_batch_bytes_per_sample
     num_frames = len(samples)
-    bytes_per_sample = (bit_depth + 7) // 8
+    # The LLA packs in 1/2/3/4-byte tiers (up to 8/16/24/anything wider),
+    # never (bits + 7) // 8: a 40-bit LLA packs 4 bytes
+    bytes_per_sample = lla_batch_bytes_per_sample(bit_depth)
 
     # Pack exactly like the LLA's AccumulateSlotIntoBatch: little-endian,
     # truncated to bytes_per_sample (1, 2, 3, or 4 bytes)
@@ -1552,8 +1555,12 @@ def test_source_bit_depth_invalid_setting_is_init_error(port):
         h.source_bit_depth = bad
         h.__init__()
         assert h._init_error is not None, f"{bad!r} should be rejected"
-        assert 'source bit depth' in h._init_error.lower(), h._init_error
-        assert '2' in h._init_error and '64' in h._init_error, h._init_error
+        assert 'source bit depth must be between 2 and 64' in h._init_error.lower(), h._init_error
+        # Deferred error pattern: first decode() surfaces it, then silence
+        result = h.decode(slot_frame(0, 1, frame_num=0))
+        assert result is not None and result.type == 'error'
+        assert 'between 2 and 64' in result.data['message']
+        assert h.decode(slot_frame(0, 1, frame_num=1)) is None
         h.shutdown()
 
 
@@ -1563,6 +1570,11 @@ def test_source24_to_16_pcm_roundtrip_over_tcp(port):
     driver = HlaDriver('0,1', port=port, bit_depth=16, source_bit_depth=24,
                        buffer_size=128)
     warmup(driver)
+
+    # Connect first: the HLA clears its ring buffer when a client connects
+    sock, handshake, rem = _connect_and_wait(port)
+    assert handshake['bit_depth'] == 16
+
     samples = [
         [0x012345, -1],
         [0x7FFFFF, -0x800000],
@@ -1572,16 +1584,20 @@ def test_source24_to_16_pcm_roundtrip_over_tcp(port):
     # One extra frame to flush the last real one
     frames += list(emit_frames([[0, 0]], 48000, [0, 1], start_frame_num=13))
     driver.feed(frames)
+    time.sleep(0.3)  # let sender thread drain
 
-    handshake, decoded = read_pcm(port, 2, 16, 3)
-    assert handshake['bit_depth'] == 16
-    # Warmup frames are silence; find our data
-    data = [f for f in decoded if f != [0, 0]]
-    assert data[:3] == [
+    decoded = _read_frames_from_sock(sock, 2, 16, rem, timeout=1.0)
+    sock.close()
+    # Everything before our three frames is warmup silence; the final
+    # frame (13) is never flushed. Compare the tail exactly rather than
+    # filtering zeros, which would hide a wrong result that happens to be 0.
+    assert len(decoded) >= 3
+    assert decoded[-3:] == [
         [0x0123, 0],
         [32767, -32768],
         [0x0124, -1],
     ]
+    assert all(f == [0, 0] for f in decoded[:-3]), decoded
     driver.shutdown()
 
 
@@ -1589,15 +1605,21 @@ def test_source24_to_32_pcm_roundtrip_over_tcp(port):
     driver = HlaDriver('0', port=port, bit_depth=32, source_bit_depth=24,
                        buffer_size=128)
     warmup(driver)
+
+    sock, handshake, rem = _connect_and_wait(port)
+    assert handshake['bit_depth'] == 32
+
     samples = [[0x012345], [-1], [0x7FFFFF]]
     frames = list(emit_frames(samples, 48000, [0], start_frame_num=10))
     frames += list(emit_frames([[0]], 48000, [0], start_frame_num=13))
     driver.feed(frames)
+    time.sleep(0.3)
 
-    handshake, decoded = read_pcm(port, 1, 32, 3)
-    assert handshake['bit_depth'] == 32
-    data = [f for f in decoded if f != [0]]
-    assert data[:3] == [[0x01234500], [-256], [0x7FFFFF00]]
+    decoded = _read_frames_from_sock(sock, 1, 32, rem, timeout=1.0)
+    sock.close()
+    assert len(decoded) >= 3
+    assert decoded[-3:] == [[0x01234500], [-256], [0x7FFFFF00]]
+    assert all(f == [0] for f in decoded[:-3]), decoded
     driver.shutdown()
 
 
@@ -1663,7 +1685,13 @@ def test_audio_batch_24bit_slot_subset_widened(port):
 # ===========================================================================
 
 def _wav_feed(hla, values, warm=3):
-    """Feed mono slot-0 frames with timing, then one flush frame."""
+    """Feed mono slot-0 frames with timing, then one flush frame.
+
+    The WAV then contains exactly `warm` zero samples followed by the
+    converted values (the flush frame itself is never written), so tests
+    compare the whole file rather than filtering zeros, which would hide a
+    wrong conversion that happens to produce 0.
+    """
     for i in range(warm):
         hla.decode(slot_frame(0, 0, frame_num=i, start_time=i / 48000))
     for i, v in enumerate(values):
@@ -1681,9 +1709,9 @@ def test_wav_source24_to_16_reporter_example(tmp_path):
     with wave.open(path, 'rb') as wf:
         assert wf.getsampwidth() == 2
     samples = [s[0] for s in read_wav_samples(path)]
-    data = [s for s in samples if s != 0]
-    # -1 rounds to 0 and is filtered out with the warmup silence
-    assert data == [0x0123, 32767, -32768, 0x0124]
+    # -1 at 24 bits rounds to 0 at 16 bits; compare the full file so that
+    # case is asserted rather than filtered away
+    assert samples == [0, 0, 0] + [0x0123, 32767, -32768, 0, 0x0124]
 
 
 def test_wav_source24_to_32_left_shift(tmp_path):
@@ -1693,8 +1721,7 @@ def test_wav_source24_to_32_left_shift(tmp_path):
     with wave.open(path, 'rb') as wf:
         assert wf.getsampwidth() == 4
     samples = [s[0] for s in read_wav_samples(path)]
-    data = [s for s in samples if s != 0]
-    assert data == [0x01234500, -256, 0x7FFFFF00]
+    assert samples == [0, 0, 0] + [0x01234500, -256, 0x7FFFFF00]
 
 
 def test_wav_source_bit_depth_auto_from_format_frame(tmp_path):
@@ -1703,8 +1730,7 @@ def test_wav_source_bit_depth_auto_from_format_frame(tmp_path):
     assert hla.decode(format_frame(24, slots_per_frame=1)) is None
     _wav_feed(hla, [0x012345, 0x7FFFFF])
     samples = [s[0] for s in read_wav_samples(path)]
-    data = [s for s in samples if s != 0]
-    assert data == [0x0123, 32767]
+    assert samples == [0, 0, 0] + [0x0123, 32767]
 
 
 def test_wav_source_bit_depth_setting_overrides_format_frame(tmp_path):
@@ -1713,15 +1739,354 @@ def test_wav_source_bit_depth_setting_overrides_format_frame(tmp_path):
     hla.decode(format_frame(16, slots_per_frame=1))
     _wav_feed(hla, [0x012345])
     samples = [s[0] for s in read_wav_samples(path)]
-    assert [s for s in samples if s != 0] == [0x0123]
+    assert samples == [0, 0, 0, 0x0123]
 
 
 def test_wav_source_bit_depth_invalid_is_init_error(tmp_path):
-    path = str(tmp_path / 'bad.wav')
-    for bad in ('0', '1', '65', 'abc'):
-        hla = make_wav_hla(path, '0', '16', source_bit_depth=bad)
-        assert hla._init_error is not None, f"{bad!r} should be rejected"
-        assert 'source bit depth' in hla._init_error.lower()
-        result = hla.decode(slot_frame(0, 1, frame_num=0))
-        assert result is not None and result.type == 'error'
-        hla.shutdown()
+    import TdmWavExport as _wav_mod
+    from TdmAudioStream import AnalyzerFrame as _AF
+    # Patch the AnalyzerFrame stub to one that accepts constructor args
+    _orig_af = _wav_mod.AnalyzerFrame
+    _wav_mod.AnalyzerFrame = _AF
+    try:
+        path = str(tmp_path / 'bad.wav')
+        for bad in ('0', '1', '65', 'abc'):
+            hla = make_wav_hla(path, '0', '16', source_bit_depth=bad)
+            assert hla._init_error is not None, f"{bad!r} should be rejected"
+            assert 'source bit depth' in hla._init_error.lower()
+            assert '2' in hla._init_error and '64' in hla._init_error
+            result = hla.decode(slot_frame(0, 1, frame_num=0))
+            assert result is not None and result.type == 'error'
+            hla.shutdown()
+    finally:
+        _wav_mod.AnalyzerFrame = _orig_af
+
+
+def test_audio_batch_over_32bit_packs_4_bytes(port):
+    """The LLA packs anything wider than 24 bits into 4 bytes (low 32 bits).
+    The HLA must use the same byte math; (bits + 7) // 8 would give 5 for a
+    40-bit LLA and misalign every frame."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128, bit_depth=16)
+    samples = [[0x12345678, -1], [0x7FFFFFFF, -0x80000000]]
+    # 40-bit LLA: the batch helper packs 4 bytes per sample
+    bytes_per_sample = 4
+    pcm = bytearray()
+    for frame in samples:
+        for v in frame:
+            pcm.extend(v.to_bytes(bytes_per_sample, 'little', signed=True))
+    batch = FakeFrame('audio_batch', 0.0, 2 / 48000, {
+        'pcm_data': bytes(pcm), 'num_frames': 2, 'channels': 2,
+        'bit_depth': 40, 'sample_rate': 48000, 'start_frame_number': 0,
+    })
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5.0)
+    sock.connect(('127.0.0.1', port))
+    time.sleep(0.1)
+    driver.feed([batch])
+    time.sleep(0.3)
+    sock.settimeout(2.0)
+    buf = b''
+    while b'\n' not in buf:
+        buf += sock.recv(4096)
+    line, remainder = buf.split(b'\n', 1)
+    handshake = json.loads(line)
+    decoded = _read_frames_from_sock(sock, 2, 32, remainder, timeout=1.0)
+    sock.close()
+    assert handshake['bit_depth'] == 32
+    assert decoded == samples
+    driver.shutdown()
+
+
+def test_wav_audio_batch_24bit_written_as_3_byte_wav(tmp_path):
+    """Regression guard: WAV export in batch mode writes a genuine 24-bit
+    WAV (sampwidth 3) with exact values. This path was never broken."""
+    path = str(tmp_path / 'batch24.wav')
+    hla = make_wav_hla(path, '0,1', '16')
+    samples = [[0x012345, -1], [0x7FFFFF, -0x800000]]
+    hla.decode(_make_audio_batch_frame(samples, 2, 24, 48000))
+    hla.shutdown()
+    with wave.open(path, 'rb') as wf:
+        assert wf.getsampwidth() == 3
+        assert wf.getnchannels() == 2
+        assert wf.getframerate() == 48000
+        raw = wf.readframes(wf.getnframes())
+    vals = [int.from_bytes(raw[i:i + 3], 'little', signed=True)
+            for i in range(0, len(raw), 3)]
+    assert vals == [0x012345, -1, 0x7FFFFF, -0x800000]
+
+
+def test_wav_audio_batch_8bit_written_unsigned(tmp_path):
+    """8-bit WAV is unsigned by specification (silence is 0x80). The LLA
+    packs signed bytes, so the export must offset them or the file plays
+    with every sample inverted around mid-scale."""
+    path = str(tmp_path / 'batch8.wav')
+    hla = make_wav_hla(path, '0', '16')
+    samples = [[0], [1], [-1], [127], [-128]]
+    hla.decode(_make_audio_batch_frame(samples, 1, 8, 48000))
+    hla.shutdown()
+    with wave.open(path, 'rb') as wf:
+        assert wf.getsampwidth() == 1
+        raw = wf.readframes(wf.getnframes())
+    assert list(raw) == [0x80, 0x81, 0x7F, 0xFF, 0x00]
+
+
+# ===========================================================================
+# 20. Audit round 3 gaps: helper units, malformed format frames, width
+#     adoption timing, mid-stream format frame on the active backend
+# ===========================================================================
+
+def test_parse_source_bit_depth_edge_inputs():
+    from _tdm_utils import parse_source_bit_depth as p
+    from TdmAudioStream import TdmAudioStream
+    import TdmWavExport as _wav_mod
+    # Outside Logic 2 the attribute can still be the class-level Setting
+    # object: treat as unset rather than failing validation
+    assert p(TdmAudioStream.source_bit_depth) is None
+    assert _wav_mod.parse_source_bit_depth(_wav_mod.TdmWavExport.source_bit_depth) is None
+    assert p(None) is None
+    assert p('') is None
+    assert p('   ') is None
+    assert p(24) == 24
+    assert p(' 24 ') == 24
+    assert p('2') == 2 and p('64') == 64
+    for bad in ('1', '65', '24.0', 'x', '-8'):
+        with pytest.raises(ValueError, match='between 2 and 64'):
+            p(bad)
+        with pytest.raises(ValueError, match='between 2 and 64'):
+            _wav_mod.parse_source_bit_depth(bad)
+
+
+def test_widen_pcm_unit():
+    from _tdm_utils import widen_pcm
+    assert widen_pcm(b'\x01\x02', 2, 2) == b'\x01\x02'          # identity
+    assert widen_pcm(b'\x01\xff', 1, 2) == b'\x00\x01\x00\xff'  # 8 -> 16
+    assert widen_pcm(b'\x45\x23\x01\xff\xff\xff', 3, 4) == \
+        b'\x00\x45\x23\x01\x00\xff\xff\xff'                     # 24 -> 32
+    # Odd sample counts (3 samples of 3 bytes) must not lose the tail
+    src = b''.join(v.to_bytes(3, 'little', signed=True) for v in (1, -2, 3))
+    out = widen_pcm(src, 3, 4)
+    assert [int.from_bytes(out[i:i + 4], 'little', signed=True)
+            for i in range(0, 12, 4)] == [1 << 8, -2 << 8, 3 << 8]
+
+
+def test_lla_batch_bytes_per_sample_boundaries():
+    from _tdm_utils import lla_batch_bytes_per_sample as f
+    import TdmWavExport as _wav_mod
+    for bits, expected in ((2, 1), (8, 1), (9, 2), (16, 2), (17, 3), (24, 3),
+                           (25, 4), (32, 4), (33, 4), (64, 4)):
+        assert f(bits) == expected, bits
+        assert _wav_mod.lla_batch_bytes_per_sample(bits) == expected, bits
+
+
+def test_format_frame_malformed_bit_depth_ignored(port):
+    driver = HlaDriver('0', port=port, bit_depth=16)
+    h = driver._hla
+    for bad in (None, 'abc', 999, 1, 0, -24, 24.0):
+        h.decode(FakeFrame('format', 0.0, 0.0, {'bit_depth': bad}))
+        assert h._src_bits == 16, f"{bad!r} should be ignored"
+    h.decode(FakeFrame('format', 0.0, 0.0, {}))  # missing key
+    assert h._src_bits == 16
+    driver.shutdown()
+
+
+def test_format_frame_same_width_does_not_reconfigure(port):
+    driver = HlaDriver('0', port=port, bit_depth=16)
+    h = driver._hla
+    calls = []
+    h._configure_conversion = lambda bits: calls.append(bits)
+    h.decode(format_frame(16))
+    assert calls == []
+    h.decode(format_frame(24))
+    assert calls == [24]
+    driver.shutdown()
+
+
+def test_wav_format_frame_malformed_and_same_width(tmp_path):
+    path = str(tmp_path / 'fmt.wav')
+    hla = make_wav_hla(path, '0', '16')
+    for bad in (None, 'abc', 999, 1):
+        hla.decode(FakeFrame('format', 0.0, 0.0, {'bit_depth': bad}))
+        assert hla._src_bits == 16
+    calls = []
+    hla._configure_conversion = lambda bits: calls.append(bits)
+    hla.decode(format_frame(16, slots_per_frame=1))
+    assert calls == []
+    hla.decode(format_frame(24, slots_per_frame=1))
+    assert calls == [24]
+    hla.shutdown()
+
+
+def test_audio_batch_width_adopted_before_client_connects(port):
+    """The first batch frame may arrive before any client is attached. The
+    handshake sent on a later connect must already carry the widened
+    width, not the user's setting."""
+    driver = HlaDriver('0,1', port=port, buffer_size=128, bit_depth=16)
+    samples = [[0x012345, -1], [0x7FFFFF, -0x800000]]
+    driver.feed([_make_audio_batch_frame(samples, 2, 24, 48000)])
+    sock, handshake, rem = _connect_and_wait(port)
+    sock.close()
+    assert handshake['bit_depth'] == 32
+    assert handshake['sample_rate'] == 48000
+    driver.shutdown()
+
+
+def test_format_frame_after_fast_path_active_switches_width(port):
+    """A format frame that arrives after the sample rate is known (so the
+    compiled backend, if any, is already processing frames) must switch
+    the conversion width on that backend, not just the Python state."""
+    driver = HlaDriver('0', port=port, bit_depth=16)
+    h = driver._hla
+    warmup(driver)
+    # Past warmup: fast path is live if a backend is compiled
+    assert _accum_after(driver, 0x1234, 10) == 0x1234          # 16 -> 16
+    h.decode(format_frame(24))
+    assert h._src_bits == 24
+    if h._fast is not None:
+        assert h._fast.source_bit_depth == 24
+    assert _accum_after(driver, 0x012345, 11) == 0x0123        # 24 -> 16
+    assert _accum_after(driver, 0x7FFFFF, 12) == 32767
+    driver.shutdown()
+
+
+def test_wav_audio_batch_8bit_subset_path_written_unsigned(tmp_path):
+    """8-bit unsigned offset must also apply on the slot-subset extraction
+    path, not only the all-channels fast path."""
+    path = str(tmp_path / 'batch8sub.wav')
+    hla = make_wav_hla(path, '1', '16')
+    samples = [[5, 1], [6, -1], [7, -128]]
+    hla.decode(_make_audio_batch_frame(samples, 2, 8, 48000))
+    hla.shutdown()
+    with wave.open(path, 'rb') as wf:
+        assert wf.getsampwidth() == 1
+        assert wf.getnchannels() == 1
+        raw = wf.readframes(wf.getnframes())
+    assert list(raw) == [0x81, 0x7F, 0x00]
+
+
+# ===========================================================================
+# 21. Audit round 3, mutation findings: clamp on 32-bit output, widen_pcm
+#     partial input, WAV batch sample width for non-byte-aligned LLA widths
+# ===========================================================================
+
+def test_source33_to_32_clamps(port):
+    """Kills the mutant 'clamp only when output is 16': 0xFFFFFFFF is
+    positive at 33 bits and rounds up past the int32 maximum."""
+    driver = HlaDriver('0', port=port, bit_depth=32, source_bit_depth=33)
+    warmup(driver)
+    assert _accum_after(driver, 0xFFFFFFFF, 10) == 2147483647
+    assert _accum_after(driver, 0x100000000, 11) == -2147483648  # sign bit at 33
+    driver.shutdown()
+
+
+def test_source64_to_32(port):
+    driver = HlaDriver('0', port=port, bit_depth=32, source_bit_depth=64)
+    warmup(driver)
+    assert _accum_after(driver, 0x7FFFFFFFFFFFFFFF, 10) == 2147483647
+    assert _accum_after(driver, -0x8000000000000000, 11) == -2147483648
+    assert _accum_after(driver, 0x0123456700000000, 12) == 0x01234567
+    assert _accum_after(driver, 0x0123456780000000, 13) == 0x01234568  # half up
+    driver.shutdown()
+
+
+def test_source64_to_16(port):
+    driver = HlaDriver('0', port=port, bit_depth=16, source_bit_depth=64)
+    warmup(driver)
+    assert _accum_after(driver, 0x7FFFFFFFFFFFFFFF, 10) == 32767
+    assert _accum_after(driver, -0x8000000000000000, 11) == -32768
+    assert _accum_after(driver, -1, 12) == 0
+    driver.shutdown()
+
+
+def test_widen_pcm_ignores_trailing_partial_sample():
+    from _tdm_utils import widen_pcm
+    # 4 bytes of 3-byte samples: one whole sample plus a stray byte
+    assert widen_pcm(b'\x45\x23\x01\x99', 3, 4) == b'\x00\x45\x23\x01'
+    assert widen_pcm(b'', 3, 4) == b''
+    assert widen_pcm(b'\x01', 3, 4) == b''
+
+
+@pytest.mark.parametrize('lla_bits,sampwidth', [(4, 1), (12, 2), (20, 3), (40, 4), (64, 4)])
+def test_wav_audio_batch_sample_width_follows_packed_tier(tmp_path, lla_bits, sampwidth):
+    """WAV sampwidth must match the LLA's packed byte tier, not bits // 8.
+    20-bit data is packed in 3 bytes; a 2-byte header made every frame
+    misaligned, and 40-bit (5 bytes) raised wave.Error out of decode()."""
+    path = str(tmp_path / f'batch{lla_bits}.wav')
+    hla = make_wav_hla(path, '0,1', '16')
+    samples = [[1, -1], [2, -2], [3, -3], [4, -4]]
+    hla.decode(_make_audio_batch_frame(samples, 2, lla_bits, 48000))
+    hla.shutdown()
+    with wave.open(path, 'rb') as wf:
+        assert wf.getsampwidth() == sampwidth
+        assert wf.getnframes() == 4
+        raw = wf.readframes(4)
+    if sampwidth == 1:
+        vals = [b - 0x80 for b in raw]   # unsigned 8-bit WAV encoding
+    else:
+        vals = [int.from_bytes(raw[i:i + sampwidth], 'little', signed=True)
+                for i in range(0, len(raw), sampwidth)]
+    assert vals == [1, -1, 2, -2, 3, -3, 4, -4]
+
+
+# ===========================================================================
+# 22. Audit round 3, assertion-quality findings: the advertised batch width
+#     is latched by the first batch and later batches are repacked to it
+# ===========================================================================
+
+def _stream_two_batches(driver, port, first, second):
+    """Connect, feed two batch frames of possibly different LLA widths,
+    return (handshake, raw_bytes)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5.0)
+    sock.connect(('127.0.0.1', port))
+    time.sleep(0.1)
+    driver.feed([_make_audio_batch_frame(*first), _make_audio_batch_frame(*second)])
+    time.sleep(0.3)
+    sock.settimeout(2.0)
+    buf = b''
+    while b'\n' not in buf:
+        buf += sock.recv(4096)
+    line, pcm = buf.split(b'\n', 1)
+    while True:
+        try:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            pcm += chunk
+        except socket.timeout:
+            break
+    sock.close()
+    return json.loads(line), pcm
+
+
+def test_audio_batch_width_latched_and_later_batch_widened(port):
+    driver = HlaDriver('0', port=port, buffer_size=128, bit_depth=16)
+    hs, pcm = _stream_two_batches(
+        driver, port,
+        ([[0x012345], [-1]], 1, 24, 48000),   # latches 32-bit
+        ([[100], [-100]], 1, 16, 48000),      # would be int16; repacked to int32
+    )
+    assert hs['bit_depth'] == 32
+    vals = list(struct.unpack(f'<{len(pcm) // 4}i', pcm))
+    assert vals == [0x01234500, -256, 100 << 16, -100 << 16]
+    driver.shutdown()
+
+
+def test_audio_batch_width_latched_and_later_batch_narrowed(port):
+    driver = HlaDriver('0', port=port, buffer_size=128, bit_depth=16)
+    hs, pcm = _stream_two_batches(
+        driver, port,
+        ([[100], [-100]], 1, 16, 48000),      # latches 16-bit
+        ([[0x012345], [-1]], 1, 24, 48000),   # repacked to int16 (top bytes)
+    )
+    assert hs['bit_depth'] == 16
+    vals = list(struct.unpack(f'<{len(pcm) // 2}h', pcm))
+    assert vals == [100, -100, 0x0123, -1]
+    driver.shutdown()
+
+
+def test_widen_pcm_narrowing_keeps_high_bytes():
+    from _tdm_utils import widen_pcm
+    src = b''.join(v.to_bytes(3, 'little', signed=True) for v in (0x012345, -1, -0x800000))
+    assert widen_pcm(src, 3, 2) == struct.pack('<3h', 0x0123, -1, -0x8000)
+    src = struct.pack('<2i', 0x01234567, -256)
+    assert widen_pcm(src, 4, 2) == struct.pack('<2h', 0x0123, -1)

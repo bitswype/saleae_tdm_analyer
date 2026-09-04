@@ -263,6 +263,17 @@ void test_framev2_format_frame()
     u.sign = AnalyzerEnums::UnsignedInteger;
     RunAndCollect( u );
     CheckFormatFrame( u, "unsigned 16-bit" );
+
+    // FV2_OFF suppresses slot frames but the format frame is still emitted
+    // (alongside the "HLA output disabled" advisory) so an HLA attached to
+    // this analyzer can at least report the format it will never receive
+    ClearCapturedFrameV2s();
+    Config off = DefaultConfig( "fv2-format-off", 5 );
+    off.framev2_detail = FV2_OFF;
+    off.data_bits_per_slot = 24;
+    off.bits_per_slot = 32;
+    RunAndCollect( off );
+    CheckFormatFrame( off, "FrameV2 output off" );
 }
 
 void test_framev2_format_frame_batch_mode()
@@ -279,4 +290,15 @@ void test_framev2_format_frame_batch_mode()
     c.sign = AnalyzerEnums::SignedInteger;
     RunAndCollect( c );
     CheckFormatFrame( c, "batch mode, minimal detail" );
+
+    // Prove batch mode was actually engaged, otherwise this test would pass
+    // for any detail level since the format frame is unconditional
+    U32 batch_count = 0, slot_count = 0;
+    for( const auto& fv2 : GetCapturedFrameV2s() )
+    {
+        if( fv2.type == "audio_batch" ) batch_count++;
+        if( fv2.type == "slot" ) slot_count++;
+    }
+    CHECK( batch_count >= 1, "batch mode should emit audio_batch frames after the format frame" );
+    CHECK_EQ( slot_count, U32( 0 ), "batch mode should emit no slot frames" );
 }

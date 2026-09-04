@@ -65,3 +65,84 @@ def test_unpack_frames_32_bit_roundtrip():
     frames, rem = unpack_frames(buf, hs)
     assert frames == [(0x01234500,), (-256,), (-0x80000000,)]
     assert rem == b''
+
+
+# ---------------------------------------------------------------------------
+# StreamClient: a bad handshake is reported through on_error once per
+# distinct message, and the client keeps reconnecting rather than dying.
+# ---------------------------------------------------------------------------
+
+import json
+import socket
+import threading
+import time
+
+from tdm_audio_bridge.client import StreamClient
+
+
+class _ScriptedServer:
+    """Accepts connections in order and sends one scripted line to each."""
+
+    def __init__(self, lines):
+        self._lines = list(lines)
+        self.accepted = 0
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.bind(('127.0.0.1', 0))
+        self._sock.listen(5)
+        self._sock.settimeout(0.2)
+        self.port = self._sock.getsockname()[1]
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while not self._stop.is_set() and self.accepted < len(self._lines):
+            try:
+                conn, _ = self._sock.accept()
+            except socket.timeout:
+                continue
+            line = self._lines[self.accepted]
+            self.accepted += 1
+            try:
+                conn.sendall(line)
+                time.sleep(0.05)
+                conn.close()
+            except OSError:
+                pass
+
+    def close(self):
+        self._stop.set()
+        self._thread.join(timeout=2.0)
+        self._sock.close()
+
+
+def _hs_line(**overrides):
+    d = _hs(16)
+    d.update(overrides)
+    return json.dumps(d).encode() + b'\n'
+
+
+def test_client_reports_bad_handshake_once_per_message():
+    server = _ScriptedServer([
+        _hs_line(bit_depth=24),     # unsupported width
+        _hs_line(bit_depth=24),     # same message again: must not repeat
+        _hs_line(protocol=99),      # different message: reported again
+    ])
+    errors = []
+    handshakes = []
+    client = StreamClient(port=server.port, on_error=errors.append,
+                          on_handshake=handshakes.append,
+                          reconnect=True, reconnect_delay=0.1)
+    client.start()
+    deadline = time.time() + 5.0
+    while server.accepted < 3 and time.time() < deadline:
+        time.sleep(0.05)
+    time.sleep(0.3)
+    client.stop()
+    server.close()
+
+    assert server.accepted == 3, "client should keep reconnecting after a bad handshake"
+    assert handshakes == []
+    assert len(errors) == 2, errors
+    assert '24' in errors[0] and '16' in errors[0] and '32' in errors[0]
+    assert '99' in errors[1]
