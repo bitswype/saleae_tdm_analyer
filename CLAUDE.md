@@ -258,7 +258,8 @@ Other frame types: `advisory` (`severity`, `message`; emitted at sample 0 for lo
 
 ## Git Conventions
 
-- Tags: `vX.Y.Z` (e.g. v2.0.0 through v2.6.0) - semantic versioning
+- Tags: `vX.Y.Z` (e.g. v2.0.0 through v2.6.1) - semantic versioning. v2.6.0 exists as a tag only (its CI run failed on macOS, see CHANGELOG 2.6.1); v2.6.1 is the release.
+- **C++ test configs must set `sample_rate` to 4x the bit clock** whenever they change frame rate, slots, or bits per slot. `DefaultConfig` is sized for 48 kHz stereo 16-bit; an under-sampled config hung the clang/arm64 build on macOS CI.
 - Remote: SSH (`git@github.com:bitswype/saleae_tdm_analyer.git`)
 
 ## CI / Release

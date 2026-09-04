@@ -249,12 +249,19 @@ void test_framev2_format_frame()
 {
     ClearCapturedFrameV2s();
 
+    // Every config that changes frame rate, slots, or bits per slot must
+    // also set the capture sample rate to 4x its bit clock. DefaultConfig's
+    // rate is sized for 48 kHz stereo 16-bit; reusing it here under-sampled
+    // the signal 4x below the supported minimum, which MSVC and GCC builds
+    // happened to survive but which hung the clang/arm64 build on macOS CI
+    // until the runner killed it (v2.6.0 tag run).
     Config c = DefaultConfig( "fv2-format", 5 );
     c.slots_per_frame = 4;
     c.bits_per_slot = 32;
     c.data_bits_per_slot = 24;
     c.frame_rate = 44100;
     c.sign = AnalyzerEnums::SignedInteger;
+    c.sample_rate = U64( 44100 ) * 4 * 32 * 4;
     RunAndCollect( c );
     CheckFormatFrame( c, "signed 24-in-32" );
 
@@ -272,6 +279,7 @@ void test_framev2_format_frame()
     off.framev2_detail = FV2_OFF;
     off.data_bits_per_slot = 24;
     off.bits_per_slot = 32;
+    off.sample_rate = U64( 48000 ) * 2 * 32 * 4;
     RunAndCollect( off );
     CheckFormatFrame( off, "FrameV2 output off" );
 }
@@ -288,6 +296,7 @@ void test_framev2_format_frame_batch_mode()
     c.audio_batch_size = 4;
     c.framev2_detail = FV2_MINIMAL;
     c.sign = AnalyzerEnums::SignedInteger;
+    c.sample_rate = U64( 48000 ) * 2 * 32 * 4;
     RunAndCollect( c );
     CheckFormatFrame( c, "batch mode, minimal detail" );
 

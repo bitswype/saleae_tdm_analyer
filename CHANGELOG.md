@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-09-04
+
+### Fixed
+
+- **C++ test hung on macOS CI, so the v2.6.0 tag produced no release** - `test_framev2_format_frame` changed the frame rate, slot count, and bits per slot but kept `DefaultConfig`'s capture sample rate, leaving the synthetic signal 4x below the analyzer's supported oversampling. The MSVC and GCC builds happened to terminate; the clang/arm64 build spun until the runner killed it. All new test configs now set the capture rate to 4x their bit clock. Test-only change: the analyzer, HLAs, and tools are identical to 2.6.0.
+
 ## [2.6.0] - 2026-09-04
 
 ### Fixed
